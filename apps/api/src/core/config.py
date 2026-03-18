@@ -21,11 +21,24 @@ else:
     print("DEBUG: No .env file found in parent directories, using system env")
     load_dotenv()
 
-SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip()
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "").strip()
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+# External APIs
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "").strip()
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 
-if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY or not SUPABASE_ANON_KEY:
-    raise RuntimeError("Supabase environment variables are not set")
+# AWS Configuration
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "").strip()
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "").strip()
+AWS_REGION = os.getenv("AWS_REGION", "ap-southeast-2").strip()
+S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME", "talentflow-files").strip()
+
+# AWS RDS Configuration
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+
+# Auth Configuration (AWS)
+JWT_SECRET = os.getenv("JWT_SECRET", "7c8e57bb9c29f040c2a83db8d27f4b1f8b22ca0096fa54333cae6bf28ad856a7").strip()
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 4320 # 3 days
+
+if not DATABASE_URL:
+    print("WARNING: DATABASE_URL not set. AWS RDS features will be unavailable.")

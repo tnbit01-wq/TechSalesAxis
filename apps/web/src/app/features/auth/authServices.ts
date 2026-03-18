@@ -1,6 +1,6 @@
 // Auth service abstraction
 // Handles signup, login, OTP, password reset
-// UI should never call supabase directly
+// UI should never call API directly
 
 export const authService = {
   signupWithEmail: async () => {},

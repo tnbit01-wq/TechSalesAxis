@@ -1,9 +1,10 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import {
   Zap,
   Target,
@@ -13,11 +14,12 @@ import {
   Pin,
   Sparkles,
   ChevronRight,
-  TrendingUp,
   Filter,
   Search,
   CheckCircle2,
   Lock,
+  Building2,
+  X,
 } from "lucide-react";
 
 interface Job {
@@ -32,6 +34,7 @@ interface Job {
   company_website?: string;
   created_at: string;
   has_applied: boolean;
+  is_saved: boolean;
 }
 
 export default function CandidateJobsPage() {
@@ -39,23 +42,22 @@ export default function CandidateJobsPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState<string | null>(null);
-  const [assessmentStatus, setAssessmentStatus] =
-    useState<string>("not_started");
+  const [saving, setSaving] = useState<string | null>(null);
+  const [assessmentStatus, setAssessmentStatus] = useState<string>("not_started");
+  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        if (!session) {
+        const token = awsAuth.getToken();
+        if (!token) {
           router.push("/login");
           return;
         }
 
         const [jobsData, statsData] = await Promise.all([
-          apiClient.get("/candidate/jobs", session.access_token),
-          apiClient.get("/candidate/stats", session.access_token),
+          apiClient.get("/candidate/jobs", token),
+          apiClient.get("/candidate/stats", token),
         ]);
 
         setJobs(jobsData);
@@ -72,203 +74,241 @@ export default function CandidateJobsPage() {
   const handleApply = async (jobId: string) => {
     setApplying(jobId);
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) return;
+      const token = awsAuth.getToken();
+      if (!token) return;
 
-      await apiClient.post(
-        `/candidate/jobs/${jobId}/apply`,
-        {},
-        session.access_token,
-      );
-
-      // Update local state
-      setJobs(
-        jobs.map((j) => (j.id === jobId ? { ...j, has_applied: true } : j)),
-      );
+      await apiClient.post(`/candidate/jobs/${jobId}/apply`, {}, token);
+      setJobs(jobs.map((j) => (j.id === jobId ? { ...j, has_applied: true } : j)));
+      toast.success("Application Sent", { description: "You have successfully applied for this job." });
     } catch (err) {
-      console.error("Application failed:", err);
+      toast.error("Application Failed", { description: err instanceof Error ? err.message : "Something went wrong" });
     } finally {
       setApplying(null);
     }
   };
 
+  const handleToggleSave = async (job: Job) => {
+    setSaving(job.id);
+    try {
+      const token = awsAuth.getToken();
+      if (!token) return;
+
+      if (job.is_saved) {
+        await apiClient.delete(`/candidate/jobs/${job.id}/unsave`, token);
+        setJobs(jobs.map((j) => (j.id === job.id ? { ...j, is_saved: false } : j)));
+        toast.info("Job Unsaved");
+      } else {
+        await apiClient.post(`/candidate/jobs/${job.id}/save`, {}, token);
+        setJobs(jobs.map((j) => (j.id === job.id ? { ...j, is_saved: true } : j)));
+        toast.success("Job Saved");
+      }
+    } catch (err) {
+      toast.error("Action Failed");
+    } finally {
+      setSaving(null);
+    }
+  };
+
   if (loading) {
     return (
-      <div className="min-h-[60vh] flex flex-col items-center justify-center font-sans">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div>
-        <p className="text-slate-400 font-black text-[10px] uppercase tracking-[0.3em]">
-          Scanning Market Signals...
-        </p>
+      <div className="min-h-[60vh] flex flex-col items-center justify-center">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600 mb-4"></div>
+        <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Loading Jobs...</p>
       </div>
     );
   }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-12 pb-32">
-      <header className="flex flex-col md:flex-row md:items-end justify-between gap-8 relative">
-        <div className="space-y-2">
-          <div className="flex items-center gap-3">
-            <h1 className="text-4xl font-black text-slate-900 tracking-tight flex items-center gap-4 italic uppercase">
-              Open <span className="text-indigo-600">Signals</span>
-            </h1>
-            <div className="px-2 py-0.5 bg-indigo-100/50 text-indigo-700 text-[9px] font-black uppercase tracking-widest rounded-md border border-indigo-200/50">
-              Live Feed
-            </div>
-          </div>
-          <div className="text-slate-500 font-bold uppercase tracking-[0.2em] text-[10px] flex items-center gap-2">
-            <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-            Elite roles currently matching the TalentFlow ecosystem.
-          </div>
+    <div className="max-w-6xl mx-auto px-4 py-8 space-y-10 pb-20">
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Job Board</h1>
+          <p className="text-slate-500 text-sm mt-1">Discover roles that match your profile.</p>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="relative group">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 group-hover:text-indigo-600 transition-colors" />
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <input
               type="text"
-              placeholder="FILTER TRANSMISSIONS..."
-              className="pl-11 pr-6 py-3.5 bg-white border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 transition-all w-64 shadow-sm placeholder:text-slate-300"
+              placeholder="Search jobs..."
+              className="pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-64 shadow-sm"
             />
           </div>
-          <button className="p-3.5 bg-white border border-slate-200 rounded-2xl text-slate-400 hover:text-indigo-600 transition-all shadow-sm active:scale-95">
-            <Filter className="h-5 w-5" />
+          <button className="p-2.5 bg-white border border-slate-200 rounded-xl text-slate-500 hover:bg-slate-50 shadow-sm">
+            <Filter className="h-4 w-4" />
           </button>
         </div>
       </header>
 
-      <div className="grid grid-cols-1 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {jobs.length === 0 ? (
-          <div className="bg-white rounded-4xl p-24 text-center border border-slate-200 border-dashed flex flex-col items-center justify-center">
-            <div className="h-20 w-20 bg-slate-50 rounded-[2.5rem] flex items-center justify-center mb-6 border border-slate-100">
-              <Zap className="h-10 w-10 text-slate-300" />
-            </div>
-            <h3 className="text-xl font-black text-slate-900 mb-2 uppercase tracking-tight italic">
-              Transmission Silent
-            </h3>
-            <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] max-w-xs leading-relaxed">
-              No active signals currently intersect with your profile metadata.
-            </p>
+          <div className="col-span-full py-20 text-center bg-white border border-dashed border-slate-200 rounded-3xl">
+            <Briefcase className="h-10 w-10 text-slate-200 mx-auto mb-4" />
+            <h3 className="text-lg font-bold text-slate-900">No jobs found</h3>
+            <p className="text-slate-500 text-sm">Check back later for new opportunities.</p>
           </div>
         ) : (
           jobs.map((job) => (
             <div
               key={job.id}
-              className="bg-white p-8 md:p-10 rounded-[2.5rem] border border-slate-200/60 shadow-sm hover:shadow-2xl hover:border-indigo-100 transition-all group relative overflow-hidden"
+              className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition-all flex flex-col group cursor-pointer"
+              onClick={() => setSelectedJob(job)}
             >
-              <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-600/5 rounded-full blur-3xl -mr-32 -mt-32 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
-
-              <div className="flex flex-col lg:flex-row justify-between items-start gap-10 relative z-10">
-                <div className="flex-1 space-y-6">
-                  <div>
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="px-3 py-1 bg-slate-900 text-white text-[9px] font-black uppercase tracking-widest rounded-lg flex items-center gap-2 shadow-lg shadow-slate-900/10">
-                        <TrendingUp className="h-3 w-3 text-indigo-400" />
-                        {job.company_name}
-                      </div>
-                      <div className="h-1.5 w-1.5 rounded-full bg-slate-200" />
-                      <div className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-1.5">
-                        <Clock className="h-3 w-3" />
-                        POSTED {new Date(job.created_at).toLocaleDateString()}
-                      </div>
-                    </div>
-
-                    <h2 className="text-3xl font-black text-slate-900 mb-4 uppercase tracking-tighter group-hover:text-indigo-600 transition-colors leading-none italic">
-                      {job.title}
-                    </h2>
-
-                    <div className="flex flex-wrap gap-2.5">
-                      <SignalBadge
-                        icon={<Target className="h-3 w-3" />}
-                        label={job.experience_band}
-                      />
-                      <SignalBadge
-                        icon={<Briefcase className="h-3 w-3" />}
-                        label={job.job_type}
-                      />
-                      <SignalBadge
-                        icon={<MapPin className="h-3 w-3" />}
-                        label={job.location || "Remote"}
-                      />
-                      <SignalBadge
-                        icon={<Sparkles className="h-3 w-3 text-indigo-400" />}
-                        label={job.salary_range || "Competitive Signal"}
-                        highlight
-                      />
-                    </div>
-                  </div>
-
-                  <p className="text-slate-500 font-medium text-sm leading-relaxed max-w-2xl">
-                    {job.description}
-                  </p>
-
-                  <div className="flex items-center gap-4 pt-2">
-                    <button className="flex items-center gap-2 text-[10px] font-black text-indigo-600 uppercase tracking-widest hover:text-indigo-800 transition-colors bg-indigo-50/50 px-4 py-2 rounded-xl group/link">
-                      VIEW FULL SPECS
-                      <ChevronRight className="h-3.5 w-3.5 group-hover/link:translate-x-1 transition-transform" />
-                    </button>
-                    <button className="p-2 text-slate-400 hover:text-indigo-600 transition-colors">
-                      <Pin className="h-4 w-4" />
-                    </button>
-                  </div>
+              <div className="flex justify-between items-start mb-4">
+                <div className="h-12 w-12 bg-slate-50 rounded-2xl flex items-center justify-center border border-slate-100 group-hover:bg-indigo-50 transition-colors">
+                  <Building2 className="h-6 w-6 text-slate-400 group-hover:text-indigo-600" />
                 </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleToggleSave(job);
+                  }}
+                  disabled={saving === job.id}
+                  className={`p-2 rounded-xl transition-all ${
+                    job.is_saved
+                      ? "bg-indigo-50 text-indigo-600"
+                      : "text-slate-400 hover:bg-slate-50 hover:text-indigo-600"
+                  }`}
+                >
+                  <Pin className={`h-4 w-4 ${job.is_saved ? "fill-current" : ""}`} />
+                </button>
+              </div>
 
-                <div className="flex flex-col items-center gap-4 shrink-0 sm:self-center lg:self-start pt-2">
-                  <div className="relative group/btn">
-                    <button
-                      disabled={
-                        job.has_applied ||
-                        applying === job.id ||
-                        assessmentStatus !== "completed"
-                      }
-                      onClick={() => handleApply(job.id)}
-                      className={`min-w-44 h-16 rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] transition-all flex items-center justify-center gap-3 active:scale-95 relative z-10 ${
-                        job.has_applied
-                          ? "bg-emerald-50 text-emerald-600 cursor-default border border-emerald-100"
-                          : assessmentStatus !== "completed"
-                            ? "bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200"
-                            : "bg-indigo-600 text-white hover:bg-slate-900 shadow-2xl shadow-indigo-200/50 hover:shadow-indigo-500/20"
-                      }`}
-                    >
-                      {applying === job.id ? (
-                        <>
-                          <div className="animate-spin h-4 w-4 border-2 border-white/20 border-b-white rounded-full" />
-                          SYNCING...
-                        </>
-                      ) : job.has_applied ? (
-                        <>
-                          <CheckCircle2 className="h-4 w-4" />
-                          TRANSMITTED
-                        </>
-                      ) : assessmentStatus !== "completed" ? (
-                        <>
-                          <Lock className="h-4 w-4 mb-0.5" />
-                          LOCKED
-                        </>
-                      ) : (
-                        "INITIALIZE MATCH"
-                      )}
-                    </button>
-                    {assessmentStatus === "completed" && !job.has_applied && (
-                      <div className="absolute -inset-1 bg-indigo-600/20 rounded-2xl blur-lg opacity-0 group-hover/btn:opacity-100 transition-opacity" />
-                    )}
-                  </div>
-
-                  {assessmentStatus !== "completed" && (
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 rounded-xl border border-amber-100">
-                      <div className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
-                      <span className="text-[8px] font-black text-amber-700 uppercase tracking-widest">
-                        Awaiting Sync
-                      </span>
-                    </div>
-                  )}
+              <div className="flex-1">
+                <h2 className="text-lg font-bold text-slate-900 line-clamp-1 group-hover:text-indigo-600 transition-colors">
+                  {job.title}
+                </h2>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider">{job.company_name}</span>
+                  <span className="h-1 w-1 rounded-full bg-slate-200" />
+                  <span className="text-xs text-slate-500">{job.location || "Remote"}</span>
                 </div>
+                
+                <p className="text-slate-500 text-xs mt-4 line-clamp-2 min-h-[2.5rem]">
+                  {job.description}
+                </p>
+              </div>
+
+              <div className="mt-6 flex items-center justify-between gap-3">
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Salary</span>
+                  <span className="text-xs font-bold text-slate-900">{job.salary_range || "Contact for info"}</span>
+                </div>
+                <button 
+                  className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedJob(job);
+                  }}
+                >
+                  View Details
+                </button>
               </div>
             </div>
           ))
         )}
       </div>
+
+      {/* Detail Overlay */}
+      {selectedJob && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-[2.5rem] shadow-2xl animate-in zoom-in-95 duration-300">
+            <div className="p-8 md:p-12 space-y-8">
+              <div className="flex justify-between items-start">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-indigo-600 font-bold text-sm">
+                    <Building2 className="h-4 w-4" />
+                    {selectedJob.company_name}
+                  </div>
+                  <h2 className="text-3xl font-bold text-slate-900 tracking-tight">{selectedJob.title}</h2>
+                  <div className="flex flex-wrap gap-2">
+                    <span className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold">{selectedJob.job_type}</span>
+                    <span className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold">{selectedJob.experience_band}</span>
+                    <span className="px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-xl text-xs font-bold">{selectedJob.salary_range}</span>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setSelectedJob(null)}
+                  className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400"
+                >
+                  <X className="h-6 w-6" />
+                </button>
+              </div>
+
+              <div className="space-y-4 pt-4 border-t border-slate-100">
+                <h3 className="font-bold text-slate-900 uppercase tracking-wider text-xs">Job Description</h3>
+                <p className="text-slate-600 text-sm leading-relaxed whitespace-pre-wrap">
+                  {selectedJob.description}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-8 border-y border-slate-100">
+                <div className="flex items-center gap-4">
+                  <div className="h-10 w-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400">
+                    <MapPin className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Location</p>
+                    <p className="text-sm font-bold text-slate-900">{selectedJob.location || "Remote"}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="h-10 w-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400">
+                    <Clock className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Posted on</p>
+                    <p className="text-sm font-bold text-slate-900">{new Date(selectedJob.created_at).toLocaleDateString()}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-4 pt-4">
+                <button
+                  disabled={selectedJob.has_applied || applying === selectedJob.id || assessmentStatus !== "completed"}
+                  onClick={() => handleApply(selectedJob.id)}
+                  className={`flex-1 h-14 rounded-2xl font-bold uppercase tracking-widest text-xs transition-all flex items-center justify-center gap-2 ${
+                    selectedJob.has_applied
+                      ? "bg-emerald-50 text-emerald-600 border border-emerald-200"
+                      : assessmentStatus !== "completed"
+                        ? "bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200"
+                        : "bg-indigo-600 text-white hover:bg-slate-900 shadow-xl shadow-indigo-200"
+                  }`}
+                >
+                  {applying === selectedJob.id ? (
+                    <div className="animate-spin h-4 w-4 border-2 border-white/20 border-b-white rounded-full" />
+                  ) : selectedJob.has_applied ? (
+                    <>
+                      <CheckCircle2 className="h-4 w-4" />
+                      Applied
+                    </>
+                  ) : assessmentStatus !== "completed" ? (
+                    <>
+                      <Lock className="h-4 w-4" />
+                      Complete Profile First
+                    </>
+                  ) : (
+                    "Apply Now"
+                  )}
+                </button>
+                <button
+                  onClick={() => handleToggleSave(selectedJob)}
+                  disabled={saving === selectedJob.id}
+                  className={`h-14 px-8 rounded-2xl font-bold uppercase tracking-widest text-xs border transition-all flex items-center justify-center gap-2 ${
+                    selectedJob.is_saved
+                      ? "bg-indigo-50 border-indigo-200 text-indigo-600"
+                      : "border-slate-200 hover:bg-slate-50 text-slate-500"
+                  }`}
+                >
+                  <Pin className={`h-4 w-4 ${selectedJob.is_saved ? "fill-current" : ""}`} />
+                  {selectedJob.is_saved ? "Saved" : "Save Job"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -295,3 +335,4 @@ function SignalBadge({
     </div>
   );
 }
+

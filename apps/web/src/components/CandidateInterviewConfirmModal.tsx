@@ -12,7 +12,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { apiClient } from "@/lib/apiClient";
-import { supabase } from "@/lib/supabaseClient";
+import { awsAuth } from "@/lib/awsAuth";
 
 interface Slot {
   id: string;
@@ -62,14 +62,15 @@ export default function CandidateInterviewConfirmModal({
     setLoading(true);
     setError(null);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+      const token = awsAuth.getToken();
+      if (!token) return;
 
       // We use the general interviews/my or a specific one? 
       // Let's just fetch all and find the one we need for simplicity or add a specific get.
       // Actually, let's use the /interviews/my endpoint and filter
-      const interviews = await apiClient.get("/interviews/my", session.access_token);
-      const target = interviews.find((i: any) => i.id === interviewId);
+      const interviews = await apiClient.get("/interviews/my", token);
+      console.log("DEBUG LOAD INTERVIEW: Target ID", interviewId, "Received:", interviews);
+      const target = interviews.find((i: any) => String(i.id) === String(interviewId));
       
       if (target) {
         if (target.status === "scheduled") {
@@ -79,6 +80,7 @@ export default function CandidateInterviewConfirmModal({
         }
         setInterview(target);
       } else {
+        console.error("Interview ID not found in list:", interviewId);
         setError("Interview details not found.");
       }
     } catch (err) {
@@ -95,12 +97,12 @@ export default function CandidateInterviewConfirmModal({
     setSubmitting(true);
     setError(null);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+      const token = awsAuth.getToken();
+      if (!token) return;
 
       await apiClient.post("/interviews/confirm", {
         slot_id: selectedSlotId
-      }, session.access_token);
+      }, token);
 
       onSuccess();
       onClose();

@@ -63,6 +63,9 @@ uvicorn==0.40.0
 websockets==15.0.1
 yarl==1.22.0
 beautifulsoup4==4.12.3
-google-generativeai
+boto3
+botocore
+email-validator
+google-genai
 groq
 pypdf

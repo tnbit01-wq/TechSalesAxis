@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, use } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import { useRouter } from "next/navigation";
 import {
@@ -64,10 +64,8 @@ export default function EditJobPage({
   useEffect(() => {
     async function loadJob() {
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        if (!session) {
+        const token = awsAuth.getToken();
+        if (!token) {
           router.replace("/login");
           return;
         }
@@ -75,7 +73,7 @@ export default function EditJobPage({
         // Fetch profile for locking logic
         const profile = await apiClient.get(
           "/recruiter/profile",
-          session.access_token,
+          token,
         );
         if ((profile?.companies?.profile_score ?? 0) === 0) {
           setIsLocked(true);
@@ -85,7 +83,7 @@ export default function EditJobPage({
         // Fetch job data
         const jobs: Job[] = await apiClient.get(
           "/recruiter/jobs",
-          session.access_token,
+          token,
         );
         const job = jobs.find((j) => j.id === id);
 
@@ -118,15 +116,13 @@ export default function EditJobPage({
     e.preventDefault();
     setLoading(true);
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) return;
+      const token = awsAuth.getToken();
+      if (!token) return;
 
       await apiClient.patch(
         `/recruiter/jobs/${id}`,
         formData,
-        session.access_token,
+        token,
       );
       router.push("/dashboard/recruiter/hiring/jobs");
     } catch (err) {
@@ -233,10 +229,10 @@ export default function EditJobPage({
                   }
                   className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 text-sm font-bold focus:bg-white focus:border-slate-900 outline-none appearance-none cursor-pointer uppercase tracking-widest"
                 >
-                  <option value="fresher">Fresher / Associate</option>
-                  <option value="mid">Mid-Senior</option>
-                  <option value="senior">Senior Executive</option>
-                  <option value="leadership">Elite Leadership</option>
+                  <option value="fresher">Fresher (0-1y)</option>
+                  <option value="mid">Mid (1-5y)</option>
+                  <option value="senior">Senior (5-10y)</option>
+                  <option value="leadership">Leadership (10y+)</option>
                 </select>
               </div>
 

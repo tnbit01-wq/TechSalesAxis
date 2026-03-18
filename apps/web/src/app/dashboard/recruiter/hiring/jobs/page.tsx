@@ -26,7 +26,7 @@ import {
   PauseCircle,
   XCircle,
 } from "lucide-react";
-import { supabase } from "@/lib/supabaseClient";
+import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import LockedView from "@/components/dashboard/LockedView";
 
@@ -69,24 +69,22 @@ export default function JobsManagement() {
   const isLocked = profile && (profile.companies?.profile_score ?? 0) === 0;
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    await awsAuth.logout();
     router.replace("/login");
   };
 
   useEffect(() => {
     async function loadData() {
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        if (!session) {
+        const token = awsAuth.getToken();
+        if (!token) {
           router.replace("/login");
           return;
         }
 
         const [jobsData, profileData] = await Promise.all([
-          apiClient.get("/recruiter/jobs", session.access_token),
-          apiClient.get("/recruiter/profile", session.access_token),
+          apiClient.get("/recruiter/jobs", token),
+          apiClient.get("/recruiter/profile", token),
         ]);
         setJobs(jobsData);
         setProfile(profileData);
@@ -107,15 +105,13 @@ export default function JobsManagement() {
 
   const updateJobStatus = async (jobId: string, newStatus: string) => {
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) return;
+      const token = awsAuth.getToken();
+      if (!token) return;
 
       await apiClient.patch(
         `/recruiter/jobs/${jobId}`,
         { status: newStatus },
-        session.access_token,
+        token,
       );
       setJobs(
         jobs.map((j) =>
@@ -136,12 +132,10 @@ export default function JobsManagement() {
       return;
 
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) return;
+      const token = awsAuth.getToken();
+      if (!token) return;
 
-      await apiClient.delete(`/recruiter/jobs/${jobId}`, session.access_token);
+      await apiClient.delete(`/recruiter/jobs/${jobId}`, token);
       setJobs(jobs.filter((j) => j.id !== jobId));
       setActiveMenu(null);
     } catch (err) {

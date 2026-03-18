@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { supabase } from "@/lib/supabaseClient";
+import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import { useVoice } from "@/hooks/useVoice";
 import {
@@ -71,14 +71,13 @@ function SignupForm() {
 
   useEffect(() => {
     async function checkSession() {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (session) {
+      const token = awsAuth.getToken();
+      if (token) {
         try {
-          const handshake = await apiClient.get(
+          const handshake = await apiClient.post(
             "/auth/post-login",
-            session.access_token,
+            {},
+            token,
           );
           router.replace(handshake.next_step);
         } catch (err) {
@@ -143,23 +142,19 @@ function SignupForm() {
                 "bot",
               );
 
-              const { error } = await supabase.auth.signInWithOtp({
-                email: workingInput.toLowerCase(),
-                options: { shouldCreateUser: true },
-              });
-
-              if (error) {
-                console.error("Supabase Auth Error:", error);
-                addMessage(
-                  `Sorry, I couldn't send the code: ${error.message}. Please check if you've hit the rate limit.`,
-                  "bot",
-                );
-              } else {
+              try {
+                await awsAuth.signup(workingInput.toLowerCase(), role);
                 addMessage(
                   "Code sent! Please enter the 6-digit code from your email. (Check your spam folder if it doesn't appear in 1 minute)",
                   "bot",
                 );
                 setState("AWAITING_OTP");
+              } catch (err: any) {
+                console.error("AWS Auth Error:", err);
+                addMessage(
+                  `Sorry, I couldn't send the code: ${err.message}.`,
+                  "bot",
+                );
               }
             } catch (err) {
               const errorMessage =
@@ -172,107 +167,50 @@ function SignupForm() {
       } else if (state === "AWAITING_OTP") {
         if (workingInput.toLowerCase() === "resend") {
           setIsLoading(true);
-          const { error } = await supabase.auth.signInWithOtp({
-            email,
-            options: { shouldCreateUser: true },
-          });
-          setIsLoading(false);
-
-          if (error) {
-            addMessage(`Failed to resend: ${error.message}`, "bot");
-          } else {
+          try {
+            await awsAuth.signup(email, role);
             addMessage(
               "I've triggered a new code. Please check your inbox again.",
               "bot",
             );
+          } catch (err: any) {
+             addMessage(`Failed to resend: ${err.message}`, "bot");
+          } finally {
+            setIsLoading(false);
           }
           return;
         }
 
-        const { error } = await supabase.auth.verifyOtp({
-          email,
-          token: workingInput,
-          type: "email",
-        });
+        try {
+          const authRes = await awsAuth.verifyOtp(email, workingInput);
+          addMessage(
+            "Email verified! Your account is ready. Taking you to the next step...",
+            "bot",
+          );
+          setState("COMPLETED");
 
-        if (error) {
-          addMessage(
-            "That code didn't work. Please try again or check your email.",
-            "bot",
-          );
-        } else {
-          addMessage(
-            "Email verified! Now, please create a strong password for your account.",
-            "bot",
-          );
-          setState("AWAITING_PASSWORD");
-        }
-      } else if (state === "AWAITING_PASSWORD") {
-        if (workingInput.length < 8) {
-          addMessage(
-            "Password should be at least 8 characters long for your security.",
-            "bot",
-          );
-        } else {
-          const { error } = await supabase.auth.updateUser({
-            password: workingInput,
-          });
-
-          if (error) {
-            addMessage(`Failed to set password: ${error.message}`, "bot");
-          } else {
-            // Initialize profile in backend
+          // Initialize profile in backend after verification
+          setTimeout(async () => {
             try {
-              const session = await supabase.auth.getSession();
-              const token = session.data.session?.access_token;
-
-              await apiClient.post(
+              const res = await apiClient.post(
                 "/auth/initialize",
                 {
                   role,
                   display_name: userName,
                 },
-                token,
+                authRes.access_token,
               );
-
-              addMessage(
-                "Perfect! Your account is ready. Taking you to the next step...",
-                "bot",
-              );
-              setState("COMPLETED");
-
-              // Redirect directly to the correct destination after a short delay
-              setTimeout(async () => {
-                const {
-                  data: { session },
-                } = await supabase.auth.getSession();
-                if (session) {
-                  try {
-                    const res = await apiClient.get(
-                      "/auth/post-login",
-                      session.access_token,
-                    );
-                    if (res.next_step) {
-                      router.replace(res.next_step);
-                    } else {
-                      router.replace("/login");
-                    }
-                  } catch (err) {
-                    router.replace("/login");
-                  }
-                } else {
-                  router.replace("/login");
-                }
-              }, 3000);
-            } catch (err) {
-              const errorMessage =
-                err instanceof Error ? err.message : "Unknown error";
-              addMessage(
-                `We created your account, but couldn't initialize your profile: ${errorMessage}. Please contact support.`,
-                "bot",
-              );
+              router.replace(res.next_step);
+            } catch (err: any) {
+              console.error("Initialization Error:", err);
+              router.replace("/onboarding");
             }
-          }
+          }, 1500);
+        } catch (err: any) {
+          addMessage(
+            "That code didn't work. Please try again or check your email.",
+            "bot",
+          );
         }
       }
     } catch {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import { useRouter } from "next/navigation";
 import {
@@ -46,17 +46,17 @@ export default function NewJobPage() {
   const [aiLoading, setAiLoading] = useState(false);
   const [salaryLoading, setSalaryLoading] = useState(false);
   const [showAiAssistant, setShowAiAssistant] = useState(false);
+  const [matchPotential, setMatchPotential] = useState<{ count: number; message: string } | null>(null);
+  const [checkingPotential, setCheckingPotential] = useState(false);
 
   useEffect(() => {
     async function checkAccess() {
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        if (!session) return;
+        const token = awsAuth.getToken();
+        if (!token) return;
         const profile = await apiClient.get(
           "/recruiter/profile",
-          session.access_token,
+          token,
         );
         if ((profile?.companies?.profile_score ?? 0) === 0) {
           setIsLocked(true);
@@ -74,12 +74,10 @@ export default function NewJobPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) return;
+      const token = awsAuth.getToken();
+      if (!token) return;
 
-      await apiClient.post("/recruiter/jobs", formData, session.access_token);
+      await apiClient.post("/recruiter/jobs", formData, token);
       router.push("/dashboard/recruiter/hiring/jobs");
     } catch (err) {
       console.error("Failed to create job:", err);
@@ -92,10 +90,8 @@ export default function NewJobPage() {
     if (!aiPrompt) return;
     setAiLoading(true);
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) return;
+      const token = awsAuth.getToken();
+      if (!token) return;
 
       const aiResult = await apiClient.post(
         "/recruiter/jobs/generate-ai",
@@ -104,7 +100,7 @@ export default function NewJobPage() {
           experience_band: formData.experience_band,
           location: formData.location, // Passing location for localized salary
         },
-        session.access_token,
+        token,
       );
 
       setFormData({
@@ -124,10 +120,8 @@ export default function NewJobPage() {
     if (!formData.title || !formData.location) return;
     setSalaryLoading(true);
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) return;
+      const token = awsAuth.getToken();
+      if (!token) return;
 
       const aiResult = await apiClient.post(
         "/recruiter/jobs/generate-ai",
@@ -136,7 +130,7 @@ export default function NewJobPage() {
           experience_band: formData.experience_band,
           location: formData.location,
         },
-        session.access_token,
+        token,
       );
 
       if (aiResult.salary_range) {
@@ -149,6 +143,40 @@ export default function NewJobPage() {
       console.error("Salary recalculation failed:", err);
     } finally {
       setSalaryLoading(false);
+    }
+  };
+
+  const handleCheckMatchPotential = async () => {
+    if (!formData.skills_required.length) return;
+    setCheckingPotential(true);
+    setMatchPotential(null);
+    try {
+      const token = awsAuth.getToken();
+      if (!token) return;
+
+      const bandToYears: Record<string, number> = {
+        'fresher': 0,
+        'mid': 3,
+        'senior': 7,
+        'leadership': 12
+      };
+
+      const result = await apiClient.post(
+        "/recruiter/check-job-potential",
+        {
+          skills: formData.skills_required,
+          experience_years: bandToYears[formData.experience_band] || 2,
+          location: formData.location,
+          salary_range: formData.salary_range
+        },
+        token
+      );
+
+      setMatchPotential(result);
+    } catch (err) {
+      console.error("Match potential check failed:", err);
+    } finally {
+      setCheckingPotential(false);
     }
   };
 
@@ -198,6 +226,19 @@ export default function NewJobPage() {
           </button>
           <div className="h-4 w-px bg-slate-200" />
           <button
+            onClick={handleCheckMatchPotential}
+            disabled={checkingPotential || formData.skills_required.length === 0}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-100 transition-all disabled:opacity-50"
+          >
+            {checkingPotential ? (
+              <div className="w-3.5 h-3.5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Target className="w-3.5 h-3.5" />
+            )}
+            Preview Talent
+          </button>
+          <div className="h-4 w-px bg-slate-200" />
+          <button
             onClick={handleCreateJob}
             disabled={loading}
             className="flex items-center gap-2 bg-slate-900 text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-md active:scale-95 disabled:opacity-50"
@@ -217,23 +258,24 @@ export default function NewJobPage() {
       {showAiAssistant && (
         <div className="fixed inset-x-0 top-16 z-30 animate-in slide-in-from-top duration-300">
           <div className="max-w-4xl mx-auto p-4">
-            <div className="bg-indigo-600 rounded-2xl shadow-2xl p-6 border border-indigo-400 relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
-                <Sparkles className="w-32 h-32 text-white" />
+            <div className="bg-white rounded-2xl shadow-2xl p-6 border border-slate-200 relative overflow-hidden ring-1 ring-slate-200/50">
+              <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none">
+                <Sparkles className="w-32 h-32 text-indigo-600" />
               </div>
               <div className="relative z-10">
                 <div className="flex justify-between items-start mb-4">
                   <div>
-                    <h2 className="text-white font-black text-lg uppercase tracking-tight flex items-center gap-2">
+                    <h2 className="text-slate-900 font-black text-sm uppercase tracking-widest flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-indigo-600" />
                       Smart Role Architect
                     </h2>
-                    <p className="text-indigo-100 text-[10px] font-bold uppercase tracking-widest opacity-80 mt-1">
+                    <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest opacity-80 mt-1">
                       Describe the mission, AI will handle the details
                     </p>
                   </div>
                   <button
                     onClick={() => setShowAiAssistant(false)}
-                    className="text-white/60 hover:text-white transition-colors"
+                    className="text-slate-400 hover:text-slate-600 transition-colors p-1 hover:bg-slate-100 rounded-lg"
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -244,14 +286,21 @@ export default function NewJobPage() {
                     value={aiPrompt}
                     onChange={(e) => setAiPrompt(e.target.value)}
                     placeholder="e.g. Senior Frontend Engineer for our DeFi platform. Expertise in React and Web3..."
-                    className="flex-1 bg-indigo-700/50 border border-indigo-400/50 rounded-xl p-4 text-white placeholder:text-indigo-300/50 text-sm font-medium focus:ring-2 focus:ring-white/20 outline-none resize-none h-24"
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-4 text-slate-900 placeholder:text-slate-400 text-sm font-medium focus:ring-2 focus:ring-indigo-500/20 outline-none resize-none h-24"
                   />
                   <button
                     onClick={handleAIGenerate}
                     disabled={aiLoading || !aiPrompt}
-                    className="bg-white text-indigo-600 px-8 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-slate-50 transition-all active:scale-95 disabled:opacity-50 shadow-xl self-end h-16"
+                    className="bg-indigo-600 text-white px-8 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-indigo-700 transition-all active:scale-95 disabled:opacity-50 shadow-lg shadow-indigo-100 self-end h-16"
                   >
-                    {aiLoading ? "Thinking..." : "Generate ✨"}
+                    {aiLoading ? (
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Thinking
+                      </div>
+                    ) : (
+                      "Generate"
+                    )}
                   </button>
                 </div>
               </div>
@@ -262,6 +311,30 @@ export default function NewJobPage() {
 
       {/* Main Content */}
       <main className="p-8 max-w-4xl mx-auto w-full pb-20">
+        {matchPotential && (
+          <div className="mb-8 bg-emerald-50 border border-emerald-100 rounded-2xl p-6 flex flex-col md:flex-row items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-white rounded-xl text-emerald-600 shadow-sm border border-emerald-50">
+                <Users className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-slate-900">{matchPotential.message}</p>
+                <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest mt-0.5">Verified via AI Assessment</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const skillsParam = encodeURIComponent(formData.skills_required.join(","));
+                router.push(`/dashboard/recruiter/intelligence/recommendations?filter=skill_match&skills=${skillsParam}`);
+              }}
+              className="px-6 py-2.5 bg-white border border-emerald-200 text-emerald-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-50 transition-all shadow-sm flex items-center gap-2"
+            >
+              Exposed Candidates
+              <ArrowLeft className="w-3 h-3 rotate-180" />
+            </button>
+          </div>
+        )}
         <form onSubmit={handleCreateJob} className="space-y-8">
           {/* Section: Role Identity */}
           <Section title="Role Architecture" icon={Briefcase}>
@@ -288,8 +361,8 @@ export default function NewJobPage() {
                   }
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-bold focus:ring-2 focus:ring-indigo-500 transition-all outline-none appearance-none cursor-pointer"
                 >
-                  <option value="fresher">Fresher (0-2y)</option>
-                  <option value="mid">Mid-Level (2-5y)</option>
+                  <option value="fresher">Fresher (0-1y)</option>
+                  <option value="mid">Mid-Level (1-5y)</option>
                   <option value="senior">Senior (5-10y)</option>
                   <option value="leadership">Leadership (10y+)</option>
                 </select>
@@ -390,7 +463,7 @@ export default function NewJobPage() {
                 />
               </Field>
               <Field label="Salary Range" icon={DollarSign}>
-                <div className="relative">
+                <div className="relative group">
                   <input
                     value={formData.salary_range}
                     onChange={(e) =>
@@ -403,8 +476,8 @@ export default function NewJobPage() {
                     type="button"
                     onClick={handleRecalculateSalary}
                     disabled={salaryLoading || !formData.location}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-indigo-600 hover:bg-white rounded-md transition-all shadow-sm disabled:opacity-30 disabled:grayscale"
-                    title="Recalculate salary based on location"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-indigo-400 hover:text-indigo-600 hover:bg-white rounded-md transition-all shadow-sm disabled:opacity-30 disabled:grayscale group-hover:scale-110 active:scale-95 border border-transparent hover:border-slate-100"
+                    title="Recalculate salary based on location & experience"
                   >
                     <Sparkles className={`w-3.5 h-3.5 ${salaryLoading ? "animate-spin" : ""}`} />
                   </button>

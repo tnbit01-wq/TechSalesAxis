@@ -17,6 +17,14 @@ test_jwks.py
 .env.local
 .env.development
 .env.production
+.env.test
+.env.*.local
+.env.aws.example
+.env.aws.local
+.env.aws.production
+.env.aws.development
+.env.aws.test
+.env.aws.*.local
 
 # Next.js
 .next/
@@ -38,3 +46,10 @@ Thumbs.db
 
 # Misc
 coverage/
+
+# Python virtual environment
+.venv311/
+venv/
+.env
+__pycache__/
+*.pyc

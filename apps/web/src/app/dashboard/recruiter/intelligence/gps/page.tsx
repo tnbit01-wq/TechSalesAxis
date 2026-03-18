@@ -13,7 +13,7 @@ import {
   Zap,
   ChevronRight,
 } from "lucide-react";
-import { supabase } from "@/lib/supabaseClient";
+import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import RecruiterSidebar from "@/components/RecruiterSidebar";
 import LockedView from "@/components/dashboard/LockedView";
@@ -29,17 +29,15 @@ export default function CareerGPSPage() {
   useEffect(() => {
     async function loadInsights() {
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        if (!session) {
+        const token = awsAuth.getToken();
+        if (!token) {
           router.replace("/login");
           return;
         }
 
         const [profileData, insightsData] = await Promise.all([
-          apiClient.get("/recruiter/profile", session.access_token),
-          apiClient.get("/recruiter/market-insights", session.access_token),
+          apiClient.get("/recruiter/profile", token),
+          apiClient.get("/recruiter/market-insights", token),
         ]);
 
         setProfile(profileData);
@@ -72,7 +70,7 @@ export default function CareerGPSPage() {
                     <span className="text-indigo-600 italic">GPS</span>
                   </h1>
                   <p className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.3em] mt-1">
-                    Synchronized Platform Intelligence • Global Protocol
+                    Market Analysis Data • Global Access
                   </p>
                 </div>
               </div>

@@ -1,7 +1,10 @@
-from src.core.supabase import async_supabase as supabase
+from src.core.database import db_engine, SessionLocal
 from typing import Dict, Any, List
 import asyncio
-from datetime import date
+from datetime import date, datetime
+from sqlalchemy.orm import Session
+from sqlalchemy import func, text
+from src.core.models import CandidateProfile, JobApplication, Post, SavedJob, Job, Company
 from src.services.notification_service import NotificationService
 
 class CandidateService:
@@ -9,32 +12,26 @@ class CandidateService:
     def calculate_completion_score(profile: Dict[str, Any]) -> int:
         """
         Calculates the profile completion score (0-100) based on filled fields.
+        Note: The database trigger 'calculate_profile_completion' is the primary 
+        source of truth, this method provides a synchronized app-side fallback.
         """
         weights = {
             "full_name": 10,
             "phone_number": 5,
-            "bio": 10,
+            "bio": 15,
             "current_role": 10,
             "years_of_experience": 5,
             "primary_industry_focus": 5,
-            "current_company_name": 5,
-            "skills": 10,
             "linkedin_url": 5,
             "portfolio_url": 5,
-            "sales_metrics": 10,
-            "crm_tools": 5,
-            "sales_methodologies": 5,
-            "resume_uploaded": 10,
             "gender": 2,
             "birthdate": 3,
-            "university": 5,
-            "qualification_held": 5,
-            "graduation_year": 5,
             "referral": 2,
             "location": 5,
-            "education_history": 10,
-            "experience_history": 15,
-            "career_gap_report": 5,
+            "education_history": 15,
+            "experience_history": 20,
+            "career_gap_report": 10,
+            "identity_verified": 5
         }
         
         total_score = 0
@@ -51,159 +48,180 @@ class CandidateService:
     async def get_candidate_stats(user_id: str) -> Dict[str, Any]:
         """
         Fetches all engagement and profile stats for the candidate.
-        Parallelized for high-speed performance.
+        Uses RDS (SQLAlchemy) SessionLocal for primary data.
         """
-        # 1. Fetch Profile Data (Primary)
-        profile_res = await supabase.table("candidate_profiles").select("*").eq("user_id", user_id).execute()
-        if not profile_res.data:
-            return {
-                "applications_count": 0,
-                "daily_applications_count": 0,
-                "shortlisted_count": 0,
-                "invites_received": 0,
-                "posts_count": 0,
-                "saved_jobs_count": 0,
-                "profile_score": 0,
-                "profile_strength": "Low",
-                "completion_score": 0,
-                "assessment_status": "not_started",
-                "identity_verified": False,
-                "terms_accepted": False,
-                "account_status": "Active",
-            }
-        
-        profile = profile_res.data[0]
-        today = date.today().isoformat()
-        
-        # 2. Parallel engagement metrics
-        tasks = [
-            supabase.table("job_applications").select("status", count="exact").eq("candidate_id", user_id).execute(),
-            supabase.table("job_applications").select("id", count="exact").eq("candidate_id", user_id).gte("created_at", today).execute(),
-            supabase.table("job_applications").select("status", count="exact").eq("candidate_id", user_id).eq("status", "shortlisted").execute(),
-            supabase.table("job_applications").select("status", count="exact").eq("candidate_id", user_id).eq("status", "invited").execute(),
-            supabase.table("posts").select("id", count="exact").eq("user_id", user_id).execute(),
-            supabase.table("saved_jobs").select("id", count="exact").eq("candidate_id", user_id).execute()
-        ]
-        
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        def safe_count(idx: int) -> int:
-            r = results[idx]
-            if isinstance(r, Exception): return 0
-            return getattr(r, 'count', 0) or 0
+        db: Session = SessionLocal()
+        try:
+            # 1. Fetch Profile Data (Primary)
+            profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == user_id).first()
+            
+            if not profile:
+                return {
+                    "applications_count": 0,
+                    "daily_applications_count": 0,
+                    "shortlisted_count": 0,
+                    "invites_received": 0,
+                    "posts_count": 0,
+                    "saved_jobs_count": 0,
+                    "profile_score": 0,
+                    "profile_strength": "Low",
+                    "completion_score": 0,
+                    "assessment_status": "not_started",
+                    "identity_verified": False,
+                    "terms_accepted": False,
+                    "account_status": "Active",
+                }
+            
+            today = date.today()
+            
+            # 2. Parallel Metrics counts using queries
+            count_applications = db.query(func.count(JobApplication.id)).filter(JobApplication.candidate_id == user_id).scalar() or 0
+            count_daily = db.query(func.count(JobApplication.id)).filter(
+                JobApplication.candidate_id == user_id, 
+                func.date(JobApplication.created_at) == today
+            ).scalar() or 0
+            count_shortlisted = db.query(func.count(JobApplication.id)).filter(
+                JobApplication.candidate_id == user_id, 
+                JobApplication.status == "shortlisted"
+            ).scalar() or 0
+            count_invites = db.query(func.count(JobApplication.id)).filter(
+                JobApplication.candidate_id == user_id, 
+                JobApplication.status == "invited"
+            ).scalar() or 0
+            count_posts = db.query(func.count(Post.id)).filter(Post.user_id == user_id).scalar() or 0
+            count_saved = db.query(func.count(SavedJob.id)).filter(SavedJob.candidate_id == user_id).scalar() or 0
 
-        return {
-            "applications_count": safe_count(0),
-            "daily_applications_count": safe_count(1),
-            "shortlisted_count": safe_count(2),
-            "invites_received": safe_count(3),
-            "posts_count": safe_count(4),
-            "saved_jobs_count": safe_count(5),
-            "profile_score": profile.get("profile_score", 0),
-            "profile_strength": profile.get("profile_strength", "Low"),
-            "completion_score": profile.get("completion_score", 0),
-            "assessment_status": profile.get("assessment_status", "not_started"),
-            "identity_verified": profile.get("identity_verified", False),
-            "terms_accepted": profile.get("terms_accepted", False),
-            "account_status": profile.get("account_status", "Active"),
-        }
+            return {
+                "applications_count": count_applications,
+                "daily_applications_count": count_daily,
+                "shortlisted_count": count_shortlisted,
+                "invites_received": count_invites,
+                "posts_count": count_posts,
+                "saved_jobs_count": count_saved,
+                "profile_score": float(profile.final_profile_score) if profile.final_profile_score else 0,
+                "profile_strength": profile.profile_strength or "Low",
+                "completion_score": profile.completion_score or 0,
+                "assessment_status": profile.assessment_status or "not_started",
+                "identity_verified": profile.identity_verified or False,
+                "terms_accepted": profile.terms_accepted or False,
+                "account_status": profile.account_status or "Active",
+            }
+        finally:
+            db.close()
 
     @staticmethod
     async def list_available_jobs(user_id: str):
         """Fetch active jobs with company info and application status."""
-        # 1. Fetch active jobs with company data
-        jobs_res = await supabase.table("jobs").select("*, companies(name, website)").eq("status", "active").order("created_at", desc=True).execute()
-        
-        # 2. Fetch user's applications
-        apps_res = await supabase.table("job_applications").select("job_id").eq("candidate_id", user_id).execute()
-        applied_job_ids = {a["job_id"] for a in apps_res.data}
-        
-        jobs = []
-        for j in (jobs_res.data or []):
-            company = j.get("companies", {})
+        db = SessionLocal()
+        try:
+            # 1. Fetch active jobs joined with company data
+            active_jobs = db.query(Job, Company).join(Company, Job.company_id == Company.id).filter(Job.status == "active").order_by(Job.created_at.desc()).all()
             
-            # Mapping for schema resilience (similar to recruiter_service)
-            title = j.get("title")
-            description = j.get("description")
-            # If columns missing, they might find themselves in metadata
-            metadata = j.get("metadata", {}) if isinstance(j.get("metadata"), dict) else {}
+            # 2. Fetch user's applications
+            applied_job_ids = {a.job_id for a in db.query(JobApplication.job_id).filter(JobApplication.candidate_id == user_id).all()}
+
+            # 3. Fetch user's saved jobs
+            saved_job_ids = {s.job_id for s in db.query(SavedJob.job_id).filter(SavedJob.candidate_id == user_id).all()}
             
-            experience_band = j.get("experience_band")
-            location = j.get("location")
-            salary_range = j.get("salary_range")
-            job_type = j.get("job_type", "onsite")
+            jobs = []
+            for j_obj, c_obj in active_jobs:
+                jobs.append({
+                    "id": str(j_obj.id),
+                    "title": j_obj.title,
+                    "description": j_obj.description,
+                    "experience_band": j_obj.experience_band,
+                    "location": j_obj.location,
+                    "salary_range": j_obj.salary_range,
+                    "job_type": j_obj.job_type,
+                    "company_name": c_obj.name or "Unknown Company",
+                    "company_website": c_obj.website,
+                    "created_at": j_obj.created_at.isoformat() if j_obj.created_at else None,
+                    "has_applied": j_obj.id in applied_job_ids,
+                    "is_saved": j_obj.id in saved_job_ids
+                })
+                
+            return jobs
+        finally:
+            db.close()
+
+    @staticmethod
+    async def save_job(user_id: str, job_id: str):
+        """Save a job for later."""
+        db = SessionLocal()
+        try:
+            # Check if already saved
+            existing = db.query(SavedJob).filter(SavedJob.candidate_id == user_id, SavedJob.job_id == job_id).first()
+            if existing:
+                return {"status": "already_saved"}
             
-            jobs.append({
-                "id": j["id"],
-                "title": title,
-                "description": description,
-                "experience_band": experience_band,
-                "location": location,
-                "salary_range": salary_range,
-                "job_type": job_type,
-                "company_name": company.get("name", "Unknown Company"),
-                "company_website": company.get("website"),
-                "created_at": j["created_at"],
-                "has_applied": j["id"] in applied_job_ids
-            })
-            
-        return jobs
+            new_save = SavedJob(candidate_id=user_id, job_id=job_id)
+            db.add(new_save)
+            db.commit()
+            return {"status": "saved"}
+        finally:
+            db.close()
+
+    @staticmethod
+    async def unsave_job(user_id: str, job_id: str):
+        """Unsave a job."""
+        db = SessionLocal()
+        try:
+            db.query(SavedJob).filter(SavedJob.candidate_id == user_id, SavedJob.job_id == job_id).delete()
+            db.commit()
+            return {"status": "unsaved"}
+        finally:
+            db.close()
 
     @staticmethod
     async def apply_to_job(user_id: str, job_id: str):
         """Create a new job application with daily limits."""
-        # 1. Check if already applied
-        existing = await supabase.table("job_applications").select("id").eq("candidate_id", user_id).eq("job_id", job_id).execute()
-        if existing.data:
-            return {"status": "already_applied"}
-            
-        # 2. Enforce Daily Limit (5 applications)
-        from datetime import datetime, date
-        today = date.today().isoformat()
-        
-        # Count apps created today
-        daily_count_res = await supabase.table("job_applications")\
-            .select("id", count="exact")\
-            .eq("candidate_id", user_id)\
-            .gte("created_at", today)\
-            .execute()
-            
-        if (daily_count_res.count or 0) >= 5:
-            return {
-                "status": "limit_reached", 
-                "message": "Daily transmission limit reached (5/5). Your signal buffer will reset tomorrow."
-            }
+        db = SessionLocal()
+        try:
+            # 1. Check if already applied
+            existing = db.query(JobApplication).filter(JobApplication.candidate_id == user_id, JobApplication.job_id == job_id).first()
+            if existing:
+                return {"status": "already_applied"}
+                
+            # 2. Enforce Daily Limit (5 applications)
+            today = date.today()
+            daily_count = db.query(func.count(JobApplication.id)).filter(
+                JobApplication.candidate_id == user_id,
+                func.date(JobApplication.created_at) == today
+            ).scalar() or 0
 
-        # 3. Create application
-        res = await supabase.table("job_applications").insert({
-            "candidate_id": user_id,
-            "job_id": job_id,
-            "status": "applied"
-        }).execute()
+            if daily_count >= 5:
+                return {
+                    "status": "limit_reached", 
+                    "message": "Daily transmission limit reached (5/5). Your signal buffer will reset tomorrow."
+                }
 
-        # 4. Audit Trail: Log initial application
-        if res.data:
-            application_id = res.data[0]["id"]
-            # Manual log to ensure visibility
+            # 3. Create application
+            new_app = JobApplication(
+                candidate_id=user_id,
+                job_id=job_id,
+                status="applied"
+            )
+            db.add(new_app)
+            db.flush() # Get ID before commit
+
+            # 4. Audit Trail: Log initial application
             try:
-                await supabase.table("job_application_status_history").insert({
-                    "application_id": application_id,
-                    "new_status": "applied",
-                    "changed_by": user_id,
+                db.execute(text("""
+                    INSERT INTO job_application_status_history (application_id, new_status, changed_by, reason)
+                    VALUES (:app_id, :status, :user_id, :reason)
+                """), {
+                    "app_id": new_app.id,
+                    "status": "applied",
+                    "user_id": user_id,
                     "reason": "Initial application by candidate"
-                }).execute()
+                })
             except Exception as e:
                 print(f"FAILED TO LOG INITIAL HISTORY: {e}")
 
-        # 5. Trigger Notification
-        if res.data:
-            # Fetch job info for better message
-            job_data = await supabase.table("jobs").select("title, recruiter_id").eq("id", job_id).single().execute()
-            job_title = "a job"
-            recruiter_id = None
-            if job_data.data:
-                job_title = job_data.data.get("title", "a job")
-                recruiter_id = job_data.data.get("recruiter_id")
+            # 5. Trigger Notification
+            job_obj = db.query(Job).filter(Job.id == job_id).first()
+            job_title = job_obj.title if job_obj else "a job"
+            recruiter_id = job_obj.recruiter_id if job_obj else None
 
             NotificationService.create_notification(
                 user_id=user_id,
@@ -213,53 +231,140 @@ class CandidateService:
                 metadata={"job_id": job_id}
             )
 
-            # Notify Recruiter
             if recruiter_id:
                 NotificationService.create_notification(
                     user_id=recruiter_id,
                     type="NEW_APPLICATION",
                     title=f"New Candidate Alert: {job_title}",
                     message=f"A new candidate has submitted their profile for the {job_title} position.",
-                    metadata={"job_id": job_id, "application_id": res.data[0]["id"]}
+                    metadata={"job_id": job_id, "application_id": str(new_app.id)}
                 )
 
-        return {"status": "success", "data": res.data[0] if res.data else None}
+            db.commit()
+            return {"status": "success", "data": {"id": str(new_app.id)}}
+        except Exception as e:
+            db.rollback()
+            raise e
+        finally:
+            db.close()
 
     @staticmethod
     async def get_my_applications(user_id: str):
         """Fetch all jobs the candidate has applied to."""
-        res = await supabase.table("job_applications")\
-            .select("*, jobs(title, companies(name)), interviews(*, interview_slots(*))")\
-            .eq("candidate_id", user_id)\
-            .order("created_at", desc=True).execute()
-        
-        apps = []
-        for a in (res.data or []):
-            job = a.get("jobs", {})
-            company = job.get("companies", {})
-            interviews = a.get("interviews", [])
+        db = SessionLocal()
+        try:
+            apps_query = db.query(JobApplication).filter(JobApplication.candidate_id == user_id).order_by(JobApplication.created_at.desc()).all()
             
-            # Sort interviews by round number descending to prioritize later rounds
-            interviews.sort(key=lambda x: x.get("round_number", 1), reverse=True)
+            results = []
+            for a in apps_query:
+                job = db.query(Job).filter(Job.id == a.job_id).first()
+                company = db.query(Company).filter(Company.id == job.company_id).first() if job else None
+                
+                # Fetch interviews (Refactored to select specific columns and ensure types)
+                interviews_raw = db.execute(text("""
+                    SELECT id, status, round_name, round_number, format, meeting_link, location, interviewer_names 
+                    FROM interviews 
+                    WHERE application_id = :aid
+                """), {"aid": a.id}).fetchall()
+                
+                interviews = []
+                for r in interviews_raw:
+                    i_dict = dict(r._mapping)
+                    i_dict["id"] = str(i_dict["id"])
+                    
+                    # Fetch slots for this interview with explicit is_selected check
+                    slots_raw = db.execute(text("""
+                        SELECT id, start_time, end_time, is_selected, status, created_at 
+                        FROM interview_slots 
+                        WHERE interview_id = :iid
+                        ORDER BY start_time ASC
+                    """), {"iid": i_dict["id"]}).fetchall()
+                    
+                    i_dict["interview_slots"] = []
+                    for sr in slots_raw:
+                        s_dict = dict(sr._mapping)
+                        s_dict["id"] = str(s_dict["id"])
+                        s_dict["is_selected"] = bool(s_dict["is_selected"]) # Ensure boolean parity
+                        i_dict["interview_slots"].append(s_dict)
+                    
+                    interviews.append(i_dict)
+                
+                # Sort interviews by round number descending for active selection
+                interviews.sort(key=lambda x: x.get("round_number", 1), reverse=True)
+                active_interview = next(
+                    (i for i in interviews if i["status"] in ["pending_confirmation", "scheduled"]), 
+                    next((i for i in interviews if i["status"] == "completed"), None)
+                )
+
+                results.append({
+                    "id": str(a.id),
+                    "job_id": str(a.job_id),
+                    "status": a.status,
+                    "feedback": a.feedback,
+                    "applied_at": a.created_at or datetime.now(),
+                    "job_title": job.title if job else "Unknown Role",
+                    "company_name": company.name if company else "Unknown Company",
+                    "metadata": getattr(a, "metadata_", {}),
+                    "active_interview": active_interview
+                })
+            return results
+        finally:
+            db.close()
+
+    @staticmethod
+    async def get_application_detail(user_id: str, application_id: str):
+        """Fetch full details for a specific application."""
+        from uuid import UUID
+        db = SessionLocal()
+        try:
+            # 1. Fetch Application
+            a = db.query(JobApplication).filter(
+                JobApplication.id == application_id,
+                JobApplication.candidate_id == user_id
+            ).first()
+            if not a:
+                return None
             
-            # Find the most relevant interview: 
-            # 1. First look for pending or scheduled (active)
-            # 2. If none, look for the most recent completed one
-            active_interview = next(
-                (i for i in interviews if i["status"] in ["pending_confirmation", "scheduled"]), 
-                next((i for i in interviews if i["status"] == "completed"), None)
-            )
-            
-            apps.append({
-                "id": a["id"],
-                "job_id": a["job_id"],
-                "status": a["status"],
-                "feedback": a.get("feedback"),
-                "applied_at": a["created_at"],
-                "job_title": job.get("title", "Unknown Role"),
-                "company_name": company.get("name", "Unknown Company"),
-                "metadata": a.get("metadata", {}),
-                "active_interview": active_interview
-            })
-            
-        return apps
+            # 2. Fetch Job & Company
+            job = db.query(Job).filter(Job.id == a.job_id).first()
+            company = db.query(Company).filter(Company.id == job.company_id).first() if job else None
+
+            # 3. Fetch Interviews (Same logic as list but more comprehensive)
+            interviews_raw = db.execute(text("SELECT * FROM interviews WHERE application_id = :aid"), {"aid": a.id}).fetchall()
+            interviews = []
+            for r in interviews_raw:
+                i_dict = dict(r._mapping)
+                # Fetch slots for this interview (ensure correct naming)
+                slots_raw = db.execute(text("SELECT * FROM interview_slots WHERE interview_id = :iid"), {"iid": i_dict["id"]}).fetchall()
+                i_dict["interview_slots"] = [dict(sr._mapping) for sr in slots_raw]
+                
+                # Fetch round details if exists
+                interviews.append(i_dict)
+
+            # 4. Result Payload
+            return {
+                "id": str(a.id),
+                "job_id": str(a.job_id),
+                "status": a.status,
+                "feedback": a.feedback,
+                "applied_at": a.created_at or datetime.now(),
+                "metadata": getattr(a, "metadata_", {}),
+                "job": {
+                    "id": str(job.id),
+                    "title": job.title,
+                    "description": job.description,
+                    "experience_band": job.experience_band,
+                    "job_type": job.job_type,
+                    "location": job.location,
+                    "salary_range": job.salary_range
+                } if job else None,
+                "company": {
+                    "id": str(company.id),
+                    "name": company.name,
+                    "logo_url": company.logo_url if company else None,
+                    "website": company.website if company else None
+                } if company else None,
+                "interviews": interviews
+            }
+        finally:
+            db.close()

@@ -1,7 +1,11 @@
 from typing import List, Dict, Optional
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import uuid
-from src.core.supabase import supabase
+import pytz
+from sqlalchemy.orm import Session
+from sqlalchemy import text
+from src.core.database import SessionLocal
+from src.core.models import JobApplication, Job, Interview, InterviewSlot
 from src.schemas.interview import (
     InterviewProposeRequest, 
     InterviewStatus, 
@@ -10,260 +14,388 @@ from src.schemas.interview import (
 
 class InterviewService:
     @staticmethod
-    async def propose_interview(user_id: str, request: InterviewProposeRequest):
-        """
-        Recruiter proposes an interview with multiple slots.
-        """
-        # 1. Verify application exists and recruiter owns the job
-        app_res = supabase.table("job_applications").select("*, jobs(*)").eq("id", request.application_id).execute()
-        if not app_res.data:
+    async def propose_interview(user_id: str, request: InterviewProposeRequest, db: Session):
+        # 1. Verify application exists
+        app = db.query(JobApplication).filter(JobApplication.id == request.application_id).first()
+        if not app:
             raise ValueError("Application not found")
         
-        app = app_res.data[0]
-        if app["jobs"]["recruiter_id"] != user_id:
+        job = db.query(Job).filter(Job.id == app.job_id).first()
+        if not job or str(job.recruiter_id) != str(user_id):
             raise ValueError("Unauthorized: You do not manage this job")
 
         # 2. Create Interview Record
-        interview_data = {
-            "job_id": app["job_id"],
-            "candidate_id": app["candidate_id"],
-            "recruiter_id": user_id,
-            "application_id": request.application_id,
-            "round_name": request.round_name,
-            "round_number": request.round_number,
-            "format": request.format,
-            "location": request.location,
-            "interviewer_names": request.interviewer_names,
-            "status": InterviewStatus.PENDING
-        }
-
-        # Generate Jitsi Link if virtual
-        if request.format == InterviewFormat.VIRTUAL:
-            room_id = f"tf-{uuid.uuid4().hex[:8]}"
-            interview_data["meeting_link"] = f"https://meet.jit.si/{room_id}"
-
-        int_res = supabase.table("interviews").insert(interview_data).execute()
-        if not int_res.data:
-            raise Exception("Failed to create interview")
+        room_id = f"tf-{uuid.uuid4().hex[:8]}" if request.format == InterviewFormat.VIRTUAL else None
+        meeting_link = f"https://meet.jit.si/{room_id}" if room_id else None
         
-        interview = int_res.data[0]
+        new_interview = Interview(
+            job_id=app.job_id,
+            candidate_id=app.candidate_id,
+            recruiter_id=user_id,
+            application_id=request.application_id,
+            round_name=request.round_name,
+            round_number=request.round_number,
+            format=request.format,
+            location=request.location,
+            meeting_link=meeting_link,
+            interviewer_names=request.interviewer_names,
+            status=InterviewStatus.PENDING
+        )
+        db.add(new_interview)
+        db.flush()
 
         # 3. Create Slots
-        slots_data = []
         for slot in request.slots:
-            slots_data.append({
-                "interview_id": interview["id"],
-                "start_time": slot.start_time.isoformat(),
-                "end_time": slot.end_time.isoformat()
-            })
-        
-        supabase.table("interview_slots").insert(slots_data).execute()
+            new_slot = InterviewSlot(
+                interview_id=new_interview.id,
+                start_time=slot.start_time,
+                end_time=slot.end_time
+            )
+            db.add(new_slot)
 
         # 4. Notify Candidate
         from src.services.notification_service import NotificationService
         NotificationService.create_notification(
-            user_id=app["candidate_id"],
+            user_id=app.candidate_id,
             type="INTERVIEW_PROPOSED",
             title="Interview Invitation",
-            message=f"A recruiter has proposed an interview for {app['jobs']['title']}. Please select a time slot.",
+            message=f"A recruiter has proposed an interview for {job.title}. Please select a time slot.",
             metadata={
-                "interview_id": interview["id"],
-                "application_id": request.application_id,
-                "job_title": app["jobs"]["title"]
-            }
+                "interview_id": str(new_interview.id),
+                "application_id": str(request.application_id),
+                "job_title": job.title
+            },
+            db=db
         )
         
-        return interview
+        db.commit()
+        db.refresh(new_interview)
+
+        # Explicitly map to dictionary to ensure UUID -> string conversion for the response
+        return {
+            "id": str(new_interview.id),
+            "job_id": str(new_interview.job_id),
+            "candidate_id": str(new_interview.candidate_id),
+            "recruiter_id": str(new_interview.recruiter_id),
+            "application_id": str(new_interview.application_id),
+            "status": new_interview.status,
+            "round_name": new_interview.round_name,
+            "round_number": new_interview.round_number,
+            "format": new_interview.format,
+            "meeting_link": new_interview.meeting_link,
+            "location": new_interview.location,
+            "interviewer_names": new_interview.interviewer_names or [],
+            "feedback": getattr(new_interview, "feedback", None),
+            "cancellation_reason": getattr(new_interview, "cancellation_reason", None),
+            "created_at": new_interview.created_at,
+            "updated_at": new_interview.updated_at,
+            "slots": [
+                {
+                    "id": str(s.id),
+                    "interview_id": str(s.interview_id),
+                    "start_time": s.start_time,
+                    "end_time": s.end_time,
+                    "is_selected": s.is_selected,
+                    "status": s.status,
+                    "created_at": s.created_at
+                } for s in new_interview.slots
+            ] if hasattr(new_interview, "slots") else []
+        }
 
     @staticmethod
-    async def confirm_slot(user_id: str, slot_id: str):
-        """
-        Candidate confirms one of the proposed slots.
-        """
-        # 1. Get slot and verify candidate owns the interview
-        slot_res = supabase.table("interview_slots").select("*, interviews(*)").eq("id", slot_id).execute()
-        if not slot_res.data:
+    async def confirm_slot(user_id: str, slot_id: str, db: Session):
+        # 1. Get slot
+        slot = db.query(InterviewSlot).filter(InterviewSlot.id == slot_id).first()
+        if not slot:
             raise ValueError("Slot not found")
+            
+        interview = db.query(Interview).filter(Interview.id == slot.interview_id).first()
+        if not interview:
+            raise ValueError("Interview record not found")
         
-        slot = slot_res.data[0]
-        if slot["interviews"]["candidate_id"] != user_id:
-            raise ValueError("Unauthorized")
+        # Verify ownership (candidate must be the one confirming)
+        if str(interview.candidate_id) != str(user_id):
+            raise ValueError("Unauthorized: This interview is not assigned to you")
         
-        interview_id = slot["interview_id"]
-
         # 2. Update Slot selection
-        supabase.table("interview_slots").update({"is_selected": True}).eq("id", slot_id).execute()
-        # Unselect others (optional but good for data integrity)
-        supabase.table("interview_slots").update({"is_selected": False}).eq("interview_id", interview_id).neq("id", slot_id).execute()
+        slot.is_selected = True
+        slot.status = "selected" 
+        print(f"DEBUG CONFIRM: Slot {slot_id} marked as is_selected=True")
+        
+        # Mark other slots as NOT selected (available/rejected)
+        db.query(InterviewSlot).filter(
+            InterviewSlot.interview_id == slot.interview_id, 
+            InterviewSlot.id != slot_id
+        ).update({"is_selected": False, "status": "not_selected"})
+
+        # Update ALL slots to be selected=False first for this interview to be absolutely sure
+        db.execute(text("UPDATE interview_slots SET is_selected = False, status = 'not_selected' WHERE interview_id = :iid"), {"iid": slot.interview_id})
+        # Then set the correct one
+        db.execute(text("UPDATE interview_slots SET is_selected = True, status = 'selected' WHERE id = :sid"), {"sid": slot_id})
 
         # 3. Update Interview Status
-        supabase.table("interviews").update({
-            "status": InterviewStatus.SCHEDULED,
-            "updated_at": datetime.now().isoformat()
-        }).eq("id", interview_id).execute()
+        interview.status = InterviewStatus.SCHEDULED
+        print(f"DEBUG CONFIRM: Interview {interview.id} status set to {interview.status}")
+        
+        # 4. Update Job Application Status
+        app = db.query(JobApplication).filter(JobApplication.id == interview.application_id).first()
+        if app:
+            app.status = "interview_scheduled"
+            print(f"DEBUG CONFIRM: Application {app.id} status set to {app.status}")
+            # Explicitly set last_interaction_at if it exists (legacy support)
+            try:
+                if hasattr(app, "last_interaction_at"):
+                    app.last_interaction_at = datetime.utcnow()
+            except Exception:
+                pass
+        
+        # NEW: Force commit before notifications to ensure UI sees the data
+        db.commit()
+        db.refresh(slot)
+        db.refresh(interview)
 
-        # 4. Update Application Status to 'interview_scheduled'
-        supabase.table("job_applications").update({
-            "status": "interview_scheduled",
-            "updated_at": datetime.now().isoformat()
-        }).eq("id", slot["interviews"]["application_id"]).execute()
+        # 5. Notify Recruiter (Critical for smooth flow)
+        try:
+            from src.services.notification_service import NotificationService
+            from src.core.models import User
+            import pytz
+            
+            # Try to get candidate name for a better message
+            candidate = db.query(User).filter(User.id == user_id).first()
+            candidate_name = candidate.email.split('@')[0] if candidate else "A candidate"
+            
+            print(f"DEBUG: Notifying recruiter {interview.recruiter_id} about confirmation from {candidate_name}")
 
-        # 5. Notify Recruiter
-        from src.services.notification_service import NotificationService
-        NotificationService.create_notification(
-            user_id=slot["interviews"]["recruiter_id"],
-            type="INTERVIEW_CONFIRMED",
-            title="Interview Slot Confirmed",
-            message=f"A candidate has confirmed a slot for your interview proposal on {slot['start_time']}.",
-            metadata={
-                "interview_id": interview_id,
-                "application_id": slot["interviews"]["application_id"]
-            }
-        )
-
-        return {"status": "success", "interview_id": interview_id}
+            # Convert UTC slot time to IST (Asia/Kolkata)
+            ist = pytz.timezone('Asia/Kolkata')
+            start_ist = slot.start_time.replace(tzinfo=pytz.UTC).astimezone(ist)
+            
+            notif = NotificationService.create_notification(
+                user_id=interview.recruiter_id,
+                type="INTERVIEW_CONFIRMED",
+                title="Interview Confirmed",
+                message=f"{candidate_name} matches your transmission! {interview.round_name} scheduled for {start_ist.strftime('%d/%m/%Y, %I:%M %p')} IST.",
+                metadata={
+                    "interview_id": str(interview.id),
+                    "slot_id": str(slot.id),
+                    "application_id": str(interview.application_id),
+                    "start_time": slot.start_time.isoformat()
+                },
+                db=db
+            )
+            print(f"DEBUG: Notification creation triggered.")
+        except Exception as e:
+            print(f"NOTIFICATION ERROR: {e}")
+            # Don't fail the whole transaction if notification fails
+        
+        # Second commit for notification record
+        db.commit()
+        return {
+            "status": "success",
+            "message": "Interview slot confirmed",
+            "interview_id": str(interview.id),
+            "new_status": interview.status
+        }
 
     @staticmethod
-    async def cancel_interview(user_id: str, interview_id: str, reason: str, role: str):
-        """
-        Recruiter or Candidate cancels an interview.
-        """
-        # 1. Fetch interview
-        res = supabase.table("interviews").select("*").eq("id", interview_id).execute()
-        if not res.data:
+    async def get_user_interviews(user_id: str, role: str, db: Session):
+        if role == "recruiter":
+            interviews = db.query(Interview).filter(Interview.recruiter_id == user_id).all()
+        else:
+            interviews = db.query(Interview).filter(Interview.candidate_id == user_id).all()
+        
+        results = []
+        for i in interviews:
+            results.append({
+                "id": str(i.id),
+                "job_id": str(i.job_id),
+                "candidate_id": str(i.candidate_id),
+                "recruiter_id": str(i.recruiter_id),
+                "application_id": str(i.application_id),
+                "status": i.status,
+                "round_name": i.round_name,
+                "round_number": i.round_number,
+                "format": i.format,
+                "meeting_link": i.meeting_link,
+                "location": i.location,
+                "interviewer_names": i.interviewer_names or [],
+                "feedback": getattr(i, "feedback", None),
+                "cancellation_reason": getattr(i, "cancellation_reason", None),
+                "created_at": i.created_at,
+                "updated_at": i.updated_at,
+                "slots": [
+                    {
+                        "id": str(s.id),
+                        "interview_id": str(s.interview_id),
+                        "start_time": s.start_time,
+                        "end_time": s.end_time,
+                        "is_selected": s.is_selected,
+                        "status": s.status,
+                        "created_at": s.created_at
+                    } for s in i.slots
+                ] if hasattr(i, "slots") else []
+            })
+        return results
+
+    @staticmethod
+    async def cancel_interview(user_id: str, interview_id: str, reason: str, role: str, db: Session):
+        interview = db.query(Interview).filter(Interview.id == interview_id).first()
+        if not interview:
             raise ValueError("Interview not found")
         
-        interview = res.data[0]
-        
-        # 2. Check authorization
-        if role == "recruiter" and interview["recruiter_id"] != user_id:
+        # Check permissions
+        if role == "recruiter" and str(interview.recruiter_id) != str(user_id):
             raise ValueError("Unauthorized")
-        if role == "candidate" and interview["candidate_id"] != user_id:
+        if role == "candidate" and str(interview.candidate_id) != str(user_id):
             raise ValueError("Unauthorized")
-
-        # 3. Update status
-        supabase.table("interviews").update({
-            "status": InterviewStatus.CANCELLED,
-            "cancellation_reason": reason,
-            "updated_at": datetime.now().isoformat()
-        }).eq("id", interview_id).execute()
-
-        # 4. Revert application status if needed? 
-        # Usually it stays 'shortlisted' if cancelled before happening
-        supabase.table("job_applications").update({
-            "status": "shortlisted",
-            "updated_at": datetime.now().isoformat()
-        }).eq("id", interview["application_id"]).execute()
-
-        # 5. Notify the other party
-        from src.services.notification_service import NotificationService
-        target_id = interview["candidate_id"] if role == "recruiter" else interview["recruiter_id"]
-        NotificationService.create_notification(
-            user_id=target_id,
-            type="INTERVIEW_CANCELLED",
-            title=f"Interview Cancelled: {interview['round_name']}",
-            message=f"The {role} has cancelled the scheduled interview. Reason: {reason}",
-            metadata={
-                "interview_id": interview_id,
-                "application_id": interview["application_id"]
-            }
-        )
-
+            
+        interview.status = "cancelled"
+        # Optional: Log reason
+        db.commit()
         return {"status": "cancelled"}
 
     @staticmethod
-    async def submit_feedback(user_id: str, interview_id: str, feedback: str, next_status: str):
-        """
-        Recruiter submits feedback and transitions candidate status.
-        """
-        # 1. Verify recruiter
-        res = supabase.table("interviews").select("*").eq("id", interview_id).execute()
-        if not res.data:
-            raise ValueError("Interview not found")
+    async def submit_feedback(user_id: str, interview_id: str, feedback: str, next_status: str, db: Session):
+        interview = db.query(Interview).filter(Interview.id == interview_id).first()
+        if not interview or str(interview.recruiter_id) != str(user_id):
+            raise ValueError("Unauthorized or interview not found")
         
-        interview = res.data[0]
-        if interview["recruiter_id"] != user_id:
-            raise ValueError("Unauthorized")
+        # PROOF OF CONDUCT CHECK
+        # Must verify candidate joined. If recruiter joined but candidate didn't, show warning.
+        # If neither joined, block.
+        if not interview.candidate_joined_at:
+            raise ValueError("PROTOCOL ERROR: Cannot submit feedback. System has no record of the candidate joining this session. Please verify attendance first.")
+            
+        if not interview.recruiter_joined_at:
+            # We allow an override (warning only) if candidate joined but recruiter join-event failed
+            print(f"WARNING: Recruiter {user_id} submitting feedback for {interview_id} without recorded join-event. Proceeding with caution.")
 
-        # 2. Update Interview
-        supabase.table("interviews").update({
-            "status": InterviewStatus.COMPLETED,
-            "feedback": feedback,
-            "updated_at": datetime.now().isoformat()
-        }).eq("id", interview_id).execute()
+        # 1. Update Interview Record
+        interview.feedback = feedback
+        interview.status = "completed"
+        interview.updated_at = datetime.utcnow()
 
-        # 3. Update Application with Decision
-        supabase.table("job_applications").update({
-            "status": next_status,
-            "feedback": feedback, # High level feedback for candidate
-            "updated_at": datetime.now().isoformat()
-        }).eq("id", interview["application_id"]).execute()
+        # 2. Update Application Status & Feedback
+        app = db.query(JobApplication).filter(JobApplication.id == interview.application_id).first()
+        if app:
+            # Map frontend decisions to application statuses
+            # Decisions: 'offered', 'rejected', 'shortlisted' (for next round)
+            if next_status == "offered":
+                app.status = "offered"
+            elif next_status == "rejected":
+                app.status = "rejected"
+            elif next_status == "shortlisted":
+                app.status = "shortlisted" # Back to shortlisted to allow scheduling next round
+            
+            app.feedback = feedback
+            if hasattr(app, "last_interaction_at"):
+                app.last_interaction_at = datetime.utcnow()
 
-        # 4. Trigger Notifications based on Decision
+        # 3. Notify Candidate
         from src.services.notification_service import NotificationService
-        if next_status == "offered":
-            NotificationService.create_notification(
-                user_id=interview["candidate_id"],
-                type="OFFER_RECEIVED",
-                title="Job Offer Received!",
-                message=f"Congratulations! You have received a job offer following your {interview['round_name']}.",
-                metadata={"application_id": interview["application_id"]}
-            )
-        elif next_status == "rejected":
-            NotificationService.create_notification(
-                user_id=interview["candidate_id"],
-                type="APPLICATION_REJECTED",
-                title="Application Update",
-                message=f"Thank you for interviewing for this position. The recruiter has decided not to move forward at this time.",
-                metadata={"application_id": interview["application_id"]}
-            )
-        elif next_status == "shortlisted":
-            NotificationService.create_notification(
-                user_id=interview["candidate_id"],
-                type="INTERVIEW_PASSED",
-                title="Interview Feedback Received",
-                message=f"Great news! You have passed the {interview['round_name']}. The recruiter will be scheduling the next round soon.",
-                metadata={"application_id": interview["application_id"]}
-            )
-
-        return {"status": "completed", "decision": next_status}
-
-    @staticmethod
-    async def register_join_event(user_id: str, interview_id: str, role: str):
-        """
-        Notify the other party that someone has joined the meeting.
-        """
-        # 1. Fetch interview
-        res = supabase.table("interviews").select("*").eq("id", interview_id).execute()
-        if not res.data:
-            raise ValueError("Interview not found")
+        status_titles = {
+            "offered": "Missions Accomplished: Job Offer Received!",
+            "rejected": "Application Update: Project Status",
+            "shortlisted": "Round Cleared! Ready for next transmission"
+        }
         
-        interview = res.data[0]
-        
-        # 2. Determine recipient and message
-        from src.services.notification_service import NotificationService
-        
-        if role == "recruiter":
-            # Recruiter joined -> Notify candidate
-            recipient_id = interview["candidate_id"]
-            title = "Recruiter has Joined"
-            message = "Your interviewer has entered the meeting room and is waiting for you."
-            notif_type = "INTERVIEW_READY"
-        else:
-            # Candidate joined -> Notify recruiter
-            recipient_id = interview["recruiter_id"]
-            title = "Candidate holds Protocol"
-            message = f"Candidate for {interview['round_name']} has entered the meeting room."
-            notif_type = "CANDIDATE_JOINED"
-
         NotificationService.create_notification(
-            user_id=recipient_id,
-            type=notif_type,
-            title=title,
-            message=message,
-            metadata={"interview_id": interview_id, "application_id": interview["application_id"]}
+            user_id=interview.candidate_id,
+            type="INTERVIEW_DECISION",
+            title=status_titles.get(next_status, "Interview Feedback Logged"),
+            message=f"Recruiter has logged feedback for your {interview.round_name}: {feedback[:100]}...",
+            metadata={
+                "interview_id": str(interview.id),
+                "application_id": str(interview.application_id),
+                "decision": next_status
+            },
+            db=db
         )
         
-        return {"status": "event_registered"}
+        db.commit()
+        return {"status": "feedback_submitted", "next_app_status": app.status if app else None}
+
+    @staticmethod
+    async def register_join_event(user_id: str, interview_id: str, role: str, db: Session):
+        interview = db.query(Interview).filter(Interview.id == interview_id).first()
+        if not interview:
+            raise ValueError("Interview not found")
+        
+        # --- Timezone Integrity Check ---
+        ist = pytz.timezone('Asia/Kolkata')
+        now_ist = datetime.now(ist)
+        
+        # Check if the join is within the permitted window (1h before, 4h after)
+        slot = db.query(InterviewSlot).filter(
+            InterviewSlot.interview_id == interview.id,
+            InterviewSlot.is_selected == True
+        ).first()
+        
+        if slot:
+            # Ensure slot times are aware
+            start_time = slot.start_time
+            if start_time.tzinfo is None:
+                start_time = pytz.UTC.localize(start_time).astimezone(ist)
+            else:
+                start_time = start_time.astimezone(ist)
+                
+            end_time = slot.end_time
+            if end_time.tzinfo is None:
+                end_time = pytz.UTC.localize(end_time).astimezone(ist)
+            else:
+                end_time = end_time.astimezone(ist)
+
+            # --- UTC Normalization for Comparison ---
+            now_utc = datetime.now(timezone.utc)
+            slot_start_utc = slot.start_time.replace(tzinfo=timezone.utc) if slot.start_time.tzinfo is None else slot.start_time.astimezone(timezone.utc)
+            slot_end_utc = slot.end_time.replace(tzinfo=timezone.utc) if slot.end_time.tzinfo is None else slot.end_time.astimezone(timezone.utc)
+
+            # PROTOCOL: Join opens exactly 15m before START until exactly 10m AFTER start
+            allowed_start_utc = slot_start_utc - timedelta(minutes=15)
+            allowed_end_utc = slot_start_utc + timedelta(minutes=10)
+
+            # Log for debugging
+            print(f"DEBUG JOIN: User {user_id} ({role}) joining at {now_utc}. Window: {allowed_start_utc} to {allowed_end_utc}")
+
+            if now_utc < allowed_start_utc:
+                raise ValueError("Wait Protocol Active: You can only join 15 minutes before the start time.")
+            
+            if now_utc > allowed_end_utc:
+                raise ValueError("Late Protocol Active: The join window closed 10 minutes after the scheduled start. Please contact support to reschedule.")
+
+        # Update Join Timestamps
+        if role == "candidate":
+            interview.candidate_joined_at = datetime.utcnow()
+        else:
+            interview.recruiter_joined_at = datetime.utcnow()
+
+        # Check if BOTH have joined to transition to IN_PROGRESS
+        if interview.candidate_joined_at and interview.recruiter_joined_at:
+            interview.status = "in_progress"
+            print(f"INTERVIEW {interview.id} status updated to IN_PROGRESS")
+        
+        # Notify the other party
+        target_id = interview.recruiter_id if role == "candidate" else interview.candidate_id
+        
+        from src.services.notification_service import NotificationService
+        # Check if user is candidate or recruiter for custom message
+        target_label = "Recruiter" if role == "candidate" else "Candidate"
+        sender_label = "Candidate" if role == "candidate" else "Recruiter"
+
+        NotificationService.create_notification(
+            user_id=target_id,
+            type="USER_JOINED_MEETING",
+            title=f"{sender_label} is Waiting",
+            message=f"The {sender_label.lower()} has entered the interview room and is waiting for you to join.",
+            metadata={
+                "interview_id": str(interview.id),
+                "role": role,
+                "action": "JOIN_STREAMS"
+            },
+            db=db
+        )
+        
+        db.commit()
+        return {"status": "success", "message": f"{target_label} notified of your arrival."}
 
 interview_service = InterviewService()

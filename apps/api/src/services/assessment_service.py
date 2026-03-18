@@ -4,33 +4,60 @@ import asyncio
 import httpx
 from typing import List, Dict, Optional, Any
 from datetime import datetime
-from src.core.supabase import async_supabase as supabase # Switch to Async
+from sqlalchemy.orm import Session
+from src.core.database import SessionLocal
+from src.core.models import CandidateProfile, AssessmentSession, AssessmentQuestion, AssessmentResponse, ResumeData
 from src.services.notification_service import NotificationService
-import google.generativeai as genai
-from src.core.config import GOOGLE_API_KEY, OPENROUTER_API_KEY
+from google import genai
+from src.core.config import GOOGLE_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY
 
 class AssessmentService:
     def __init__(self):
-        genai.configure(api_key=GOOGLE_API_KEY)
-        # Upgraded to Gemini 3 Flash (Preview) for Elite Performance & Reliability
-        self.model = genai.GenerativeModel('gemini-3-flash-preview')
         self._client = httpx.AsyncClient(timeout=30.0)
+        self.ai_client = genai.Client(api_key=GOOGLE_API_KEY)
+        self.openai_key = OPENAI_API_KEY
+        self.model_name = "gemini-2.0-flash"
 
     async def _call_ai_robust(self, prompt: str, system_message: str = "You are a professional assessment auditor.") -> Optional[str]:
-        """
-        High-precision AI caller with Gemini primary and OpenRouter (GPT-4o) fallback.
-        Ensures AI generation never fails at any cost as per elite requirements.
-        """
-        # 1. PRIMARY: Gemini 3 Flash
+        # 1. Primary OpenAI Call
+        if self.openai_key:
+            try:
+                response = await self._client.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self.openai_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": "gpt-4o",
+                        "messages": [
+                            {"role": "system", "content": system_message},
+                            {"role": "user", "content": prompt}
+                        ],
+                        "temperature": 0.4
+                    }
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    return data["choices"][0]["message"]["content"].strip()
+                else:
+                    print(f"DEBUG: OpenAI Assessment Failed ({response.status_code}): {response.text}")
+            except Exception as oai_e:
+                print(f"DEBUG: OpenAI Assessment Exception: {str(oai_e)}")
+
+        # 2. Secondary Gemini Call
         try:
-            # Use generation_config for more deterministic assessment outputs if needed
-            response = await asyncio.wait_for(self.model.generate_content_async(prompt), timeout=15.0)
+            response = await asyncio.to_thread(
+                self.ai_client.models.generate_content,
+                model=self.model_name,
+                contents=prompt
+            )
             if response and response.text:
                 return response.text.strip()
         except Exception as e:
-            print(f"DEBUG: Gemini Primary Failed: {str(e)}. Falling back to OpenRouter...")
+            print(f"DEBUG: Gemini Secondary Failed: {str(e)}. Falling back to OpenRouter...")
 
-        # 2. SECONDARY: OpenRouter (GPT-4o-mini)
+        # 3. Tertiary OpenRouter Call
         if OPENROUTER_API_KEY:
             try:
                 response = await self._client.post(
@@ -46,536 +73,233 @@ class AssessmentService:
                             {"role": "system", "content": system_message},
                             {"role": "user", "content": prompt}
                         ],
-                        "temperature": 0.3 # Lower temperature for assessment consistency
+                        "temperature": 0.3
                     }
                 )
                 if response.status_code == 200:
                     data = response.json()
-                    return data['choices'][0]['message']['content'].strip()
-                else:
-                    print(f"DEBUG: OpenRouter Secondary Failed ({response.status_code}): {response.text}")
+                    return data["choices"][0]["message"]["content"].strip()
             except Exception as or_e:
                 print(f"DEBUG: OpenRouter Critical Failure: {str(or_e)}")
+        return None
 
-        # 3. TERTIARY: Extreme Fallback (Retry Gemini one last time if it was a transient error)
-        try:
-             response = await asyncio.wait_for(self.model.generate_content_async(prompt), timeout=10.0)
-             return response.text.strip()
-        except:
-             return None
+    def get_or_create_session(self, user_id: str, db: Session):
+        profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == user_id).first()
+        resume = db.query(ResumeData).filter(ResumeData.user_id == user_id).first()
+        
+        # Determine experience band from profile
+        band = "fresher"
+        if profile:
+            # CHECK RESUME DATA IF PROFILE IS EMPTY
+            exp_val = profile.years_of_experience
+            # If profile has no experience but resume exists, try to infer from resume
+            if not exp_val and resume:
+                try:
+                    # Use raw_experience from ResumeData instead of deleted structured_data
+                    if resume.raw_experience:
+                        # Simple heuristic or just keep as is for now
+                        pass
+                except:
+                    pass
 
-    async def get_or_create_session(self, user_id: str):
-        # 1. Fetch profile to get experience band
-        try:
-            profile_res = await supabase.table("candidate_profiles").select("experience").eq("user_id", user_id).execute()
-            if not profile_res.data:
-                # If profile missing, check if we can create it or default to fresher
-                print(f"DEBUG: Profile missing for {user_id}")
-                band = "fresher"
-                # Optionally sync profile here
-            else:
-                band = profile_res.data[0]["experience"]
-        except Exception as e:
-            print(f"DEBUG: Profile fetch error: {str(e)}")
+            if isinstance(exp_val, (int, float)):
+                if exp_val > 10: band = "leadership"
+                elif exp_val > 5: band = "senior"
+                elif exp_val > 1: band = "mid"
+                else: band = "fresher"
+            elif exp_val: # Handle string case
+                try:
+                    # Try to extract number from string like "5 years"
+                    import re
+                    match = re.search(r'(\d+)', str(exp_val))
+                    if match:
+                        num = int(match.group(1))
+                        if num > 10: band = "leadership"
+                        elif num > 5: band = "senior"
+                        elif num > 1: band = "mid"
+                        else: band = "fresher"
+                    else:
+                        band = str(exp_val).lower()
+                except:
+                    band = "fresher"
+        
+        # Normalize band
+        band = band.lower()
+        # Map common variants to valid bands
+        if "lead" in band or "director" in band or "vp" in band: band = "leadership"
+        elif "senior" in band or "sr" in band: band = "senior"
+        elif "mid" in band: band = "mid"
+        elif "fresh" in band or "junior" in band or "jr" in band: band = "fresher"
+
+        # Valid bands in DB: ['senior', 'mid', 'leadership', 'fresher']
+        valid_bands = ['senior', 'mid', 'leadership', 'fresher']
+        if band not in valid_bands:
             band = "fresher"
-        
-        # 2. Check if session exists
-        try:
-            session_res = await supabase.table("assessment_sessions").select("*").eq("candidate_id", user_id).execute()
-            if session_res.data:
-                return session_res.data[0]
-        except Exception as e:
-            print(f"DEBUG: Session fetch error: {str(e)}")
+
+        session = db.query(AssessmentSession).filter(AssessmentSession.candidate_id == user_id).first()
+        if session:
+            # Sync band if it changed or profile updated
+            if session.experience_band != band and session.current_step <= 1:
+                session.experience_band = band
+                db.commit()
+            return session
             
-        # 3. Define budget based on band
-        budgets = {
-            "fresher": 8,
-            "mid": 10,
-            "senior": 13,
-            "leadership": 16
-        }
-        total_budget = budgets.get(band, 8)
-        
-        # 4. Initialize session
-        new_session = {
-            "candidate_id": user_id,
-            "experience_band": band,
-            "status": "started",
-            "total_budget": total_budget,
-            "current_step": 1,
-            "driver_confidence": {},
-            "component_scores": {
-                "resume": 0,
-                "behavioral": 0,
-                "psychometric": 0,
-                "skills": 0,
-                "reference": 0
-            }
-        }
-        
-        try:
-            res = await supabase.table("assessment_sessions").insert(new_session).execute()
-            return res.data[0] if res.data else None
-        except Exception as e:
-            print(f"DEBUG: Session creation error: {str(e)}")
-            return None
-
-    async def get_next_question(self, user_id: str):
-        try:
-            session = await self.get_or_create_session(user_id)
-            if not session or session.get("status") == "completed":
-                return {"status": "completed"}
-
-            band = session.get("experience_band", "fresher")
-            budget = session.get("total_budget", 8)
-            current_step = session.get("current_step", 1)
-
-            # 1. Termination Condition
-            if current_step > budget:
-                return await self.complete_assessment(user_id, session)
-
-            # 2. Get current counts
-            responses_res = await supabase.table("assessment_responses").select("category").eq("candidate_id", user_id).execute()
-            counts = {
-                "resume": 0,
-                "skill": 0,
-                "behavioral": 0,
-                "psychometric": 0
-            }
-            for r in (responses_res.data or []):
-                counts[r["category"]] = counts.get(r["category"], 0) + 1
-            
-            # 3. Calculate Targets (Weighted Model Feb 2026)
-            targets = self._get_target_counts(band, budget)
-            
-            # 4. Data Availability Checks
-            resume_data_exists = False
-            try:
-                rd_res = await supabase.table("resume_data").select("user_id").eq("user_id", user_id).execute()
-                resume_data_exists = len(rd_res.data) > 0
-            except: pass
-
-            skills_exist = False
-            try:
-                sk_res = await supabase.table("candidate_profiles").select("skills").eq("user_id", user_id).execute()
-                skills_exist = bool(sk_res.data and sk_res.data[0].get("skills"))
-            except: pass
-
-            # 4a. DYNAMIC REDISTRIBUTION
-            # If resume or skill data is missing, move their target budget to behavioral/psychometric
-            # to ensure the "Mixed" logic doesn't default to hardcoded behavioral at the end.
-            if not resume_data_exists or not skills_exist:
-                redistribute_sum = 0
-                if not resume_data_exists:
-                    redistribute_sum += targets.get("resume", 0)
-                    targets["resume"] = 0
-                if not skills_exist:
-                    redistribute_sum += targets.get("skill", 0)
-                    targets["skill"] = 0
-                
-                if redistribute_sum > 0:
-                    # Give half to behavioral and half to psychometric
-                    bh_add = redistribute_sum // 2
-                    psy_add = redistribute_sum - bh_add
-                    targets["behavioral"] += bh_add
-                    targets["psychometric"] += psy_add
-
-            # 5. Iterative Selection based on Weights & Priority (UNBIASED MIXING Feb 2026)
-            # Mixed selection based on remaining slots
-            remaining_categories = []
-            for cat, target in targets.items():
-                if counts.get(cat, 0) < target:
-                    remaining_categories.append(cat)
-            
-            # 5a. AVOID CATEGORY REPETITION (for smoother "Mixed" feel)
-            last_cat = None
-            if responses_res.data:
-                # Get category of THE VERY LAST response
-                # Sort by created_at if possible, but they are returned in insert order usually
-                last_cat = responses_res.data[-1]["category"]
-
-            # Randomized shuffle
-            random.shuffle(remaining_categories)
-            
-            # Move the last category to the end of the priority list if it's there
-            if last_cat in remaining_categories and len(remaining_categories) > 1:
-                remaining_categories.remove(last_cat)
-                remaining_categories.append(last_cat)
-
-            # Execution map for dynamic selection
-            for cat in remaining_categories:
-                if cat == "resume" and resume_data_exists:
-                    q = await self._try_generate_resume_question(user_id, counts["resume"])
-                    if q and q.get("text"): return q
-                
-                if cat == "skill" and skills_exist:
-                    q = await self._try_generate_skill_question(user_id, band)
-                    if q and q.get("text"): return q
-                
-                if cat in ["behavioral", "psychometric"]:
-                    q = await self._get_predefined_question(user_id, band, cat)
-                    if q and q.get("text"): return q
-
-            # Final Fallback if all AI/Seeded generation fails
-            # Instead of a hardcoded behavioral, try to fulfill ANY remaining category with a predefined pool
-            if remaining_categories:
-                # Try in order of remaining categories
-                for fallback_cat in remaining_categories:
-                    # If we can't do AI, try the predefined pool for that category or fallback to behavioral
-                    actual_cat = fallback_cat if fallback_cat in ["behavioral", "psychometric"] else "behavioral"
-                    q = await self._get_predefined_question(user_id, band, actual_cat)
-                    if q and q.get("text"):
-                        # Mark it as the intended category so counts increment correctly
-                        q["category"] = fallback_cat
-                        return q
-
-            # Absolute bottom fallback (should rarely be hit)
-            return {
-                "text": "Provide an overview of a situation where you had to manage a complex stakeholder environment. How did you ensure all parties reached consensus?",
-                "category": "behavioral", 
-                "driver": "prioritization", 
-                "difficulty": "medium"
-            }
-
-        except Exception as e:
-            print(f"ERROR calculating next question: {str(e)}")
-            return await self._get_predefined_question(user_id, "fresher", "behavioral")
-
-    def _get_target_counts(self, band: str, budget: int) -> Dict[str, int]:
-        """Calculates category targets based on mandated weights."""
-        weights = {
-            "fresher": {"resume": 0.20, "behavioral": 0.35, "psychometric": 0.35, "skill": 0.10},
-            "mid": {"resume": 0.20, "behavioral": 0.30, "psychometric": 0.30, "skill": 0.20},
-            "senior": {"resume": 0.20, "behavioral": 0.25, "psychometric": 0.25, "skill": 0.30},
-            "leadership": {"resume": 0.25, "behavioral": 0.20, "psychometric": 0.20, "skill": 0.35}
-        }.get(band, {"resume": 0.20, "behavioral": 0.30, "psychometric": 0.30, "skill": 0.20})
-
-        targets = {}
-        for cat, weight in weights.items():
-            targets[cat] = max(1, round(weight * budget))
-            
-        # Adjust for rounding errors to match exact budget
-        curr_total = sum(targets.values())
-        if curr_total != budget:
-            diff = budget - curr_total
-            # Add/Subtract from behavioral as it's a flexible middle category
-            targets["behavioral"] = max(1, targets["behavioral"] + diff)
-            
-        return targets
-
-    async def _try_generate_resume_question(self, user_id: str, current_count: int):
-        try:
-            res = await supabase.table("resume_data").select("*").eq("user_id", user_id).execute()
-            if not res.data or len(res.data) == 0:
-                return None
-            
-            data = res.data[0]
-            # More variety in resume prompts based on index
-            if current_count % 3 == 0:
-                timeline = data.get("timeline", [])
-                if len(timeline) > 1:
-                    prompt = f"Candidate History: {json.dumps(timeline)}. Generate ONE professional question about role consistency or reasons for specific transitions. Under 30 words."
-                    q_text = await self._ai_generate(prompt)
-                    return {"text": q_text, "category": "resume", "driver": "role_clarity", "difficulty": "medium"}
-            
-            if current_count % 3 == 1:
-                gaps = data.get("career_gaps", {})
-                if gaps and gaps.get("count", 0) > 0:
-                    prompt = f"Career Gaps: {json.dumps(gaps)}. Generate ONE question about productivity and growth during these periods. Under 30 words."
-                    q_text = await self._ai_generate(prompt)
-                    return {"text": q_text, "category": "resume", "driver": "career_gap", "difficulty": "medium"}
-
-            achievements = data.get("achievements", [])
-            if achievements:
-                prompt = f"Achievements: {json.dumps(achievements)}. Generate ONE question to validate the SPECIFIC logic or ownership of one major milestone. Under 30 words."
-                q_text = await self._ai_generate(prompt)
-                return {"text": q_text, "category": "resume", "driver": "achievement", "difficulty": "high"}
-            
-            return None
-        except Exception as e:
-            print(f"Error resume question: {str(e)}")
-            return None
-
-    async def _try_generate_skill_question(self, user_id: str, band: str):
-        try:
-            profile_res = await supabase.table("candidate_profiles").select("skills").eq("user_id", user_id).execute()
-            if not profile_res.data or len(profile_res.data) == 0:
-                return None
-            
-            all_skills = profile_res.data[0].get("skills", [])
-            if not all_skills: return None
-
-            # Get skills already tested in this session
-            used_res = await supabase.table("assessment_responses").select("driver").eq("candidate_id", user_id).eq("category", "skill").execute()
-            used_skills = [r["driver"] for r in (used_res.data or [])]
-            
-            available_skills = [s for s in all_skills if s not in used_skills]
-            # If all skills used, allow recycling or fallback to top 3
-            if not available_skills:
-                available_skills = all_skills
-            
-            skill = random.choice(available_skills)
-            prompt = f"Expertise Level: {band}. Candidate Skill: {skill}. Generate a high-pressure Case Study question to test technical logic and sales execution for this skill. End with 'How would you proceed?'. Under 50 words."
-            q_text = await self._ai_generate(prompt)
-            return {"text": q_text, "category": "skill", "driver": skill, "difficulty": "high"}
-        except Exception as e:
-            print(f"Error skill question: {str(e)}")
-            return None
-
-    async def _get_predefined_question(self, user_id: str, band: str, category: str):
-        # Pick category (Behavioral vs Psychometric)
-        cat = category
-
-        # Get question IDs already used by this user
-        used_res = await supabase.table("assessment_responses").select("question_id").eq("candidate_id", user_id).execute()
-        used_ids = [r["question_id"] for r in (used_res.data or []) if r.get("question_id")]
-
-        # Query seeded questions
-        query = supabase.table("assessment_questions") \
-            .select("*") \
-            .eq("category", cat) \
-            .eq("experience_band", band)
-        
-        if used_ids:
-            query = query.not_.in_("id", used_ids)
-            
-        res = await query.limit(20).execute()
-        
-        # FIX: CONSISTENT MIXING Fallback to any band for this category if band-specific is exhausted
-        if not res.data:
-            fallback_query = supabase.table("assessment_questions") \
-                .select("*") \
-                .eq("category", cat)
-            
-            if used_ids:
-                fallback_query = fallback_query.not_.in_("id", used_ids)
-            
-            res = await fallback_query.limit(20).execute()
-        
-        if not res.data:
-            # Absolute fallback if category is totally empty or exhausted
-            return {"text": f"Tell me about a time you handled a difficult challenge in {cat} context. How did you resolve it?", "category": cat, "driver": "generic", "difficulty": "medium"}
-
-        q = random.choice(res.data)
-        # Safely handle potential column name differences (trait_driver vs driver, etc)
-        return {
-            "id": q.get("id"),
-            "text": q.get("question_text", "Could not load question text"),
-            "category": q.get("category", cat),
-            "driver": q.get("trait_driver") or q.get("driver") or "generic",
-            "difficulty": q.get("difficulty_level") or q.get("difficulty") or "medium"
-        }
-
-    async def _ai_generate(self, prompt: str) -> Optional[str]:
-        # Using Robust Caller (Gemini primary + GPT-4o-mini secondary)
-        return await self._call_ai_robust(prompt, "You are a professional assessment question generator.")
-
-    async def evaluate_answer(self, user_id: str, question_id: Optional[str], category: str, answer: str, difficulty: str, metadata: dict = {}):
-        # 1. Update Step Immediately to unlock next question (latency reduction)
-        session_res = await supabase.table("assessment_sessions").select("current_step").eq("candidate_id", user_id).execute()
-        if session_res.data:
-            new_step = session_res.data[0]["current_step"] + 1
-            await supabase.table("assessment_sessions").update({"current_step": new_step}).eq("candidate_id", user_id).execute()
-
-        # 2. Handle Skip
-        if not answer or answer.strip() == "":
-            return await self._store_response(user_id, question_id, category, answer, 0, True, metadata, skip_session_update=True)
-
-        # 3. AI Evaluation
-        score, eval_meta = await self._evaluate_ai(answer, category, metadata)
-        full_metadata = {**metadata, **eval_meta}
-        
-        return await self._store_response(user_id, question_id, category, answer, score, False, full_metadata, skip_session_update=True)
-
-    async def _evaluate_ai(self, answer: str, category: str, q_metadata: dict):
-        rubric = q_metadata.get('evaluation_rubric')
-        rubric_instruction = f"Target Rubric: {rubric}" if rubric else "No specific rubric provided. Use STAR framework."
-
-        prompt = f"""
-        Role: Lead Psychometric Auditor.
-        Goal: Scientific, unbiased high-precision evaluation.
-        Category: {category.upper()}
-        Context: {q_metadata.get('text', 'Professional Question')}
-        Candidate: "{answer}"
-        {rubric_instruction}
-        
-        SCORING (0-6):
-        6: Exemplary STAR coverage. Metrics. Outcome focus.
-        4: Proficient logical workflow. Demonstrated skill.
-        2: Marginal. Vague/theoretical. No evidence.
-        0: Non-responsive.
-        
-        GUARDRAILS: linguistic neutrality. Structure over syntax.
-        Output: JSON {{"score": int, "explanation": "string", "detected_framework": "string"}}
-        """
-        try:
-            # Use robust AI caller for high-precision evaluation
-            response_text = await self._call_ai_robust(prompt, "You are a Lead Psychometric Auditor.")
-            if not response_text:
-                raise Exception("AI Evaluation null response")
-
-            text = response_text.strip().replace('```json', '').replace('```', '').replace('json', '').strip()
-            if text.find('{') != -1 and text.rfind('}') != -1:
-                text = text[text.find('{'):text.rfind('}')+1]
-            data = json.loads(text)
-            return data.get("score", 0), {
-                "reasoning": data.get("explanation", ""), 
-                "framework": data.get("detected_framework", "N/A"),
-                "evaluator": "AUDITOR_V3"
-            }
-        except Exception as e:
-            print(f"Auditor Delay/Error: {str(e)}")
-            return 3, {"reasoning": "Verification bypassed due to latency.", "evaluator": "FALLBACK"}
-
-    async def _store_response(self, user_id: str, q_id: Optional[str], category: str, answer: str, score: int, is_skipped: bool, metadata: dict, skip_session_update: bool = False):
-        if not skip_session_update:
-            session_res = await supabase.table("assessment_sessions").select("*").eq("candidate_id", user_id).execute()
-            if session_res.data:
-                session = session_res.data[0]
-                new_step = session["current_step"] + 1
-                
-                # Confidence tracking
-                driver = metadata.get("driver")
-                confidence = session.get("driver_confidence", {})
-                if driver and score >= 4:
-                    confidence[driver] = confidence.get(driver, 0) + 1
-                
-                await supabase.table("assessment_sessions").update({
-                    "current_step": new_step,
-                    "driver_confidence": confidence
-                }).eq("candidate_id", user_id).execute()
-        
-        res_data = {
-            "candidate_id": user_id,
-            "question_id": q_id,
-            "question_text": metadata.get("text"), 
-            "category": category,
-            "driver": metadata.get("driver"),
-            "raw_answer": answer,
-            "score": score,
-            "is_skipped": is_skipped,
-            "evaluation_metadata": metadata,
-            "difficulty": metadata.get("difficulty", "medium"),
-            "tab_switches": metadata.get("tab_switches", 0)
-        }
-        
-        await supabase.table("assessment_responses").insert(res_data).execute()
-        return {"status": "ok", "score": score}
-
-    async def complete_assessment(self, user_id: str, session: dict):
-        # 1. Fetch all responses
-        res = await supabase.table("assessment_responses").select("*").eq("candidate_id", user_id).execute()
-        responses = res.data
-        
-        # 2. Group scores by category
-        cat_scores = {}
-        for r in responses:
-            cat = r["category"]
-            if cat not in cat_scores: cat_scores[cat] = []
-            cat_scores[cat].append(r["score"])
-            
-        # 3. Calculate Component Scores (Normalized to 0-100)
-        # Base is 0-6. Max is 6 * count. Factor = 100 / 6 = 16.66
-        comp_scores = {}
-        for cat, scores in cat_scores.items():
-            if not scores: continue
-            avg_base = sum(scores) / len(scores)
-            comp_scores[cat] = round((avg_base / 6) * 100)
-
-        # 4. Final Weighted Scoring (Normalized to present categories)
-        band = session.get("experience_band", "fresher")
-        weights = {
-            "fresher": {"resume": 0.35, "behavioral": 0.25, "psychometric": 0.25, "skill": 0.10, "reference": 0.05},
-            "mid": {"resume": 0.30, "behavioral": 0.25, "psychometric": 0.25, "skill": 0.12, "reference": 0.08},
-            "senior": {"resume": 0.30, "behavioral": 0.28, "psychometric": 0.22, "skill": 0.10, "reference": 0.10},
-            "leadership": {"resume": 0.25, "behavioral": 0.25, "psychometric": 0.25, "skill": 0.15, "reference": 0.10}
-        }.get(band, {})
-
-        final_score = 0
-        total_weight_present = 0
-        weighted_sum = 0
-        
-        for cat, weight in weights.items():
-            scores = cat_scores.get(cat, [])
-            # Only count a category towards the total weight if:
-            # 1. It has a non-zero average score (meaning they succeeded at least once)
-            # 2. OR they have answered more than 2 questions in this category (meaning we have enough data to trust a low score)
-            
-            if scores:
-                avg = sum(scores) / len(scores)
-                if avg > 0 or len(scores) > 2:
-                    weighted_sum += comp_scores[cat] * weight
-                    total_weight_present += weight
-                
-        if total_weight_present > 0:
-            final_score = round(weighted_sum / total_weight_present)
-        else:
-            # Fallback to simple average if no weights match
-            final_score = round(sum(comp_scores.values()) / len(comp_scores)) if comp_scores else 0
-
-        # 5. Update DB
-        existing_res = await supabase.table("profile_scores").select("final_score").eq("user_id", user_id).execute()
-        existing_score = existing_res.data[0].get("final_score", 0) if existing_res.data else 0
-
-        # Best Score Logic: Only update profile_scores if new score is higher or equal
-        should_update_profile = final_score >= existing_score
-        
-        display_score = final_score if should_update_profile else existing_score
-
-        await supabase.table("assessment_sessions").update({
-            "status": "completed",
-            "overall_score": final_score,
-            "component_scores": comp_scores,
-            "completed_at": datetime.utcnow().isoformat()
-        }).eq("candidate_id", user_id).execute()
-
-        # Update candidate status
-        profile_update = {"assessment_status": "completed"}
-        if should_update_profile or not existing_res.data:
-            profile_update["final_profile_score"] = final_score
-
-        await supabase.table("candidate_profiles").update(profile_update).eq("user_id", user_id).execute()
-
-        if should_update_profile or not existing_res.data:
-            # Sync to profile_scores table
-            await supabase.table("profile_scores").upsert({
-                "user_id": user_id,
-                "resume_score": comp_scores.get("resume", 0),
-                "behavioral_score": comp_scores.get("behavioral", 0),
-                "psychometric_score": comp_scores.get("psychometric", 0),
-                "skills_score": comp_scores.get("skill", 0),
-                "final_score": final_score
-            }).execute()
-
-        NotificationService.create_notification(
-            user_id=user_id,
-            type="ASSESSMENT_COMPLETED",
-            title="Assessment Finalized",
-            message=f"Evaluation complete. Your high-trust score of {display_score}% has been logged to your secure profile.",
-            metadata={"score": display_score}
+        budgets = {"fresher": 10, "mid": 12, "senior": 15, "leadership": 18}
+        new_session = AssessmentSession(
+            candidate_id=user_id,
+            experience_band=band,
+            status="started",
+            total_budget=budgets.get(band, 10),
+            current_step=1
         )
+        db.add(new_session)
+        db.commit()
+        db.refresh(new_session)
+        return new_session
 
-        return {"status": "completed", "score": display_score}
+    def get_next_question(self, user_id: str, db: Session):
+        session = db.query(AssessmentSession).filter(AssessmentSession.candidate_id == user_id).first()
+        if not session:
+            session = self.get_or_create_session(user_id, db)
+            
+        # Get IDs of questions already answered by this candidate
+        answered_ids = db.query(AssessmentResponse.question_id).filter(AssessmentResponse.candidate_id == user_id).all()
+        answered_ids = [str(r[0]) for r in answered_ids]
+        
+        # Find questions for the session's experience band that haven't been answered
+        query = db.query(AssessmentQuestion).filter(
+            AssessmentQuestion.experience_band == session.experience_band
+        )
+        
+        if answered_ids:
+            query = query.filter(~AssessmentQuestion.id.in_(answered_ids))
+            
+        # Randomize to avoid repeated patterns
+        questions = query.limit(20).all()
+        if not questions:
+            # Fallback: if no more questions in the band, try mid or fresher
+            fallback_band = "fresher" if session.experience_band != "fresher" else "mid"
+            query = db.query(AssessmentQuestion).filter(AssessmentQuestion.experience_band == fallback_band)
+            if answered_ids:
+                query = query.filter(~AssessmentQuestion.id.in_(answered_ids))
+            questions = query.limit(20).all()
 
-    async def retake_assessment(self, user_id: str):
-        """Resets the assessment session but keeps the high score in profile_scores."""
-        try:
-            # 1. Delete the current session
-            await supabase.table("assessment_sessions").delete().eq("candidate_id", user_id).execute()
+        if not questions:
+            return None
+
+        q = random.choice(questions)
+        
+        # Returning dictionary format that the frontend expects
+        return {
+            "id": str(q.id),
+            "text": q.question_text,
+            "category": q.category,
+            "driver": q.driver,
+            "difficulty": q.difficulty,
+            "current_step": session.current_step,
+            "total_budget": session.total_budget,
+            "status": "active"
+        }
+
+    async def submit_answer(self, user_id: str, question_id: str, answer: str, db: Session):
+        session = db.query(AssessmentSession).filter(AssessmentSession.candidate_id == user_id).first()
+        if not session:
+            session = self.get_or_create_session(user_id, db)
+
+        question = db.query(AssessmentQuestion).filter(AssessmentQuestion.id == question_id).first()
+        
+        # --- AI EVALUATION ENGINE ---
+        evaluation_result = {
+            "score": 0,
+            "reasoning": "Manual review pending",
+            "driver_scores": {}
+        }
+
+        if question:
+            prompt = f"""
+            Task: Evaluate the following candidate answer for a business assessment.
+            Question: {question.question_text}
+            Category: {question.category}
+            Driver: {question.driver}
+            Experience Band: {question.experience_band}
+            Candidate Answer: {answer}
             
-            # 2. Clear responses for a fresh start
-            await supabase.table("assessment_responses").delete().eq("candidate_id", user_id).execute()
+            Evaluation Rubric: {question.evaluation_rubric}
             
-            # 3. Reset profile status to allow retaking
-            await supabase.table("candidate_profiles").update({
-                "assessment_status": "started"
-            }).eq("user_id", user_id).execute()
+            Return a JSON object with:
+            1. "score": integer 0-100
+            2. "reasoning": short explanation
+            3. "driver_scores": {{ "{question.driver}": score }}
+            """
             
-            # Note: We do NOT delete from profile_scores to allow comparison later
+            try:
+                ai_raw = await self._call_ai_robust(prompt, "You are an expert HR auditor.")
+                if ai_raw:
+                    # Clean potential markdown
+                    clean_json = ai_raw.replace('```json', '').replace('```', '').strip()
+                    eval_data = json.loads(clean_json)
+                    score_val = eval_data.get("score", 50)
+                    # Convert to int if float, and ensure within 0-100
+                    try:
+                        score_val = int(float(score_val))
+                        score_val = max(0, min(100, score_val))
+                    except (ValueError, TypeError):
+                        score_val = 50
+                        
+                    evaluation_result["score"] = score_val
+                    evaluation_result["reasoning"] = eval_data.get("reasoning", "")
+                    evaluation_result["driver_scores"] = eval_data.get("driver_scores", {})
+            except Exception as e:
+                print(f"DEBUG: AI Evaluation Failed: {str(e)}")
+                # Default logic if AI fails
+                evaluation_result["score"] = 60 if len(answer) > 30 else 40
             
-            return {"status": "ok", "message": "Assessment reset for retake. Previous high score preserved."}
-        except Exception as e:
-            print(f"Error resetting assessment: {str(e)}")
-            return {"status": "error", "message": str(e)}
+            # Final safety check before DB insertion
+            evaluation_result["score"] = max(0, min(100, int(evaluation_result["score"])))
+
+        # Store the response
+        response = AssessmentResponse(
+            candidate_id=user_id,
+            question_id=question_id,
+            question_text=question.question_text if question else "Unknown Question",
+            category=question.category if question else "general",
+            driver=question.driver if question else "none",
+            difficulty=question.difficulty if question else "medium",
+            raw_answer=answer,
+            score=evaluation_result["score"],
+            evaluation_metadata=evaluation_result
+        )
+        db.add(response)
+        
+        # Update session progress
+        session.current_step += 1
+        
+        # Auto-complete session if budget reached
+        if session.current_step > session.total_budget:
+            session.status = "completed"
+            session.completed_at = datetime.now()
+            
+            # Trigger aggregate score calculation (could be background task)
+            all_responses = db.query(AssessmentResponse).filter(AssessmentResponse.candidate_id == user_id).all()
+            if all_responses:
+                avg_score = sum(r.score for r in all_responses) / len(all_responses)
+                session.overall_score = avg_score
+                
+                # Update candidate profile status
+                profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == user_id).first()
+                if profile:
+                    profile.assessment_status = "completed"
+                    profile.final_profile_score = (profile.final_profile_score or 0) + int(avg_score * 0.4) # Weighted impact
+            
+        db.commit()
+        
+        # Return merged data so frontend can update state easily
+        return {
+            "status": "success",
+            "score": evaluation_result["score"],
+            "session_status": session.status,
+            "current_step": session.current_step,
+            "total_budget": session.total_budget
+        }
 
 assessment_service = AssessmentService()

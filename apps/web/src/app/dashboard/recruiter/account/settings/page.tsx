@@ -1,568 +1,561 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import {
-  Settings,
-  Bell,
-  Lock,
-  Eye,
-  Globe,
-  Shield,
-  CheckCircle2,
-  AlertCircle,
-  Clock,
-  Languages,
-  ChevronRight,
-  UserCheck,
-} from "lucide-react";
-import { supabase } from "@/lib/supabaseClient";
+import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
+import { 
+  Save, 
+  User, 
+  Shield, 
+  Bell, 
+  Settings, 
+  Globe, 
+  Eye, 
+  EyeOff,
+  Clock,
+  LogOut,
+  Upload,
+  Lock,
+  Mail,
+  Smartphone,
+  Building2,
+  Palette,
+  CheckCircle2,
+  AlertCircle
+} from "lucide-react";
+import Image from "next/image";
 
-const SETTINGS_TABS = [
-  {
-    id: "security",
-    label: "Security & Access",
-    icon: Lock,
-    color: "text-blue-600",
-    bg: "bg-blue-50",
-  },
-  {
-    id: "notifications",
-    label: "Communication",
-    icon: Bell,
-    color: "text-amber-500",
-    bg: "bg-amber-50",
-  },
-  {
-    id: "privacy",
-    label: "Visibility Control",
-    icon: Eye,
-    color: "text-indigo-600",
-    bg: "bg-indigo-50",
-  },
-  {
-    id: "localization",
-    label: "System Preferences",
-    icon: Globe,
-    color: "text-emerald-600",
-    bg: "bg-emerald-50",
-  },
-];
+interface ProfileData {
+  full_name: string;
+  phone_number: string;
+  bio: string;
+  linkedin_url: string;
+  location: string;
+  identity_verified: boolean;
+}
+
+interface CompanyData {
+  id: string;
+  name: string;
+  website: string;
+  logo_url?: string;
+  brand_colors?: {
+    primary: string;
+    secondary: string;
+  };
+}
+
+interface SettingsData {
+  email_notifications: boolean;
+  web_notifications: boolean;
+  mobile_notifications: boolean;
+  ghost_mode: boolean;
+  language: string;
+  timezone: string;
+}
 
 export default function RecruiterSettingsPage() {
-  const router = useRouter();
-  const [activeTab, setActiveTab] = useState("security");
+  const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [company, setCompany] = useState<CompanyData | null>(null);
+  const [settings, setSettings] = useState<SettingsData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState({ type: "", text: "" });
-  const [profile, setProfile] = useState<{
-    full_name?: string;
-    job_title?: string;
-  } | null>(null);
-  const [settings, setSettings] = useState({
-    email_notifications: true,
-    web_notifications: true,
-    mobile_notifications: false,
-    profile_visibility: "public",
-    language: "en",
-    timezone: "UTC",
-  });
+  const [saving, setSaving] = useState(false);
+  const [oldPassword, setOldPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [activeTab, setActiveTab] = useState<"profile" | "company" | "security" | "notifications" | "privacy">("profile");
 
   useEffect(() => {
-    async function loadSettings() {
+    async function fetchData() {
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        if (!session) {
-          router.replace("/login");
-          return;
-        }
+        const token = awsAuth.getToken();
+        if (!token) return;
 
         const [profileData, settingsData] = await Promise.all([
-          apiClient.get("/recruiter/profile", session.access_token),
-          apiClient.get("/recruiter/settings", session.access_token),
+          apiClient.get("/recruiter/profile", token),
+          apiClient.get("/recruiter/settings", token)
         ]);
 
-        setProfile(profileData);
-        if (settingsData) {
-          setSettings((prev) => ({ ...prev, ...settingsData }));
-        }
-      } catch (err) {
-        console.error("Failed to load settings:", err);
-        setMessage({
-          type: "error",
-          text: "Failed to synchronize cloud settings.",
+        setProfile({
+          full_name: profileData.full_name || "",
+          phone_number: profileData.phone_number || "",
+          bio: profileData.bio || "",
+          linkedin_url: profileData.linkedin_url || "",
+          location: profileData.location || "",
+          identity_verified: profileData.identity_verified || false
         });
+
+        if (profileData.companies) {
+          setCompany({
+            id: profileData.companies.id,
+            name: profileData.companies.name,
+            website: profileData.companies.website || "",
+            logo_url: profileData.companies.logo_url,
+            brand_colors: profileData.companies.brand_colors || { primary: "#4f46e5", secondary: "#6366f1" }
+          });
+        }
+
+        setSettings(settingsData);
+      } catch (err) {
+        console.error("Error fetching sync data:", err);
       } finally {
         setLoading(false);
       }
     }
-    loadSettings();
-  }, [router]);
+    fetchData();
+  }, []);
 
-  const handleUpdateSettings = async (updates: Partial<typeof settings>) => {
-    const updated = { ...settings, ...updates };
-    setSettings(updated);
-
+  const syncData = async (endpoint: string, payload: any, successMsg: string) => {
+    setSaving(true);
+    setMessage(null);
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) return;
-
-      await apiClient.patch(
-        "/recruiter/settings",
-        updates,
-        session.access_token,
-      );
-      setMessage({
-        type: "success",
-        text: "Preference synchronized instantly.",
-      });
-      setTimeout(() => setMessage({ type: "", text: "" }), 3000);
+      const token = awsAuth.getToken();
+      if (token) {
+        await apiClient.patch(endpoint, payload, token);
+        setMessage({ type: "success", text: successMsg });
+        setTimeout(() => setMessage(null), 3000);
+      }
     } catch (err) {
-      console.error("Update failed:", err);
-      setMessage({ type: "error", text: "Cloud sync failed." });
+      console.error(err);
+      setMessage({ type: "error", text: "Signal Interrupted. Retry." });
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handlePasswordReset = async () => {
-    try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session || !session.user.email) return;
+  const handleProfileSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profile) return;
+    await syncData("/recruiter/profile", profile, "Profile Identity Updated");
+  };
 
-      const { error } = await supabase.auth.resetPasswordForEmail(
-        session.user.email,
-        {
-          redirectTo: `${window.location.origin}/auth/reset-password`,
-        },
+  const handleUpdatePassword = async () => {
+    if (!oldPassword || !newPassword || newPassword.length < 8) {
+      setMessage({ type: "error", text: "Password must be at least 8 characters" });
+      return;
+    }
+    setSaving(true);
+    try {
+      const token = awsAuth.getToken();
+      if (token) {
+        await apiClient.post("/auth/update-password", { 
+          old_password: oldPassword, 
+          new_password: newPassword 
+        }, token);
+        
+        setMessage({ type: "success", text: "Security credentials updated." });
+        setOldPassword("");
+        setNewPassword("");
+      }
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.detail || "Verification failed. Check old password.";
+      setMessage({ type: "error", text: errorMsg });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!confirm("Are you absolutely sure? This will permanently erase your recruiter profile, linked company data, and platform access. This cannot be undone.")) return;
+    
+    setSaving(true);
+    try {
+      const token = awsAuth.getToken();
+      if (token) {
+        await apiClient.delete("/auth/delete-account", token);
+        awsAuth.logout();
+        window.location.href = "/";
+      }
+    } catch (err) {
+      setMessage({ type: "error", text: "Failed to delete account" });
+      setSaving(false);
+    }
+  };
+
+  const handleCompanySave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!company) return;
+    await syncData("/recruiter/company", company, "Company Branding Synced");
+  };
+
+  const handleSettingsSave = async (newData: any) => {
+    setSettings(prev => (prev ? { ...prev, ...newData } : null));
+    await syncData("/recruiter/settings", newData, "Protocol Preferences Synced");
+  };
+
+  const handleIDUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setSaving(true);
+    setMessage({ type: "success", text: "Uploading credential for verification..." });
+
+    try {
+      const token = awsAuth.getToken();
+      if (!token) throw new Error("Authentication failed");
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const uploadRes = await apiClient.post(
+        "/storage/upload/recruiter-id",
+        formData,
+        token
       );
 
-      if (error) throw error;
-      setMessage({ type: "success", text: "Secure reset link sent to vault." });
-    } catch (err) {
-      console.error("Reset failed:", err);
-      setMessage({ type: "error", text: "Failed to initiate secure reset." });
+      const filePath = uploadRes.path;
+
+      // 2. Clear previous error/status
+      setMessage(null);
+
+      // 3. Trigger AI Verification via Proxy
+      const res = await apiClient.post(
+        "/recruiter/verify-id",
+        { id_path: filePath },
+        token
+      );
+
+      if (res.id_verified) {
+        setProfile(p => p ? { ...p, identity_verified: true } : null);
+        setMessage({ type: "success", text: "Identity Protocol Verified. Badge activated." });
+      }
+    } catch (err: any) {
+      const errorMsg = err.message || "Credential rejection. Please upload a clear ID.";
+      setMessage({ type: "error", text: `Verification Failed: ${errorMsg}` });
+    } finally {
+      setSaving(false);
     }
   };
 
   if (loading) {
     return (
-      <div className="flex h-screen bg-white items-center justify-center">
-        <div className="flex flex-col items-center gap-6">
-          <div className="relative">
-            <div className="h-16 w-16 rounded-3xl bg-indigo-50 border-2 border-indigo-100 animate-pulse flex items-center justify-center">
-              <Settings className="h-8 w-8 text-indigo-600" />
-            </div>
-            <div className="absolute -top-1 -right-1 h-4 w-4 bg-emerald-500 rounded-full animate-ping" />
-          </div>
-          <p className="text-slate-400 font-black text-[10px] uppercase tracking-widest animate-pulse">
-            Configuring Executive Environment...
-          </p>
-        </div>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mb-4" />
+        <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.3em]">Synchronizing Protocol...</p>
       </div>
     );
   }
 
   return (
-    <div className="h-full bg-slate-50/50">
-      <div className="max-w-350 mx-auto p-8">
-        {/* Header Region */}
-        <header className="mb-8 flex justify-between items-end">
-          <div className="relative">
-            <div className="absolute -top-12 -left-12 h-64 w-64 bg-indigo-400/10 blur-[120px] rounded-full -z-10" />
-            <div className="flex items-center gap-3 mb-2">
-              <div className="h-8 w-8 rounded-xl bg-white shadow-sm border border-slate-200 flex items-center justify-center">
-                <Settings className="h-4 w-4 text-indigo-600" />
-              </div>
-              <span className="text-indigo-600 font-black text-[10px] uppercase tracking-widest">
-                Platform Core
-              </span>
-            </div>
-            <h1 className="text-4xl font-black text-slate-900 tracking-tighter leading-none mb-2">
-              Control <span className="text-indigo-600">Center.</span>
-            </h1>
-            <p className="text-slate-500 text-base font-medium max-w-lg leading-relaxed">
-              Manage your executive presence, security protocols, and
-              operational preferences.
-            </p>
+    <div className="max-w-5xl mx-auto space-y-12 pb-20">
+      <header className="flex justify-between items-end">
+        <div>
+          <h1 className="text-4xl font-black text-slate-900 tracking-tight uppercase italic mb-2">
+            Account <span className="text-indigo-600 font-black">Settings</span>
+          </h1>
+          <p className="text-slate-500 font-bold uppercase tracking-[0.2em] text-[10px] flex items-center gap-2">
+            <Settings className="h-3 w-3 text-indigo-500" />
+            Manage your profile, company branding, and notification preferences.
+          </p>
+        </div>
+        
+        {message && (
+          <div className={`px-6 py-2 rounded-full border text-[10px] font-black uppercase tracking-widest animate-in slide-in-from-right-4 ${
+            message.type === "success" ? "bg-emerald-50 border-emerald-100 text-emerald-600" : "bg-rose-50 border-rose-100 text-rose-600"
+          }`}>
+            {message.text}
           </div>
+        )}
+      </header>
 
-          <div className="flex gap-4 mb-2">
-            {message.text && (
-              <div
-                className={`px-5 py-3 rounded-2xl flex items-center gap-3 animate-in slide-in-from-right-8 border ${
-                  message.type === "success"
-                    ? "bg-emerald-50 text-emerald-700 border-emerald-100"
-                    : "bg-red-50 text-red-700 border-red-100"
-                }`}
-              >
-                {message.type === "success" ? (
-                  <CheckCircle2 className="h-4 w-4" />
-                ) : (
-                  <AlertCircle className="h-4 w-4" />
-                )}
-                <span className="font-bold text-xs uppercase tracking-tight">
-                  {message.text}
-                </span>
-              </div>
-            )}
-          </div>
-        </header>
-
-        <div className="grid grid-cols-12 gap-8 items-start">
-          {/* Sidebar Navigation */}
-          <div className="col-span-3 space-y-2">
-            {SETTINGS_TABS.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`w-full group px-5 py-4 rounded-3xl flex items-center gap-4 transition-all duration-300 relative overflow-hidden ${
-                  activeTab === tab.id
-                    ? "bg-white shadow-xl shadow-indigo-200/20 text-indigo-600 ring-1 ring-slate-200"
-                    : "text-slate-500 hover:bg-white hover:text-slate-900"
-                }`}
-              >
-                {activeTab === tab.id && (
-                  <div className="absolute inset-y-0 left-0 w-1 bg-indigo-600 rounded-r-full" />
-                )}
-                <div
-                  className={`p-2 rounded-2xl transition-colors duration-300 ${
-                    activeTab === tab.id
-                      ? tab.bg
-                      : "bg-slate-100 group-hover:bg-white border border-transparent"
-                  }`}
-                >
-                  <tab.icon
-                    className={`h-4 w-4 ${activeTab === tab.id ? tab.color : "text-slate-400"}`}
-                  />
-                </div>
-                <div className="flex-1 text-left">
-                  <p className="font-black text-xs uppercase tracking-tight leading-none mb-0.5">
-                    {tab.label}
-                  </p>
-                  <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest opacity-60">
-                    Configuration
-                  </p>
-                </div>
-                <ChevronRight
-                  className={`h-3 w-3 transition-transform duration-300 ${activeTab === tab.id ? "translate-x-0 opacity-100" : "-translate-x-2 opacity-0"}`}
-                />
-              </button>
-            ))}
-          </div>
-
-          {/* Main Content Area */}
-          <div className="col-span-9">
-            <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl shadow-indigo-100/20 overflow-hidden min-h-125 flex flex-col">
-              <div className="p-8 flex-1">
-                {activeTab === "security" && (
-                  <div className="animate-in fade-in slide-in-from-bottom-4">
-                    <div className="flex items-center gap-4 mb-6">
-                      <div className="h-10 w-10 rounded-[14px] bg-blue-50 border border-blue-100 flex items-center justify-center">
-                        <Lock className="h-4 w-4 text-blue-600" />
-                      </div>
-                      <div>
-                        <h2 className="text-xl font-black text-slate-900 tracking-tight">
-                          Security Vault
-                        </h2>
-                        <p className="text-slate-500 font-bold text-[9px] uppercase tracking-widest opacity-60">
-                          Manage Access & Authentication
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="space-y-6">
-                      <div className="flex justify-between items-center bg-slate-50/50 p-5 rounded-2xl border border-slate-100 group">
-                        <div className="max-w-md">
-                          <p className="font-black text-slate-900 text-sm tracking-tight mb-1 flex items-center gap-2">
-                            Account Password
-                            <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[7px] font-black uppercase tracking-widest">
-                              Secure
-                            </span>
-                          </p>
-                          <p className="text-slate-500 text-[11px] font-medium leading-relaxed opacity-80">
-                            Protect your recruiter hub with a unique password.
-                            We recommend updating your credentials every 90
-                            days.
-                          </p>
-                        </div>
-                        <button
-                          onClick={handlePasswordReset}
-                          className="px-5 py-2 bg-white border border-slate-200 rounded-xl font-black text-[9px] uppercase tracking-widest hover:border-indigo-600 hover:text-indigo-600 transition-all active:scale-95 shadow-sm"
-                        >
-                          Request Reset
-                        </button>
-                      </div>
-
-                      <div className="pt-4 border-t border-slate-100">
-                        <div className="flex items-center gap-3 text-slate-400">
-                          <Shield className="h-3.5 w-3.5" />
-                          <p className="text-[10px] font-bold uppercase tracking-widest">
-                            Environment Status: Fully Encrypted
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {activeTab === "notifications" && (
-                  <div className="animate-in fade-in slide-in-from-bottom-4">
-                    <div className="flex items-center gap-4 mb-8">
-                      <div className="h-12 w-12 rounded-[18px] bg-amber-50 border border-amber-100 flex items-center justify-center">
-                        <Bell className="h-5 w-5 text-amber-500" />
-                      </div>
-                      <div>
-                        <h2 className="text-xl font-black text-slate-900 tracking-tight">
-                          Signal Protocols
-                        </h2>
-                        <p className="text-slate-500 font-bold text-[10px] uppercase tracking-widest opacity-60">
-                          System & Event Alerts
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="space-y-3">
-                      {[
-                        {
-                          key: "email_notifications",
-                          label: "Email Intelligence",
-                          desc: "Summary reports and account activity.",
-                          icon: Globe,
-                        },
-                        {
-                          key: "web_notifications",
-                          label: "In-App Alerts",
-                          desc: "Real-time candidate news.",
-                          icon: Clock,
-                        },
-                        {
-                          key: "mobile_notifications",
-                          label: "Push Channels",
-                          desc: "Administrative push signals.",
-                          icon: Shield,
-                        },
-                      ].map((item, idx) => (
-                        <div
-                          key={item.key}
-                          className="p-5 rounded-2xl border border-slate-100 hover:bg-slate-50/50 transition-all flex justify-between items-center group"
-                        >
-                          <div className="flex gap-4 items-center">
-                            <div className="h-10 w-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center shadow-xs transition-transform group-hover:scale-110">
-                              <item.icon className="h-4 w-4 text-slate-400" />
-                            </div>
-                            <div className="max-w-xs">
-                              <p className="font-black text-slate-900 text-sm tracking-tight mb-0.5">
-                                {item.label}
-                              </p>
-                              <p className="text-slate-500 text-[11px] font-medium leading-tight opacity-80">
-                                {item.desc}
-                              </p>
-                            </div>
-                          </div>
-                          <button
-                            onClick={() =>
-                              handleUpdateSettings({
-                                [item.key]: !(settings as any)[item.key],
-                              })
-                            }
-                            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-300 ${
-                              (settings as any)[item.key]
-                                ? "bg-amber-500"
-                                : "bg-slate-200"
-                            }`}
-                          >
-                            <span
-                              className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform duration-300 shadow-sm ${
-                                (settings as any)[item.key]
-                                  ? "translate-x-5"
-                                  : "translate-x-0.5"
-                              }`}
-                            />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {activeTab === "privacy" && (
-                  <div className="animate-in fade-in slide-in-from-bottom-4">
-                    <div className="flex items-center gap-4 mb-3">
-                      <div className="h-12 w-12 rounded-[18px] bg-indigo-50 border border-indigo-100 flex items-center justify-center">
-                        <Eye className="h-5 w-5 text-indigo-600" />
-                      </div>
-                      <div>
-                        <h2 className="text-xl font-black text-slate-900 tracking-tight">
-                          Identity Stealth
-                        </h2>
-                        <p className="text-slate-500 font-bold text-[10px] uppercase tracking-widest opacity-60">
-                          Visibility Controls
-                        </p>
-                      </div>
-                    </div>
-
-                    <p className="text-slate-500 text-xs font-medium mb-6 max-w-lg">
-                      Configure your professional presence across the TalentFlow
-                      ecosystem.
-                    </p>
-
-                    <div className="grid grid-cols-3 gap-4">
-                      {[
-                        {
-                          id: "public",
-                          label: "Executive Public",
-                          desc: "Visible to all verified candidates.",
-                          icon: Globe,
-                        },
-                        {
-                          id: "team_only",
-                          label: "Team Only",
-                          desc: "Internal visibility only.",
-                          icon: Shield,
-                        },
-                        {
-                          id: "private",
-                          label: "Full Stealth",
-                          desc: "Hidden from results.",
-                          icon: Lock,
-                        },
-                      ].map((option) => (
-                        <button
-                          key={option.id}
-                          onClick={() =>
-                            handleUpdateSettings({
-                              profile_visibility: option.id,
-                            })
-                          }
-                          className={`p-5 rounded-2xl border-2 transition-all text-left flex flex-col h-full relative group ${
-                            settings.profile_visibility === option.id
-                              ? "border-indigo-600 bg-indigo-50/20 shadow-lg shadow-indigo-100/30"
-                              : "border-slate-100 hover:border-slate-200 bg-white"
-                          }`}
-                        >
-                          {settings.profile_visibility === option.id && (
-                            <div className="absolute top-2 right-2 h-4 w-4 bg-indigo-600 rounded-full flex items-center justify-center scale-110 animate-in zoom-in-50">
-                              <CheckCircle2 className="h-2.5 w-2.5 text-white" />
-                            </div>
-                          )}
-                          <div
-                            className={`h-10 w-10 rounded-xl flex items-center justify-center mb-4 border ${
-                              settings.profile_visibility === option.id
-                                ? "bg-white border-indigo-100"
-                                : "bg-slate-50 border-transparent"
-                            }`}
-                          >
-                            <option.icon
-                              className={`h-5 w-5 ${settings.profile_visibility === option.id ? "text-indigo-600" : "text-slate-400"}`}
-                            />
-                          </div>
-                          <p
-                            className={`font-black text-[11px] uppercase tracking-tight mb-1 ${settings.profile_visibility === option.id ? "text-indigo-600" : "text-slate-900"}`}
-                          >
-                            {option.label}
-                          </p>
-                          <p className="text-[10px] text-slate-500 font-medium leading-tight opacity-70">
-                            {option.desc}
-                          </p>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {activeTab === "localization" && (
-                  <div className="animate-in fade-in slide-in-from-bottom-4">
-                    <div className="flex items-center gap-4 mb-8">
-                      <div className="h-12 w-12 rounded-[18px] bg-emerald-50 border border-emerald-100 flex items-center justify-center">
-                        <Globe className="h-5 w-5 text-emerald-600" />
-                      </div>
-                      <div>
-                        <h2 className="text-xl font-black text-slate-900 tracking-tight">
-                          Environmental Ops
-                        </h2>
-                        <p className="text-slate-500 font-bold text-[10px] uppercase tracking-widest opacity-60">
-                          System Alignment
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-6">
-                      <div className="space-y-3">
-                        <label className="flex items-center gap-2 text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">
-                          <Languages className="h-3 w-3" />
-                          Language
-                        </label>
-                        <div className="relative group">
-                          <select
-                            value={settings.language}
-                            onChange={(e) =>
-                              handleUpdateSettings({ language: e.target.value })
-                            }
-                            className="w-full h-14 pl-5 pr-10 rounded-2xl bg-slate-50 border border-slate-200 font-black text-xs text-slate-900 outline-none focus:border-indigo-600 focus:bg-white transition-all appearance-none cursor-pointer"
-                          >
-                            <option value="en">English (Executive)</option>
-                            <option value="es">Español (Standard)</option>
-                            <option value="fr">Français (Standard)</option>
-                            <option value="de">Deutsch (Standard)</option>
-                          </select>
-                          <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none rotate-90" />
-                        </div>
-                      </div>
-
-                      <div className="space-y-3">
-                        <label className="flex items-center gap-2 text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">
-                          <Clock className="h-3 w-3" />
-                          Timezone
-                        </label>
-                        <div className="relative group">
-                          <select
-                            value={settings.timezone}
-                            onChange={(e) =>
-                              handleUpdateSettings({ timezone: e.target.value })
-                            }
-                            className="w-full h-14 pl-5 pr-10 rounded-2xl bg-slate-50 border border-slate-200 font-black text-xs text-slate-900 outline-none focus:border-indigo-600 focus:bg-white transition-all appearance-none cursor-pointer"
-                          >
-                            <option value="UTC">UTC (Universal Time)</option>
-                            <option value="EST">EST (Eastern Standard)</option>
-                            <option value="PST">PST (Pacific Standard)</option>
-                            <option value="IST">IST (India Standard)</option>
-                          </select>
-                          <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none rotate-90" />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Status Footer */}
-              <div className="px-10 py-6 bg-slate-50/50 border-t border-slate-100 flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                  <div className="h-8 w-8 rounded-xl bg-white border border-slate-200 flex items-center justify-center shadow-sm">
-                    <UserCheck className="h-4 w-4 text-indigo-600" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-slate-900 leading-none mb-0.5">
-                      Administrative Session
-                    </p>
-                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest opacity-60">
-                      Signed in as {profile?.full_name || "Executive User"}
-                    </p>
-                  </div>
-                </div>
-
-                <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.3em]">
-                  TalentFlow v2.0 // Settings Protocol
-                </p>
-              </div>
-            </div>
+      <div className="flex flex-col lg:flex-row gap-12 items-start">
+        {/* Sidebar Tabs */}
+        <div className="w-full lg:w-72 shrink-0 space-y-2 bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
+          <TabButton active={activeTab === "profile"} onClick={() => setActiveTab("profile")} icon={<User size={16} />} label="My Profile" />
+          <TabButton active={activeTab === "company"} onClick={() => setActiveTab("company")} icon={<Building2 size={16} />} label="Company Branding" />
+          <TabButton active={activeTab === "security"} onClick={() => setActiveTab("security")} icon={<Shield size={16} />} label="Security" />
+          <TabButton active={activeTab === "notifications"} onClick={() => setActiveTab("notifications")} icon={<Bell size={16} />} label="Notifications" />
+          <TabButton active={activeTab === "privacy"} onClick={() => setActiveTab("privacy")} icon={<Eye size={16} />} label="Privacy Mode" />
+          
+          <div className="pt-4 mt-4 border-t border-slate-50">
+            <button 
+              onClick={() => {
+                awsAuth.logout();
+                window.location.href = "/login";
+              }}
+              className="w-full text-left px-4 py-3 rounded-xl text-rose-400 hover:bg-rose-50 transition-all flex items-center gap-3 group"
+            >
+              <LogOut size={16} className="group-hover:-translate-x-1 transition-transform" />
+              <span className="text-xs font-black uppercase tracking-widest">Sign Out</span>
+            </button>
           </div>
         </div>
+
+        {/* Content Area */}
+        <div className="flex-1 w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
+          {activeTab === "profile" && (
+            <div className="bg-white rounded-[2.5rem] p-10 border border-slate-100 shadow-xl shadow-slate-200/50 space-y-10">
+              <div className="flex items-center gap-8 mb-10">
+                <div className="h-24 w-24 rounded-3xl bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center relative overflow-hidden group">
+                  <User className="text-slate-300" size={32} />
+                  <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer">
+                    <Upload className="text-white" size={20} />
+                  </div>
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-900 uppercase italic">Profile Photo</h3>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">This helps candidates recognize you during interviews.</p>
+                </div>
+              </div>
+
+              <form onSubmit={handleProfileSave} className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <InputGroup label="Full Name" value={profile?.full_name} onChange={(val) => setProfile(p => p ? {...p, full_name: val} : null)} />
+                <InputGroup label="Phone Number" value={profile?.phone_number} onChange={(val) => setProfile(p => p ? {...p, phone_number: val} : null)} />
+                <div className="md:col-span-2">
+                  <InputGroup label="Personal Bio" isTextArea value={profile?.bio} onChange={(val) => setProfile(p => p ? {...p, bio: val} : null)} />
+                </div>
+                <InputGroup label="LinkedIn URL" value={profile?.linkedin_url} onChange={(val) => setProfile(p => p ? {...p, linkedin_url: val} : null)} />
+                <InputGroup label="Current Location" value={profile?.location} onChange={(val) => setProfile(p => p ? {...p, location: val} : null)} />
+                
+                <div className="md:col-span-2 pt-6">
+                  <button type="submit" disabled={saving} className="bg-indigo-600 text-white px-10 py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-lg shadow-indigo-200 hover:bg-slate-900 transition-all flex items-center gap-3">
+                    {saving ? "Saving Changes..." : "Save Profile"}
+                    <Save size={14} />
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {activeTab === "company" && (
+            <div className="bg-white rounded-[2.5rem] p-10 border border-slate-100 shadow-xl shadow-slate-200/50 space-y-10">
+              <div className="flex items-center gap-8 mb-10">
+                <div className={`h-24 w-24 rounded-3xl bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center relative overflow-hidden group`}>
+                   {company?.logo_url ? <Image src={company.logo_url} alt="" fill className="object-contain p-2" /> : <Building2 className="text-slate-300" size={32} />}
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-900 uppercase italic">Company Logo</h3>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Visible on all your job postings and career pages.</p>
+                </div>
+              </div>
+
+              <form onSubmit={handleCompanySave} className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <InputGroup label="Company Name" value={company?.name} onChange={(val) => setCompany(c => c ? {...c, name: val} : null)} />
+                <InputGroup label="Website URL" value={company?.website} onChange={(val) => setCompany(c => c ? {...c, website: val} : null)} />
+                
+                <div className="md:col-span-2 p-8 rounded-3xl bg-slate-50 border border-slate-100">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-6 block">Company Brand Colors</label>
+                  <div className="flex gap-12">
+                    <div className="space-y-3">
+                      <div className="h-12 w-12 rounded-xl shadow-inner border border-white" style={{backgroundColor: company?.brand_colors?.primary}} />
+                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Primary Color</span>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="h-12 w-12 rounded-xl shadow-inner border border-white" style={{backgroundColor: company?.brand_colors?.secondary}} />
+                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Secondary Color</span>
+                    </div>
+                    <button type="button" className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-indigo-600 hover:text-indigo-700">
+                      <Palette size={12} />
+                      Customize Colors
+                    </button>
+                  </div>
+                </div>
+
+                <div className="md:col-span-2 pt-6">
+                  <button type="submit" disabled={saving} className="bg-indigo-600 text-white px-10 py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-lg shadow-indigo-200 hover:bg-slate-900 transition-all flex items-center gap-3">
+                    {saving ? "Updating..." : "Save Branding"}
+                    <Save size={14} />
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {activeTab === "security" && (
+            <div className="space-y-8">
+              {/* Password Management */}
+              <div className="bg-white rounded-[2.5rem] p-10 border border-slate-100 shadow-sm space-y-8">
+                <div>
+                  <h3 className="text-lg font-black text-slate-900 uppercase italic mb-2">Corporate Security</h3>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Update your recruitment console credentials.</p>
+                </div>
+
+                <div className="space-y-6">
+                  {/* Password Section */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Current Password</label>
+                      <div className="relative">
+                        <Shield className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
+                        <input 
+                          type="password" 
+                          placeholder="Verify old password" 
+                          value={oldPassword}
+                          onChange={(e) => setOldPassword(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-14 pr-6 py-4 text-xs font-black text-slate-900 focus:outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all" 
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">New Password</label>
+                      <div className="relative">
+                        <Lock className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
+                        <input 
+                          type="password" 
+                          placeholder="Minimum 8 characters" 
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-14 pr-6 py-4 text-xs font-black text-slate-900 focus:outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all" 
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col md:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-50">
+                    <button 
+                      className="text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:text-indigo-700 transition-all"
+                      onClick={() => {/* Forgot Password Logic Later */}}
+                    >
+                      Forgot Password?
+                    </button>
+                    <button 
+                      onClick={handleUpdatePassword}
+                      disabled={saving || !newPassword || !oldPassword}
+                      className="bg-slate-900 text-white px-10 py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-indigo-600 transition-all disabled:opacity-50"
+                    >
+                      {saving ? "Updating..." : "Update Access"}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="pt-8 border-t border-slate-50 flex flex-col md:flex-row items-center justify-between gap-6">
+                  <div className="flex items-center gap-4">
+                    <div className="h-10 w-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-500">
+                      <Shield size={20} />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-black text-slate-900 uppercase">Multi-Factor Authentication</h4>
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Secure your company data with extra verification.</p>
+                    </div>
+                  </div>
+                  <button className="px-6 py-2 rounded-xl border border-slate-200 text-[9px] font-black uppercase tracking-widest hover:border-indigo-600 transition-all">
+                    Enable MFA
+                  </button>
+                </div>
+              </div>
+
+              {/* ID Verification */}
+              <div className="bg-white rounded-[2.5rem] p-10 border border-slate-100 shadow-sm">
+                <h3 className="text-lg font-black text-slate-900 uppercase italic mb-6">Identity Verification</h3>
+                <div className="p-8 rounded-3xl bg-slate-50 border border-slate-100 flex flex-col md:flex-row items-center gap-8">
+                  <div className="h-16 w-16 rounded-2xl bg-indigo-100 flex items-center justify-center shrink-0">
+                    <Shield className="text-indigo-600" size={32} />
+                  </div>
+                  <div className="flex-1 text-center md:text-left">
+                    <h4 className="font-black text-slate-900 text-sm uppercase">Verified Recruiter Badge</h4>
+                    <p className="text-xs text-slate-500 font-medium mt-1">Get 40% more applications by verifying your professional identity.</p>
+                  </div>
+                  <div className="relative group">
+                    <input 
+                      type="file" 
+                      accept="image/*,application/pdf"
+                      onChange={handleIDUpload}
+                      disabled={saving || profile?.identity_verified}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 disabled:cursor-not-allowed" 
+                    />
+                    <button 
+                      disabled={saving || profile?.identity_verified} 
+                      className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking_widest transition-all ${profile?.identity_verified ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-white text-slate-900 border border-slate-200 group-hover:border-indigo-600"}`}
+                    >
+                      {profile?.identity_verified ? "Verified" : (saving ? "Analyzing..." : "Verify Now")}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Danger Zone */}
+              <div className="bg-rose-50/30 rounded-[2.5rem] p-10 border border-rose-100 shadow-sm space-y-6">
+                <div>
+                  <h3 className="text-lg font-black text-rose-600 uppercase italic mb-1 tracking-tight">System Termination</h3>
+                  <p className="text-[10px] font-bold text-rose-400 uppercase tracking-widest">Irreversible actions for your recruitment account.</p>
+                </div>
+                
+                  <div className="flex flex-col md:flex-row items-center justify-between p-8 bg-white/50 rounded-3xl border border-rose-100 gap-6">
+                    <div>
+                      <h4 className="text-xs font-black text-slate-900 uppercase">Delete Account</h4>
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">This will remove your recruiter profile and linked company data.</p>
+                    </div>
+                    <button 
+                      onClick={handleDeleteAccount}
+                      disabled={saving}
+                      className="bg-rose-600 text-white px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-lg shadow-rose-200 hover:bg-rose-700 transition-all disabled:opacity-50"
+                    >
+                      {saving ? "Processing..." : "Delete Permanently"}
+                    </button>
+                  </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "notifications" && (
+            <div className="bg-white rounded-[2.5rem] p-10 border border-slate-100 shadow-sm space-y-10">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <ToggleCard title="Email Alerts" desc="Get notified when candidates apply" icon={<Mail />} active={settings?.email_notifications || false} onToggle={(val) => handleSettingsSave({ email_notifications: val })} />
+                <ToggleCard title="Desktop Notifications" desc="Real-time alerts in your browser" icon={<Globe />} active={settings?.web_notifications || false} onToggle={(val) => handleSettingsSave({ web_notifications: val })} />
+                <ToggleCard title="Mobile SMS" desc="Instant alerts on your phone" icon={<Smartphone />} active={settings?.mobile_notifications || false} onToggle={(val) => handleSettingsSave({ mobile_notifications: val })} />
+              </div>
+            </div>
+          )}
+
+          {activeTab === "privacy" && (
+            <div className="bg-white rounded-[2.5rem] p-10 border border-slate-100 shadow-sm">
+               <div className="flex flex-col md:flex-row items-center gap-10">
+                  <div className={`h-32 w-32 rounded-[2.5rem] flex items-center justify-center transition-all shadow-xl ${!settings?.ghost_mode ? "bg-indigo-600 shadow-indigo-200" : "bg-slate-900 shadow-slate-200"}`}>
+                    {!settings?.ghost_mode ? <Eye className="text-white" size={48} /> : <EyeOff className="text-white" size={48} />}
+                  </div>
+                  <div className="flex-1 text-center md:text-left">
+                    <h3 className="text-2xl font-black text-slate-900 uppercase italic">{!settings?.ghost_mode ? "Public Recruiter Mode" : "Private (Ghost) Mode"}</h3>
+                    <p className="text-sm font-medium text-slate-500 mt-2 max-w-lg">
+                      {!settings?.ghost_mode 
+                        ? "Your profile is visible to all candidates on the platform." 
+                        : "Hide your identity. You will only be visible to candidates during active interviews."}
+                    </p>
+                    <button onClick={() => handleSettingsSave({ ghost_mode: !settings?.ghost_mode })} className={`mt-6 px-10 py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all shadow-lg ${!settings?.ghost_mode ? "bg-slate-900 text-white" : "bg-indigo-600 text-white"}`}>
+                      {settings?.ghost_mode ? "TURN OFF PRIVACY" : "TURN ON PRIVACY"}
+                    </button>
+                  </div>
+               </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TabButton({ active, onClick, icon, label, disabled = false }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string, disabled?: boolean }) {
+  return (
+    <button onClick={onClick} disabled={disabled} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-black text-xs uppercase tracking-widest ${active ? "bg-indigo-600 text-white shadow-lg shadow-indigo-100" : "text-slate-400 hover:text-slate-900 hover:bg-slate-50 disabled:opacity-30"}`}>
+      <div className={active ? "text-white" : "text-slate-300"}>{icon}</div>
+      {label}
+    </button>
+  );
+}
+
+function InputGroup({ label, value, onChange, isTextArea = false, name = "" }: { label: string, value?: string, onChange: (v: string) => void, isTextArea?: boolean, name?: string }) {
+  return (
+    <div className="space-y-2">
+      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">{label}</label>
+      {isTextArea ? (
+        <textarea value={value || ""} onChange={(e) => onChange(e.target.value)} className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 text-xs font-black text-slate-900 focus:outline-none focus:ring-4 focus:ring-indigo-500/5 min-h-32 transition-all focus:bg-white" />
+      ) : (
+        <input type="text" value={value || ""} onChange={(e) => onChange(e.target.value)} className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 text-xs font-black text-slate-900 focus:outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all focus:bg-white" />
+      )}
+    </div>
+  );
+}
+
+function ToggleCard({ title, desc, icon, active, onToggle }: { title: string, desc: string, icon: React.ReactNode, active: boolean, onToggle: (v: boolean) => void }) {
+  return (
+    <div onClick={() => onToggle(!active)} className={`p-8 rounded-[2rem] border-2 transition-all cursor-pointer group hover:scale-[1.02] ${active ? "bg-white border-indigo-500 shadow-xl shadow-indigo-100" : "bg-slate-50 border-slate-100 grayscale hover:grayscale-0"}`}>
+      <div className={`h-12 w-12 rounded-2xl mb-6 flex items-center justify-center transition-all ${active ? "bg-indigo-600 text-white" : "bg-white text-slate-300 border border-slate-100"}`}>
+        {icon}
+      </div>
+      <h4 className="font-black text-slate-900 text-xs uppercase mb-1">{title}</h4>
+      <p className="text-[10px] font-bold text-slate-400 uppercase leading-relaxed">{desc}</p>
+      <div className="mt-6 flex items-center gap-2">
+        <div className={`h-1.5 w-1.5 rounded-full ${active ? "bg-emerald-500" : "bg-slate-300"}`} />
+        <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">{active ? "Active Link" : "Disconnected"}</span>
       </div>
     </div>
   );

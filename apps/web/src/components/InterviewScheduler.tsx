@@ -11,7 +11,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { apiClient } from "@/lib/apiClient";
-import { supabase } from "@/lib/supabaseClient";
+import { awsAuth } from "@/lib/awsAuth";
 
 interface InterviewSchedulerProps {
   candidateName: string;
@@ -85,16 +85,20 @@ export default function InterviewScheduler({
 
     setLoading(true);
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) return;
+      const token = awsAuth.getToken();
+      if (!token) return;
 
       // Convert local datetime-local strings to ISO 8601 strings that include the current machine's timezone
-      const formattedSlots = slots.map(slot => ({
-        start_time: new Date(slot.start_time).toISOString(),
-        end_time: new Date(slot.end_time).toISOString()
-      }));
+      const formattedSlots = slots.map(slot => {
+        const date = new Date(slot.start_time);
+        const endDate = new Date(slot.end_time);
+        return {
+          start_time: date.toISOString(),
+          end_time: endDate.toISOString()
+        };
+      });
+
+      console.log("DEBUG PROPOSE SLOTS (ISO):", formattedSlots);
 
       await apiClient.post(
         "/interviews/propose",
@@ -107,7 +111,7 @@ export default function InterviewScheduler({
           interviewer_names: interviewers,
           slots: formattedSlots,
         },
-        session.access_token,
+        token,
       );
 
       onSuccess();

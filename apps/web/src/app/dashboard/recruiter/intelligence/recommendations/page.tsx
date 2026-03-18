@@ -19,8 +19,10 @@ import {
   Star,
   Target,
   Trophy,
+  MapPin,
+  DollarSign,
 } from "lucide-react";
-import { supabase } from "@/lib/supabaseClient";
+import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import RecruiterSidebar from "@/components/RecruiterSidebar";
 import LockedView from "@/components/dashboard/LockedView";
@@ -36,6 +38,7 @@ interface Candidate {
   experience: "fresher" | "mid" | "senior" | "leadership";
   years_of_experience: number;
   culture_match_score: number;
+  match_reasoning?: string;
   skills: string[];
   profile_photo_url?: string;
   resume_path?: string;
@@ -54,12 +57,31 @@ export default function RecommendationsPage() {
   const router = useRouter();
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeFilters, setActiveFilters] = useState<string[]>(["culture_fit"]);
   const [recruiterProfile, setRecruiterProfile] =
     useState<RecruiterProfile | null>(null);
   const [jobs, setJobs] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isFetchingProfile, setIsFetchingProfile] = useState(false);
   const [filterExperience, setFilterExperience] = useState<string>("all");
+  const [filterLocation, setFilterLocation] = useState<string>("");
+  const [filterMaxSalary, setFilterMaxSalary] = useState<string>("");
+  const [currencySymbol, setCurrencySymbol] = useState<string>("$");
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [filterSalesModel, setFilterSalesModel] = useState<string>("");
+  const [filterTargetMarket, setFilterTargetMarket] = useState<string>("");
+
+  const toggleFilter = (mode: string) => {
+    setActiveFilters([mode]);
+  };
+
+  const toggleExperienceFilter = (band: string) => {
+    setFilterExperience(band);
+  };
+
+  const handleApplyFilters = () => {
+    fetchRecommendations();
+  };
 
   const [profileModal, setProfileModal] = useState<{
     isOpen: boolean;
@@ -80,22 +102,38 @@ export default function RecommendationsPage() {
   });
 
   const fetchRecommendations = useCallback(async () => {
+    setLoading(true);
+    setIsSyncing(true);
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) {
+      const token = awsAuth.getToken();
+      if (!token) {
         router.replace("/login");
         return;
       }
 
+      // Handle search params for skill_match
+      const params = new URLSearchParams(window.location.search);
+      const initialSkills = params.get("skills");
+      
+      let modesStr = activeFilters.join(",");
+      let url = `/recruiter/recommended-candidates?filter_type=${modesStr}`;
+      
+      if (activeFilters.includes("skill_match") && initialSkills) {
+        url += `&skills=${initialSkills}`;
+      }
+      
+      // Add Location & Salary & Sales DNA filters
+      if (filterLocation) url += `&location=${encodeURIComponent(filterLocation)}`;
+      if (filterMaxSalary) url += `&max_salary=${encodeURIComponent(filterMaxSalary)}`;
+      if (filterSalesModel) url += `&sales_model=${encodeURIComponent(filterSalesModel)}`;
+      if (filterTargetMarket) url += `&target_market=${encodeURIComponent(filterTargetMarket)}`;
+      if (filterExperience !== "all") url += `&experience_band=${encodeURIComponent(filterExperience)}`;
+      if (searchTerm) url += `&skills=${encodeURIComponent(searchTerm)}`;
+
       const [recData, profileData, jobsData] = await Promise.all([
-        apiClient.get(
-          "/recruiter/recommended-candidates",
-          session.access_token,
-        ),
-        apiClient.get("/recruiter/profile", session.access_token),
-        apiClient.get("/recruiter/jobs", session.access_token),
+        apiClient.get(url, token),
+        apiClient.get("/recruiter/profile", token),
+        apiClient.get("/recruiter/jobs", token),
       ]);
 
       setCandidates(recData || []);
@@ -106,15 +144,39 @@ export default function RecommendationsPage() {
       toast.error("Algorithmic Sync Failed: Could not load recommendations");
     } finally {
       setLoading(false);
+      setIsSyncing(false);
     }
-  }, [router]);
+  }, [router, activeFilters, filterLocation, filterMaxSalary, filterSalesModel, filterTargetMarket, searchTerm]);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const initialFilter = params.get("filter") as any;
+    if (initialFilter && (initialFilter === "skill_match" || initialFilter === "profile_matching")) {
+      setActiveFilters([initialFilter]);
+    }
+  }, []);
+
+  useEffect(() => {
+    // Detect Currency based on Location
+    const loc = filterLocation.toLowerCase();
+    if (loc.includes("india") || loc.includes("mumbai") || loc.includes("bangalore") || loc.includes("delhi") || loc.includes("pune") || loc.includes("hyd")) {
+      setCurrencySymbol("₹");
+    } else if (loc.includes("uk") || loc.includes("london") || loc.includes("manchester")) {
+      setCurrencySymbol("£");
+    } else if (loc.includes("europe") || loc.includes("germany") || loc.includes("france") || loc.includes("dublin") || loc.includes("paris") || loc.includes("berlin")) {
+      setCurrencySymbol("€");
+    } else {
+      setCurrencySymbol("$");
+    }
+  }, [filterLocation]);
+
+  useEffect(() => {
+    // Initial fetch
     fetchRecommendations();
   }, [fetchRecommendations]);
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    awsAuth.logout();
     router.replace("/login");
   };
 
@@ -125,10 +187,8 @@ export default function RecommendationsPage() {
   ) => {
     if (!inviteModal.candidate) return;
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) return;
+      const token = awsAuth.getToken();
+      if (!token) return;
 
       await apiClient.post(
         `/recruiter/candidate/${inviteModal.candidate.user_id}/invite`,
@@ -137,7 +197,7 @@ export default function RecommendationsPage() {
           message: message,
           custom_role_title: customTitle,
         },
-        session.access_token,
+        token,
       );
 
       toast.success(`Elite Invite sent to ${inviteModal.candidate.full_name}`);
@@ -154,14 +214,12 @@ export default function RecommendationsPage() {
   ) => {
     setIsFetchingProfile(true);
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) return;
+      const token = awsAuth.getToken();
+      if (!token) return;
 
       const fullCandidate = await apiClient.get(
         `/recruiter/candidate/${candidate.user_id}`,
-        session.access_token,
+        token,
       );
 
       setProfileModal({
@@ -207,7 +265,7 @@ export default function RecommendationsPage() {
             <div className="h-8 w-8 rounded-full border-4 border-indigo-600 border-t-transparent animate-spin" />
           </div>
           <p className="text-indigo-600 font-black text-[10px] uppercase tracking-[0.4em]">
-            Propagating Neural Match...
+            Calculating Best Match...
           </p>
         </div>
       </div>
@@ -222,63 +280,159 @@ export default function RecommendationsPage() {
         <LockedView featureName="Recommended Talent" />
       ) : (
         <>
-          <header className="mb-12 flex justify-between items-end">
-            <div>
-              <div className="flex items-center gap-4 mb-3">
-                <div className="p-3 bg-indigo-600 rounded-2xl shadow-xl shadow-indigo-100 scale-110">
-                  <BrainCircuit className="h-7 w-7 text-white" />
+          <header className="mb-12 flex flex-col gap-8">
+            <div className="flex justify-between items-start">
+              <div>
+                <div className="flex items-center gap-4 mb-3">
+                  <div className="p-3 bg-indigo-600 rounded-2xl shadow-xl shadow-indigo-100 scale-110">
+                    <BrainCircuit className="h-7 w-7 text-white" />
+                  </div>
+                  <h1 className="text-4xl font-black text-slate-900 tracking-tighter uppercase italic">
+                    Smart<span className="text-indigo-600">Match</span>
+                  </h1>
                 </div>
-                <h1 className="text-4xl font-black text-slate-900 tracking-tighter uppercase italic">
-                  Neural<span className="text-indigo-600">Match</span>
-                </h1>
+                <p className="text-slate-400 text-[11px] font-black uppercase tracking-[0.4em] ml-1">
+                  AI-Powered Candidate Recommendations
+                </p>
               </div>
-              <p className="text-slate-400 text-[11px] font-black uppercase tracking-[0.4em] ml-1">
-                Algorithmic Culture Alignment Protocol 2.0
-              </p>
+
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleLogout}
+                  className="p-3 bg-white border border-slate-200 rounded-2xl text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all shadow-sm active:scale-95"
+                >
+                  <LogOut className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
-            <div className="flex items-center gap-4">
-              <div className="relative group">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
-                <input
-                  type="text"
-                  placeholder="Query alignment..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="bg-white border border-slate-200 pl-12 pr-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-900 placeholder:text-slate-300 outline-none focus:border-indigo-500 shadow-sm transition-all w-64"
-                />
+            <div className="bg-white/80 backdrop-blur-md border border-slate-200/60 p-4 rounded-[2.5rem] shadow-xl shadow-slate-100/50 space-y-4">
+              <div className="flex flex-wrap items-center gap-4 px-2">
+                {/* Core Match Logic */}
+                <div className="flex bg-slate-100/80 p-1 rounded-2xl border border-slate-200/30">
+                  {[
+                    { id: "culture_fit", label: "Culture Fit" },
+                    { id: "skill_match", label: "Skills" },
+                    { id: "profile_matching", label: "Expert View" }
+                  ].map((f) => (
+                    <button 
+                      key={f.id}
+                      onClick={() => toggleFilter(f.id)}
+                      className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${
+                        activeFilters.includes(f.id) ? "bg-white text-indigo-600 shadow-sm" : "text-slate-400 hover:text-slate-600"
+                      }`}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="h-6 w-[1px] bg-slate-200 hidden lg:block" />
+
+                {/* Compact Experience */}
+                <div className="flex items-center gap-1 bg-slate-100/50 p-1 rounded-2xl border border-slate-200/30 overflow-x-auto no-scrollbar">
+                  {[
+                    { id: "all", label: "All Levels" },
+                    { id: "fresher", label: "0-1 Fresher" },
+                    { id: "mid", label: "1-5 Mid" },
+                    { id: "senior", label: "5-10 Senior" },
+                    { id: "leadership", label: "10+ Lead" }
+                  ].map((band) => (
+                    <button
+                      key={band.id}
+                      onClick={() => toggleExperienceFilter(band.id)}
+                      className={`px-3 py-1.5 rounded-xl text-[8px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${
+                        filterExperience === band.id
+                          ? "bg-white text-indigo-600 shadow-sm"
+                          : "text-slate-400 hover:text-slate-600 hover:bg-white/50"
+                      }`}
+                    >
+                      {band.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex-1" />
+
+                {/* Primary Action */}
+                <button
+                  onClick={handleApplyFilters}
+                  disabled={isSyncing}
+                  className="flex items-center gap-2 bg-indigo-600 hover:bg-slate-900 text-white px-4 py-2.5 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all shadow-lg shadow-indigo-100 disabled:opacity-50 active:scale-95 whitespace-nowrap"
+                >
+                  {isSyncing ? (
+                    <div className="h-3 w-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Filter className="w-3.5 h-3.5" />
+                  )}
+                  {isSyncing ? "Searching..." : "Search Candidates"}
+                </button>
               </div>
 
-              <div className="relative group">
-                <button className="flex items-center gap-3 px-5 py-3 bg-white border border-slate-200 rounded-2xl shadow-sm text-[10px] font-black uppercase tracking-widest text-slate-600 hover:bg-slate-50 transition-all">
-                  <Filter className="w-4 h-4" />
-                  {filterExperience === "all" ? "Experience" : filterExperience}
-                </button>
-                <div className="absolute right-0 top-full mt-2 w-48 bg-white border border-slate-100 rounded-2xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-30 p-2">
-                  {["all", "fresher", "mid", "senior", "leadership"].map(
-                    (band) => (
-                      <button
-                        key={band}
-                        onClick={() => setFilterExperience(band)}
-                        className={`w-full text-left px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors ${
-                          filterExperience === band
-                            ? "bg-indigo-50 text-indigo-600"
-                            : "text-slate-500 hover:bg-slate-50"
-                        }`}
-                      >
-                        {band}
-                      </button>
-                    ),
-                  )}
+              <div className="h-px bg-slate-100 mx-2" />
+
+              <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                <div className="relative group">
+                  <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-indigo-400" />
+                  <input
+                    type="text"
+                    placeholder="LOC..."
+                    value={filterLocation}
+                    onChange={(e) => setFilterLocation(e.target.value)}
+                    className="w-full bg-slate-50/50 border border-slate-100 pl-10 pr-4 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest text-slate-900 placeholder:text-slate-300 outline-none focus:bg-white focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 transition-all"
+                  />
+                </div>
+
+                <div className="relative group">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-indigo-400">
+                    {currencySymbol}
+                  </span>
+                  <input
+                    type="number"
+                    placeholder="BUDGET..."
+                    value={filterMaxSalary}
+                    onChange={(e) => setFilterMaxSalary(e.target.value)}
+                    className="w-full bg-slate-50/50 border border-slate-100 pl-10 pr-4 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest text-slate-900 placeholder:text-slate-300 outline-none focus:bg-white focus:border-indigo-400 transition-all"
+                  />
+                </div>
+
+                <div className="relative group lg:col-span-1">
+                  <select
+                    value={filterSalesModel}
+                    onChange={(e) => setFilterSalesModel(e.target.value)}
+                    className="w-full bg-slate-50/50 border border-slate-100 px-4 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-500 outline-none appearance-none cursor-pointer focus:bg-white focus:border-indigo-400"
+                  >
+                    <option value="">MODEL...</option>
+                    <option value="Transactional">Transactional</option>
+                    <option value="Consultative">Consultative</option>
+                    <option value="Enterprise">Enterprise</option>
+                  </select>
+                </div>
+
+                <div className="relative group">
+                  <select
+                    value={filterTargetMarket}
+                    onChange={(e) => setFilterTargetMarket(e.target.value)}
+                    className="w-full bg-slate-50/50 border border-slate-100 px-4 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-500 outline-none appearance-none cursor-pointer focus:bg-white focus:border-indigo-400"
+                  >
+                    <option value="">MARKET...</option>
+                    <option value="SMB">SMB</option>
+                    <option value="Mid-Market">Mid-Market</option>
+                    <option value="Enterprise">Enterprise</option>
+                  </select>
+                </div>
+
+                <div className="relative group lg:col-span-1">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-indigo-400" />
+                  <input
+                    type="text"
+                    placeholder="SKILLS/ROLE..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full bg-slate-50/50 border border-slate-100 pl-10 pr-4 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest text-slate-900 placeholder:text-slate-300 outline-none focus:bg-white focus:border-indigo-400 transition-all"
+                  />
                 </div>
               </div>
-
-              <button
-                onClick={handleLogout}
-                className="p-3 bg-white border border-slate-200 rounded-2xl text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all shadow-sm active:scale-95"
-              >
-                <LogOut className="w-5 h-5" />
-              </button>
             </div>
           </header>
 
@@ -300,7 +454,7 @@ export default function RecommendationsPage() {
                         {tier === "elite" ? (
                           <Trophy className="w-6 h-6 text-white" />
                         ) : tier === "strong" ? (
-                          <Target className="w-6 h-6 text-white" />
+                          <CheckCircle2 className="w-6 h-6 text-white" />
                         ) : (
                           <Users className="w-6 h-6 text-white" />
                         )}
@@ -308,17 +462,17 @@ export default function RecommendationsPage() {
                       <div>
                         <h2 className="text-2xl font-black uppercase italic tracking-tighter text-slate-900 leading-none">
                           {tier === "elite"
-                            ? "Elite Alignment"
+                            ? "Best Match"
                             : tier === "strong"
-                              ? "High Potential"
-                              : "Emerging Sync"}
+                              ? "Strong Match"
+                              : "Potential Match"}
                         </h2>
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
                           {tier === "elite"
-                            ? "Top 1% Psychometric Correlation"
+                            ? "Top alignment with your requirements"
                             : tier === "strong"
-                              ? "Strategic Culture Alignment"
-                              : "Behavioral Consistency Verified"}
+                              ? "High compatibility with your team"
+                              : "Verified candidates for consideration"}
                         </p>
                       </div>
                       <div className="h-px flex-1 bg-linear-to-r from-slate-200 to-transparent" />
@@ -349,11 +503,10 @@ export default function RecommendationsPage() {
                   <Zap className="h-10 w-10 text-slate-200" />
                 </div>
                 <h3 className="text-xl font-black text-slate-900 uppercase italic">
-                  No Neural Matches
+                  No Smart Matches
                 </h3>
                 <p className="text-slate-400 text-sm font-medium mt-2">
-                  Adjust your alignment query or define new company DNA
-                  features.
+                  Adjust your search filters or check your company requirements.
                 </p>
               </div>
             )}
@@ -367,7 +520,7 @@ export default function RecommendationsPage() {
           onClose={() => setProfileModal({ ...profileModal, isOpen: false })}
           candidate={profileModal.candidate as any}
           resumeData={(profileModal.candidate as any).resume_data}
-          jobTitle="Neural Match Discovery"
+          jobTitle="Smart Match Details"
           appliedDate={new Date().toISOString()}
           score={profileModal.candidate.culture_match_score || 0}
           status="Recommended"
@@ -384,10 +537,10 @@ export default function RecommendationsPage() {
             </div>
             <div className="text-center">
               <p className="text-[12px] font-black text-slate-900 uppercase tracking-[0.3em] animate-pulse">
-                Scanning Neural Profile...
+                Analyzing Match...
               </p>
               <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-                Deep Link Verification in Progress
+                Verifying profile details
               </p>
             </div>
           </div>
@@ -476,6 +629,18 @@ function RecommendedCard({
           {candidate.email || "alignment@talentflow.ai"}
         </p>
       </div>
+
+      {candidate.match_reasoning && (
+        <div className="bg-emerald-50/50 border border-emerald-100/30 rounded-xl p-3 mb-3 relative z-10 animate-in fade-in slide-in-from-bottom-2 duration-700">
+           <div className="flex items-center gap-2 mb-1">
+             <Zap size={10} className="text-emerald-600 fill-emerald-600" />
+             <span className="text-[7px] font-black text-emerald-600 uppercase tracking-widest">Match Logic:</span>
+           </div>
+           <p className="text-[9px] font-bold text-slate-700 italic leading-snug">
+             "{candidate.match_reasoning}"
+           </p>
+        </div>
+      )}
 
       <div
         className={`${isElite ? "bg-orange-50/50 border-orange-100/30" : "bg-slate-50 border-slate-100"} rounded-xl p-2.5 mb-3 border relative z-10`}

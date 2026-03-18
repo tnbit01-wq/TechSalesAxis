@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
-import { supabase } from "@/lib/supabaseClient";
+import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import { motion } from "framer-motion";
 import confetti from "canvas-confetti";
@@ -35,6 +35,7 @@ interface GPSData {
   target_role: string;
   long_term_goal: string;
   career_interests: string;
+  learning_interests?: string;
 }
 
 export default function CareerGPSPage() {
@@ -45,6 +46,7 @@ export default function CareerGPSPage() {
     target_role: "",
     career_interests: "",
     long_term_goal: "",
+    learning_interests: "",
   });
   const [isGenerating, setIsGenerating] = useState(false);
 
@@ -55,14 +57,12 @@ export default function CareerGPSPage() {
   const fetchGPS = async () => {
     setLoading(true);
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) return;
+      const token = awsAuth.getToken();
+      if (!token) return;
 
       const res = await apiClient.get(
         "/candidate/career-gps",
-        session.access_token,
+        token,
       );
       if (res.status === "active") {
         setGpsData(res.gps);
@@ -71,13 +71,14 @@ export default function CareerGPSPage() {
         // Fetch profile to pre-fill inputs if available
         const profile = await apiClient.get(
           "/candidate/profile",
-          session.access_token,
+          token,
         );
         if (profile) {
           setInputs({
             target_role: profile.target_role || "",
             career_interests: profile.career_interests || "",
             long_term_goal: profile.long_term_goal || "",
+            learning_interests: profile.learning_interests || "",
           });
         }
       }
@@ -98,13 +99,18 @@ export default function CareerGPSPage() {
 
     setIsGenerating(true);
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      const token = awsAuth.getToken();
+      
+      // Update profile with learning interests first so it's persisted for matching
+      // We only update if it's not empty, otherwise we just skip the patch or send an empty string
+      await apiClient.patch("/candidate/profile", {
+        learning_interests: inputs.learning_interests || ""
+      }, token);
+
       await apiClient.post(
         "/candidate/career-gps/generate",
         inputs,
-        session?.access_token,
+        token,
       );
       toast.success("Career GPS generated successfully!");
       await fetchGPS();
@@ -120,13 +126,11 @@ export default function CareerGPSPage() {
     const newStatus =
       currentStatus === "completed" ? "not-started" : "completed";
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      const token = awsAuth.getToken();
       await apiClient.patch(
         `/candidate/career-gps/milestone/${id}`,
         { status: newStatus },
-        session?.access_token,
+        token,
       );
 
       setMilestones((prev) =>
@@ -224,6 +228,21 @@ export default function CareerGPSPage() {
                   setInputs({ ...inputs, career_interests: e.target.value })
                 }
               />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Actively Learning Skills
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Docker, AWS, React, Advanced CRM"
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                value={inputs.learning_interests}
+                onChange={(e) =>
+                  setInputs({ ...inputs, learning_interests: e.target.value })
+                }
+              />
+              <p className="text-[10px] text-slate-400 mt-1 uppercase font-bold tracking-wider">Help our AI match you with "Stretch" opportunities</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">

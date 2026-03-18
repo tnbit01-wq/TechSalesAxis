@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from typing import List
+from sqlalchemy.orm import Session
 from src.core.dependencies import get_current_user
+from src.core.database import get_db
 from src.services.interview_service import interview_service
 from src.schemas.interview import (
     InterviewProposeRequest, 
@@ -9,14 +11,14 @@ from src.schemas.interview import (
     InterviewFeedbackRequest,
     InterviewResponse
 )
-from src.core.supabase import supabase
 
 router = APIRouter(prefix="/interviews", tags=["interviews"])
 
 @router.post("/propose", response_model=InterviewResponse)
 async def propose_interview(
     request: InterviewProposeRequest,
-    user: dict = Depends(get_current_user)
+    user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """Recruiter proposes an interview with slots."""
     print(f"DEBUG PROPOSE: User {user.get('sub')} (email: {user.get('email')}) has role {user.get('role')}")
@@ -24,7 +26,7 @@ async def propose_interview(
         raise HTTPException(status_code=403, detail="Only recruiters can propose interviews")
     
     try:
-        return await interview_service.propose_interview(user["sub"], request)
+        return await interview_service.propose_interview(user["sub"], request, db)
     except ValueError as e:
         print(f"DEBUG PROPOSE ERROR: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -32,14 +34,15 @@ async def propose_interview(
 @router.post("/confirm", response_model=dict)
 async def confirm_interview(
     request: InterviewConfirmRequest,
-    user: dict = Depends(get_current_user)
+    user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """Candidate confirms one of the slots."""
     if user.get("role") != "candidate":
         raise HTTPException(status_code=403, detail="Only candidates can confirm slots")
     
     try:
-        return await interview_service.confirm_slot(user["sub"], request.slot_id)
+        return await interview_service.confirm_slot(user["sub"], request.slot_id, db)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -47,7 +50,8 @@ async def confirm_interview(
 async def cancel_interview(
     interview_id: str,
     request: InterviewCancelRequest,
-    user: dict = Depends(get_current_user)
+    user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """Cancel an interview."""
     try:
@@ -55,7 +59,8 @@ async def cancel_interview(
             user["sub"], 
             interview_id, 
             request.reason, 
-            user.get("role")
+            user.get("role"),
+            db
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -64,7 +69,8 @@ async def cancel_interview(
 async def submit_feedback(
     interview_id: str,
     request: InterviewFeedbackRequest,
-    user: dict = Depends(get_current_user)
+    user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """Submit feedback and decide on next steps."""
     if user.get("role") != "recruiter":
@@ -75,7 +81,8 @@ async def submit_feedback(
             user["sub"], 
             interview_id, 
             request.feedback, 
-            request.next_status
+            request.next_status,
+            db
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -83,31 +90,31 @@ async def submit_feedback(
 @router.post("/{interview_id}/join-event")
 async def register_join(
     interview_id: str,
-    user: dict = Depends(get_current_user)
+    user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """Notify the other party that a user has joined the meeting."""
     try:
         return await interview_service.register_join_event(
             user["sub"],
             interview_id,
-            user.get("role", "candidate")
+            user.get("role", "candidate"),
+            db
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.get("/my", response_model=List[InterviewResponse])
-async def get_my_interviews(user: dict = Depends(get_current_user)):
+async def get_my_interviews(
+    user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """Fetch all interviews for the current user."""
     user_id = user["sub"]
     role = user.get("role")
     
-    from src.core.supabase import async_supabase
-    query = async_supabase.table("interviews").select("*, slots:interview_slots(*)")
-    
-    if role == "recruiter":
-        query = query.eq("recruiter_id", user_id)
-    else:
-        query = query.eq("candidate_id", user_id)
-    
-    res = await query.order("created_at", desc=True).execute()
-    return res.data
+    try:
+        return await interview_service.get_user_interviews(user_id, role, db)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+

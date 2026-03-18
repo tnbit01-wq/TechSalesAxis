@@ -13,7 +13,7 @@ import {
   Trash2,
   CheckCircle2,
 } from "lucide-react";
-import { supabase } from "@/lib/supabaseClient";
+import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 
 interface CompanyBranding {
@@ -43,17 +43,15 @@ export default function EmployerBrandingPage() {
   useEffect(() => {
     async function loadBranding() {
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        if (!session) {
+        const token = awsAuth.getToken();
+        if (!token) {
           router.replace("/login");
           return;
         }
 
         const data = await apiClient.get(
           "/recruiter/profile",
-          session.access_token,
+          token,
         );
         setBranding({
           logo_url: data.companies?.logo_url,
@@ -79,25 +77,16 @@ export default function EmployerBrandingPage() {
 
     setUploading(true);
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
+      const token = awsAuth.getToken();
+      if (!token) throw new Error("Not authenticated");
 
-      const fileExt = file.name.split(".").pop();
-      const fileName = `${user.id}/logo-${Date.now()}.${fileExt}`;
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("category", "logo");
 
-      const { error: uploadError } = await supabase.storage
-        .from("company-logos")
-        .upload(fileName, file);
-
-      if (uploadError) throw uploadError;
-
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from("company-logos").getPublicUrl(fileName);
-
-      setBranding((prev) => (prev ? { ...prev, logo_url: publicUrl } : null));
+      const result = await apiClient.post("/storage/upload/branding", formData, token);
+      
+      setBranding((prev) => (prev ? { ...prev, logo_url: result.url } : null));
       setMessage({
         type: "success",
         text: "Logo uploaded. Remember to save changes.",
@@ -116,22 +105,18 @@ export default function EmployerBrandingPage() {
 
     setUploading(true);
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
+      const token = awsAuth.getToken();
+      if (!token) throw new Error("Not authenticated");
 
       const newUrls: string[] = [];
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        const fileExt = file.name.split(".").pop();
-        const fileName = `${user.id}/life-${Date.now()}-${i}.${fileExt}`;
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("category", "life");
 
-        await supabase.storage.from("company-assets").upload(fileName, file);
-        const {
-          data: { publicUrl },
-        } = supabase.storage.from("company-assets").getPublicUrl(fileName);
-        newUrls.push(publicUrl);
+        const result = await apiClient.post("/storage/upload/branding", formData, token);
+        newUrls.push(result.url);
       }
 
       setBranding((prev) =>
@@ -176,19 +161,17 @@ export default function EmployerBrandingPage() {
     setMessage(null);
 
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) return;
+      const token = awsAuth.getToken();
+      if (!token) return;
 
-      await apiClient.patch(
-        "/recruiter/company",
+      await apiClient.post(
+        "/recruiter/update-branding",
         {
           logo_url: branding.logo_url,
           brand_colors: branding.brand_colors,
           life_at_photo_urls: branding.life_at_photo_urls,
         },
-        session.access_token,
+        token,
       );
 
       setMessage({

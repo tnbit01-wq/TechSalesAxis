@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import { useRouter } from "next/navigation";
 import {
@@ -16,6 +16,7 @@ import {
   Briefcase,
   Star,
   Plus,
+  MessageSquare,
 } from "lucide-react";
 import LockedView from "@/components/dashboard/LockedView";
 import CandidateProfileModal from "@/components/CandidateProfileModal";
@@ -73,23 +74,21 @@ export default function CandidatePoolPage() {
   });
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    await awsAuth.logout();
     router.replace("/login");
   };
 
   const fetchPool = useCallback(async () => {
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) {
+      const token = awsAuth.getToken();
+      if (!token) {
         router.replace("/login");
         return;
       }
       const [poolData, profileData, jobsData] = await Promise.all([
-        apiClient.get("/recruiter/candidate-pool", session.access_token),
-        apiClient.get("/recruiter/profile", session.access_token),
-        apiClient.get("/recruiter/jobs", session.access_token),
+        apiClient.get("/recruiter/candidate-pool", token),
+        apiClient.get("/recruiter/profile", token),
+        apiClient.get("/recruiter/jobs", token),
       ]);
       setCandidates(poolData || []);
       setRecruiterProfile(profileData);
@@ -106,17 +105,12 @@ export default function CandidatePoolPage() {
   useEffect(() => {
     fetchPool();
 
-    const channel = supabase
-      .channel("candidate_pool_changes")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "candidate_profiles" },
-        () => fetchPool(),
-      )
-      .subscribe();
+    const interval = setInterval(() => {
+      fetchPool();
+    }, 60000);
 
     return () => {
-      supabase.removeChannel(channel);
+      clearInterval(interval);
     };
   }, [fetchPool]);
 
@@ -128,10 +122,8 @@ export default function CandidatePoolPage() {
     if (!inviteModal.candidate) return;
 
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) return;
+      const token = awsAuth.getToken();
+      if (!token) return;
 
       await apiClient.post(
         `/recruiter/candidate/${inviteModal.candidate.user_id}/invite`,
@@ -140,7 +132,7 @@ export default function CandidatePoolPage() {
           message: message,
           custom_role_title: customTitle,
         },
-        session.access_token,
+        token,
       );
 
       toast.success(`Elite Invite sent to ${inviteModal.candidate.full_name}`);
@@ -153,20 +145,45 @@ export default function CandidatePoolPage() {
     }
   };
 
+  const handleStartChat = async (candidate: Candidate) => {
+    try {
+      const token = awsAuth.getToken();
+      if (!token) {
+        toast.error("Please login to message candidates");
+        return;
+      }
+
+      const response = await apiClient.post(
+        "/chat/thread",
+        { candidate_id: candidate.user_id },
+        token
+      );
+
+      if (response && response.id) {
+        router.push(`/dashboard/recruiter/messages`);
+      }
+    } catch (err: any) {
+      console.error("Chat creation failed:", err);
+      if (err.status === 403) {
+        toast.error("DNA Gate: Candidate must have Psychometric Score >= 50% for direct messaging.");
+      } else {
+        toast.error(err.message || "Could not initiate chat link.");
+      }
+    }
+  };
+
   const handleViewProfile = async (
     candidate: Candidate,
     tab: string = "resume",
   ) => {
     setIsFetchingProfile(true);
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) return;
+      const token = awsAuth.getToken();
+      if (!token) return;
 
       const fullCandidate = await apiClient.get(
         `/recruiter/candidate/${candidate.user_id}`,
-        session.access_token,
+        token,
       );
 
       setProfileModal({
@@ -322,6 +339,7 @@ export default function CandidatePoolPage() {
                           onInvite={() =>
                             setInviteModal({ isOpen: true, candidate })
                           }
+                          onMessage={() => handleStartChat(candidate)}
                         />
                       ))}
                     </div>
@@ -377,11 +395,13 @@ function CandidateCard({
   onViewProfile,
   onViewResume,
   onInvite,
+  onMessage,
 }: {
   candidate: Candidate;
   onViewProfile: () => void;
   onViewResume: () => void;
   onInvite: () => void;
+  onMessage: () => void;
 }) {
   return (
     <div className="bg-white rounded-4xl border border-slate-100 shadow-sm hover:shadow-2xl hover:shadow-indigo-500/10 transition-all duration-500 group relative flex flex-col p-5 h-full">
@@ -430,6 +450,15 @@ function CandidateCard({
         </p>
       </div>
 
+      {candidate.trust_score > 0 && (
+        <div className="absolute top-1/2 right-5 -translate-y-[120%] flex flex-col items-center">
+          <div className="text-[6px] font-black text-slate-300 uppercase tracking-widest mb-0.5">Signal</div>
+          <div className="h-8 w-8 rounded-lg bg-orange-50 border border-orange-100 flex items-center justify-center text-[10px] font-black text-orange-600 italic">
+            {candidate.trust_score}%
+          </div>
+        </div>
+      )}
+
       <div className="bg-slate-50 rounded-2xl p-3 mb-4 border border-slate-100/50">
         <div className="flex items-center justify-between mb-2">
           <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest leading-none">
@@ -456,28 +485,27 @@ function CandidateCard({
         </div>
       </div>
 
-      <div className="flex items-center gap-1.5 mt-auto">
+      <div className="flex items-center gap-2 mt-auto pt-4 border-t border-slate-50">
         <button
           onClick={onViewResume}
-          className="flex-1 py-3 bg-slate-900 text-white rounded-xl text-[8px] font-black uppercase tracking-[0.2em] hover:bg-slate-800 transition-all shadow-md active:scale-95 whitespace-nowrap"
+          className="flex-1 h-10 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-sm active:scale-95 whitespace-nowrap"
         >
-          View Profile
+          View Insight
+        </button>
+        <button
+          onClick={onMessage}
+          className="h-10 w-10 bg-white text-indigo-600 rounded-xl flex items-center justify-center hover:bg-indigo-600 hover:text-white transition-all shadow-sm active:scale-95 group/msg shrink-0 border border-slate-100"
+          title="Direct Message"
+        >
+          <MessageSquare className="w-4 h-4" />
         </button>
         <button
           onClick={onInvite}
-          className="h-9 w-9 bg-indigo-600 text-white rounded-xl flex items-center justify-center hover:bg-indigo-700 transition-all shadow-md active:scale-90 group/invite shrink-0"
-          title="Direct Invitation"
+          className="h-10 w-10 bg-indigo-600 text-white rounded-xl flex items-center justify-center hover:bg-indigo-700 transition-all shadow-md active:scale-90 group/invite shrink-0"
+          title="Job Invitation"
         >
           <Plus className="w-4 h-4 group-hover/invite:rotate-90 transition-transform" />
         </button>
-        <div className="h-9 w-9 rounded-xl bg-orange-50 border border-orange-100 flex flex-col items-center justify-center shadow-sm shrink-0">
-          <span className="text-[5px] font-black text-orange-400 leading-none scale-75">
-            SIGNAL
-          </span>
-          <span className="text-[10px] font-black text-orange-600 italic tracking-tighter leading-none">
-            {candidate.trust_score}%
-          </span>
-        </div>
       </div>
     </div>
   );

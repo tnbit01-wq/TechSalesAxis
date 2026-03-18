@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import { useRouter } from "next/navigation";
 import CandidateSidebar from "@/components/CandidateSidebar";
@@ -21,10 +21,8 @@ export default function CandidateDashboardLayout({
 
   useEffect(() => {
     async function init() {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) {
+      const token = awsAuth.getToken();
+      if (!token) {
         router.replace("/login");
         return;
       }
@@ -32,7 +30,7 @@ export default function CandidateDashboardLayout({
       try {
         const statsData = await apiClient.get(
           "/candidate/stats",
-          session.access_token,
+          token,
         );
         setProfile(statsData);
       } catch (err) {
@@ -50,7 +48,7 @@ export default function CandidateDashboardLayout({
         <div className="flex flex-col items-center gap-4">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
           <p className="text-slate-500 font-bold text-xs uppercase tracking-widest">
-            Calibrating Nexus...
+            Loading Dashboard...
           </p>
         </div>
       </div>
@@ -66,8 +64,6 @@ export default function CandidateDashboardLayout({
       <div className="flex-1 ml-64 min-h-screen relative">
         <CandidateHeader />
         <div className="relative">
-          {/* Subtle top decoration - matching recruiter style */}
-          <div className="absolute top-0 right-0 left-0 h-64 bg-linear-to-b from-indigo-50/50 to-transparent -z-10" />
           <main className="p-8">{children}</main>
         </div>
       </div>

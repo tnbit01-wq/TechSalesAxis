@@ -1,43 +1,24 @@
-﻿"use client";
+"use client";
 
-import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
+import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
-import { TermsModal } from "@/components/TermsModal";
 import {
-  CheckCircle2,
-  Video,
-  Target,
+  BadgeCheck,
   Briefcase,
-  Zap,
+  TrendingUp,
+  Award,
   ShieldCheck,
-  Calendar,
+  Zap,
+  FileText,
+  Compass,
+  Target,
+  User,
+  Users,
+  Map as MapIcon,
 } from "lucide-react";
-
-interface LatestApplication {
-  id: string;
-  status: string;
-  feedback?: string;
-  jobs?: {
-    title: string;
-    companies?: {
-      name: string;
-      logo_url?: string;
-    };
-  };
-  interviews?: Array<{
-    status: string;
-    meeting_link?: string;
-    interview_slots?: Array<{
-      id: string;
-      start_time: string;
-      end_time: string;
-      is_selected: boolean;
-    }>;
-  }>;
-}
 
 interface ComponentScores {
   skill?: number;
@@ -65,50 +46,59 @@ interface CandidateStats {
   profile_strength: string;
   completion_score: number;
   assessment_status: string;
-  identity_verified: boolean;
   terms_accepted: boolean;
   account_status: string;
+  onboarding_step: string;
+  identity_verified: boolean;
 }
 
 export default function CandidateDashboard() {
   const router = useRouter();
   const [results, setResults] = useState<AssessmentResults | null>(null);
   const [stats, setStats] = useState<CandidateStats | null>(null);
-  const [latestApp, setLatestApp] = useState<LatestApplication | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showTerms, setShowTerms] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleLogout = async () => {
+    awsAuth.logout();
+    router.replace("/login");
+  };
+
+  const loadData = useCallback(async () => {
+    try {
+      const token = awsAuth.getToken();
+      if (!token) {
+        router.replace("/login");
+        return;
+      }
+
+      const [resultsData, statsData] = await Promise.all([
+        apiClient.get("/assessment/results", token),
+        apiClient.get("/candidate/stats", token),
+      ]);
+
+      setResults(resultsData);
+      setStats(statsData);
+      setError(null);
+    } catch (err) {
+      console.error("Failed to load candidate dashboard data:", err);
+      setError("Failed to sync dashboard signals");
+    } finally {
+      setLoading(false);
+    }
+  }, [router]);
 
   useEffect(() => {
-    async function loadData() {
-      try {
-        const {
-          data: { session: authSession },
-        } = await supabase.auth.getSession();
-        if (!authSession) {
-          router.replace("/login");
-          return;
-        }
-
-        const [resultsData, statsData, appData] = await Promise.all([
-          apiClient.get("/assessment/results", authSession.access_token),
-          apiClient.get("/candidate/stats", authSession.access_token),
-          apiClient.get(
-            "/candidate/latest-application",
-            authSession.access_token,
-          ),
-        ]);
-
-        setResults(resultsData);
-        setStats(statsData);
-        setLatestApp(appData);
-      } catch (err) {
-        console.error("Failed to load dashboard data:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
     loadData();
-  }, [router]);
+    
+    // Real-time updates replaced by periodic sync or manual refresh
+    // REDUCED FREQUENCY: Sync every 60 seconds to improve performance
+    const interval = setInterval(loadData, 60000); 
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [loadData]);
 
   if (loading) {
     return (
@@ -123,743 +113,413 @@ export default function CandidateDashboard() {
     );
   }
 
-  const scores = results?.component_scores || {};
+  if (error || !stats) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
+        <div className="bg-white p-8 rounded-3xl border border-red-100 shadow-xl max-w-sm text-center">
+          <div className="h-16 w-16 bg-red-50 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <ShieldCheck className="h-8 w-8 text-red-500" />
+          </div>
+          <h2 className="text-lg font-bold text-slate-900 mb-2 uppercase tracking-tight">
+            Sync Offline
+          </h2>
+          <p className="text-slate-500 text-sm mb-6 leading-relaxed">
+            {error || "Server disconnected"}
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="w-full py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition"
+          >
+            RETRY CONNECTION
+          </button>
+        </div>
+      </div>
+    );
+  }
 
-  const isLocked =
-    stats?.assessment_status !== "completed" ||
-    !stats?.identity_verified ||
-    !stats?.terms_accepted;
+  const isAssessmentCompleted = stats.assessment_status === "completed";
 
   return (
-    <div className="max-w-6xl mx-auto space-y-10">
-      {isLocked ? (
-        <div className="max-w-4xl mx-auto py-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
-          <header className="mb-12">
-            <div className="flex items-center gap-3 mb-2">
-              <h1 className="text-4xl font-black text-slate-900 tracking-tight uppercase italic">
-                Command <span className="text-indigo-600">Locked</span>
-              </h1>
-              <div className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-black uppercase tracking-widest rounded-md border border-amber-200">
-                Awaiting Sync
+    <div className="space-y-8 animate-in fade-in duration-700">
+      <div className="max-w-6xl mx-auto space-y-10">
+        {!isAssessmentCompleted && (
+          <div className="bg-amber-500/10 border border-amber-500/20 rounded-3xl p-6 flex items-center justify-between backdrop-blur-md">
+            <div className="flex items-center gap-5">
+              <div className="h-12 w-12 bg-amber-500 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-amber-500/20">
+                <ShieldCheck className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="text-amber-900 font-bold text-lg tracking-tight">
+                  Verification Pending
+                </h3>
+                <p className="text-amber-800/70 text-sm font-medium">
+                  Complete your assessment to unlock verified status and premium role placements.
+                </p>
               </div>
             </div>
-            <div className="text-slate-500 font-bold uppercase tracking-[0.3em] text-[10px] flex items-center gap-2">
-              <div className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
-              Complete all synchronization signals to unlock transmission.
-            </div>
-          </header>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {/* Step 1: Assessment */}
-            <LockStepCard
-              title="Performance Assessment"
-              description="Verify your behavioral and technical signals via our AI evaluation."
-              status={
-                stats?.assessment_status === "completed"
-                  ? "verified"
-                  : "incomplete"
-              }
-              actionLabel="Initialize Assessment"
-              onAction={() => router.push("/assessment/candidate")}
-            />
-
-            {/* Step 2: Identity */}
-            <LockStepCard
-              title="Identity Verification"
-              description="Secure your profile by uploading a valid government-issued ID."
-              status={stats?.identity_verified ? "verified" : "incomplete"}
-              actionLabel="Verify Identity"
-              onAction={() =>
-                router.push("/onboarding/candidate?target=AWAITING_ID")
-              }
-            />
-
-            {/* Step 3: Terms & Consent */}
-            <LockStepCard
-              title="Legal Synchronization"
-              description="Accept the platform terms and data privacy consent forms."
-              status={stats?.terms_accepted ? "verified" : "incomplete"}
-              actionLabel="Accept Terms"
-              onAction={() =>
-                router.push("/onboarding/candidate?target=AWAITING_TC")
-              }
-              secondaryActionLabel="Read Policy"
-              onSecondaryAction={() => setShowTerms(true)}
-            />
+            <button
+              onClick={() => router.push("/assessment/candidate")}
+              className="px-6 py-2.5 bg-amber-600 text-white rounded-xl font-bold text-sm hover:bg-amber-700 transition shadow-lg shadow-amber-600/10 active:scale-95"
+            >
+              Complete Now
+            </button>
           </div>
+        )}
 
-          <div className="mt-12 bg-white border border-slate-200 p-8 rounded-[2.5rem] flex items-center gap-6 shadow-sm">
-            <div className="h-12 w-12 bg-indigo-600 rounded-2xl flex items-center justify-center shrink-0 shadow-lg shadow-indigo-200">
-              <Target className="h-6 w-6 text-white" />
+        <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="space-y-1">
+            <div className="flex items-center gap-3">
+              <h1 className="text-4xl font-bold text-slate-900 tracking-tight">
+                Candidate <span className="text-indigo-600">Overview</span>
+              </h1>
+              <div className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-widest rounded-md border border-indigo-200">
+                Verified
+              </div>
             </div>
-            <div>
-              <h4 className="font-black text-slate-900 uppercase tracking-tight text-sm mb-1 italic text-wrap wrap-break-word">
-                Why is my dashboard locked?
-              </h4>
-              <p className="text-slate-500 text-xs font-medium leading-relaxed">
-                To maintain a high-trust hiring ecosystem, we require all
-                candidates to verify their identity and complete a baseline
-                performance evaluation before matching with recruiters.
-              </p>
+            <p className="text-slate-500 font-medium flex items-center gap-2">
+              <User className="h-4 w-4 text-slate-400" />
+              Real-time profile syncing active
+            </p>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="text-right hidden sm:block">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">
+                System Status
+              </span>
+              <div className="flex items-center gap-2 text-emerald-600 font-bold text-xs bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100">
+                <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                OPERATIONAL
+              </div>
+            </div>
+            <div className="h-10 w-px bg-slate-200 mx-2 hidden md:block" />
+            <button
+              onClick={handleLogout}
+              className="px-4 py-2 bg-slate-100 hover:bg-red-100 text-slate-600 hover:text-red-600 rounded-xl text-xs font-bold transition-all border border-slate-200"
+            >
+              Logout
+            </button>
+          </div>
+        </header>
+
+        {/* Candidate Profile Score Card */}
+        <div className="bg-slate-900 rounded-4xl p-10 md:p-12 mb-10 relative overflow-hidden group shadow-2xl shadow-indigo-900/20 border border-white/5">
+          <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+            <div className="space-y-8">
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="px-3 py-1 bg-white/10 backdrop-blur-md rounded-full border border-white/10 flex items-center gap-2">
+                    <ShieldCheck className="h-3 w-3 text-indigo-400" />
+                    <span className="text-[9px] font-black uppercase tracking-[0.2em] text-indigo-400">
+                      Standardized Verification
+                    </span>
+                  </div>
+                </div>
+                <h2 className="text-4xl md:text-5xl font-black text-white tracking-tighter leading-tight">
+                  Your{" "}
+                  <span className="text-transparent bg-clip-text bg-linear-to-r from-indigo-400 to-purple-400">
+                    Trust score
+                  </span>
+                </h2>
+                <p className="text-slate-400 text-sm md:text-base font-medium leading-relaxed max-w-md opacity-80">
+                  Your overall score based on skills, behavior, and professional assessment.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-5 rounded-3xl bg-white/5 border border-white/10 backdrop-blur-md hover:bg-white/10 transition-colors">
+                  <div className="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">
+                    Ranking
+                  </div>
+                  <div className="flex items-end gap-2">
+                    <div className="text-3xl font-black text-white leading-none">
+                      {(stats.profile_score ?? 0) >= 85
+                        ? "Elite"
+                        : (stats.profile_score ?? 0) >= 70
+                          ? "Prime"
+                          : "Growth"}
+                    </div>
+                  </div>
+                  <div className="mt-2 text-[8px] font-bold text-slate-500 uppercase tracking-widest leading-normal">
+                    Market position
+                  </div>
+                </div>
+                <div className="p-5 rounded-3xl bg-white/5 border border-white/10 backdrop-blur-md hover:bg-white/10 transition-colors">
+                  <div className="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">
+                    Data Strength
+                  </div>
+                  <div className="flex items-end gap-2">
+                    <div className="text-3xl font-black text-white leading-none">
+                      {stats.completion_score}%
+                    </div>
+                  </div>
+                  <div className="mt-2 text-[8px] font-bold text-slate-500 uppercase tracking-widest leading-normal">
+                    Profile density
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-center lg:justify-end">
+              <div className="relative h-64 w-64 md:h-72 md:w-72 group/shield">
+                <div className="absolute inset-x-0 bottom-0 top-0 m-auto h-48 w-48 bg-indigo-600/20 rounded-full blur-3xl group-hover/shield:bg-indigo-500/30 transition-all duration-700" />
+
+                <div className="absolute inset-0 rounded-full flex flex-col items-center justify-center z-10 text-center">
+                  <div className="bg-slate-800/60 p-10 rounded-full border border-white/10 shadow-3xl backdrop-blur-2xl group-hover/shield:scale-105 transition-transform duration-500">
+                    <div className="text-5xl font-black text-white tracking-tighter leading-none mb-1">
+                      {stats.profile_score ?? 0}
+                    </div>
+                    <div className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-400">
+                      Standard Score
+                    </div>
+                  </div>
+                </div>
+
+                {/* Circular Progress SVG */}
+                <svg
+                  className="absolute inset-0 h-full w-full -rotate-90 drop-shadow-[0_0_25px_rgba(99,102,241,0.4)] z-20"
+                  viewBox="0 0 100 100"
+                >
+                  <circle cx="50" cy="50" r="46" fill="transparent" stroke="rgba(255,255,255,0.05)" strokeWidth="2" />
+                  <circle
+                    cx="50" cy="50" r="46" fill="transparent" stroke="url(#candidateGradient)" strokeWidth="5"
+                    strokeDasharray="289"
+                    strokeDashoffset={289 - (289 * (stats.profile_score ?? 0)) / 100}
+                    strokeLinecap="round"
+                    className="transition-all duration-2000 ease-out"
+                  />
+                  <defs>
+                    <linearGradient id="candidateGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" stopColor="#818cf8" />
+                      <stop offset="100%" stopColor="#c084fc" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+              </div>
             </div>
           </div>
         </div>
-      ) : (
-        <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-1000">
-          <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div className="space-y-1">
-              <div className="flex items-center gap-3">
-                <h1 className="text-4xl font-black text-slate-900 tracking-tight uppercase italic">
-                  Candidate <span className="text-indigo-600">Command</span>
-                </h1>
-                <div className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-widest rounded-md border border-indigo-200">
-                  Live
-                </div>
-              </div>
-              <p className="text-slate-500 font-bold uppercase tracking-[0.2em] text-[10px] flex items-center gap-2">
-                Session Protocol: Active Transmission &bull; High-Airiness View
-              </p>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="text-right hidden sm:block">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">
-                  System Status
-                </span>
-                <div className="flex items-center gap-2 text-emerald-600 font-bold text-xs bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100">
-                  <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                  OPERATIONAL
-                </div>
-              </div>
-            </div>
-          </header>
 
-          {/* Stat Row */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            <StatCard
-              label="Active Missions"
-              value={stats?.applications_count || 0}
-              icon={<Briefcase className="h-5 w-5" />}
-              trend="Real-time"
-            />
-            <StatCard
-              label="Shortlist Hits"
-              value={stats?.shortlisted_count || 0}
-              icon={<Target className="h-5 w-5" />}
-              color="text-emerald-500"
-              trend="+12% vs avg"
-            />
-            <StatCard
-              label="Network Invites"
-              value={stats?.invites_received || 0}
-              icon={<Zap className="h-5 w-5" />}
-              color="text-indigo-500"
-              trend="Priority"
-            />
-            <StatCard
-              label="Presence Score"
-              value={stats?.completion_score || 0}
-              unit="%"
-              icon={<ShieldCheck className="h-5 w-5" />}
-              trend="Verified"
-            />
-          </div>
+        {/* Metric Bar */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard
+            label="Total Applications"
+            value={stats.applications_count.toString()}
+            sub="Roles pursued"
+            icon={Target}
+          />
+          <StatCard
+            label="Shortlists"
+            value={stats.shortlisted_count.toString()}
+            sub="Recruiter interest"
+            icon={Award}
+            color="indigo"
+          />
+          <StatCard
+            label="Invites Received"
+            value={stats.invites_received.toString()}
+            sub="Direct transmissions"
+            icon={Zap}
+            color="amber"
+          />
+          <StatCard
+            label="Market Visibility"
+            value={stats.account_status}
+            sub="Current search state"
+            icon={Compass}
+            color="emerald"
+          />
+        </div>
 
-          {/* Main Performance Signal Card */}
-          <div className="bg-slate-900 rounded-[3rem] p-10 md:p-14 text-white shadow-2xl relative overflow-hidden group border border-white/5">
-            <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-600/10 rounded-full blur-[100px] -mr-48 -mt-48 group-hover:bg-indigo-600/20 transition-all duration-1000" />
+        {/* Optimization & Insights Section */}
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          <div className="xl:col-span-2 space-y-6">
+            <div className="bg-white rounded-2xl border border-slate-100 p-8 shadow-sm relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-50 rounded-full blur-3xl -mr-32 -mt-32 opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
 
-            <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-              <div className="space-y-8">
-                <div className="space-y-3">
-                  <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/10 backdrop-blur-md rounded-full border border-white/10">
-                    <span className="text-[9px] font-black uppercase tracking-[0.2em] text-indigo-400">
-                      Aggregate Talent Signal
-                    </span>
-                  </div>
-                  <h2 className="text-5xl md:text-7xl font-black tracking-tighter leading-none">
-                    Performance{" "}
-                    <span className="text-transparent bg-clip-text bg-linear-to-r from-indigo-400 to-purple-400">
-                      Nexus
-                    </span>
-                  </h2>
-                  <p className="text-slate-400 font-medium text-lg leading-relaxed max-w-md opacity-80">
-                    Your combined technical and behavioral signals place you in
-                    the{" "}
-                    <span className="text-indigo-400 font-bold">Top 5%</span> of
-                    local sales talent.
+              <div className="flex items-center justify-between mb-8 relative z-10">
+                <div>
+                  <h3 className="text-xl font-black text-slate-900 tracking-tight">
+                    Action Items
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    Critical tasks to improve your standardized standing.
                   </p>
                 </div>
-
-                <div className="flex items-center gap-6">
-                  <div className="text-center">
-                    <div className="text-4xl font-black text-white">
-                      {results?.overall_score || 0}
-                    </div>
-                    <div className="text-[9px] font-black uppercase tracking-widest text-slate-500 text-wrap wrap-break-word">
-                      Score
-                    </div>
-                  </div>
-                  <div className="h-10 w-px bg-white/10" />
-                  <div className="text-center">
-                    <div className="text-4xl font-black text-white">Elite</div>
-                    <div className="text-[9px] font-black uppercase tracking-widest text-slate-500 text-wrap wrap-break-word">
-                      Standing
-                    </div>
-                  </div>
-                </div>
               </div>
 
-              <div className="flex justify-center lg:justify-end">
-                <div className="relative h-56 w-56 md:h-64 md:w-64 group/shield">
-                  <div className="absolute inset-0 bg-indigo-600/20 rounded-full blur-3xl group-hover/shield:bg-indigo-500/30 transition-all duration-700" />
-                  <div className="absolute inset-0 rounded-full border border-white/5 flex items-center justify-center backdrop-blur-sm z-10 overflow-hidden">
-                    <div className="absolute inset-0 bg-indigo-500/10 opacity-50" />
-                    <div className="text-center z-20">
-                      <Target className="h-16 w-16 text-indigo-400 mx-auto mb-2 drop-shadow-2xl" />
-                      <span className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-300">
-                        Verified Presence
-                      </span>
-                    </div>
-                    {/* Progress Ring */}
-                    <svg
-                      className="absolute inset-0 h-full w-full -rotate-90"
-                      viewBox="0 0 100 100"
-                    >
-                      <circle
-                        cx="50"
-                        cy="50"
-                        r="48"
-                        fill="transparent"
-                        stroke="rgba(255,255,255,0.05)"
-                        strokeWidth="4"
-                      />
-                      <circle
-                        cx="50"
-                        cy="50"
-                        r="48"
-                        fill="transparent"
-                        stroke="url(#indigoGradientDashboard)"
-                        strokeWidth="4"
-                        strokeDasharray="301.5"
-                        strokeDashoffset={
-                          301.5 - (301.5 * (results?.overall_score || 0)) / 100
-                        }
-                        strokeLinecap="round"
-                        className="transition-all duration-2000 ease-out"
-                      />
-                      <defs>
-                        <linearGradient
-                          id="indigoGradientDashboard"
-                          x1="0%"
-                          y1="0%"
-                          x2="100%"
-                          y2="0%"
-                        >
-                          <stop offset="0%" stopColor="#818cf8" />
-                          <stop offset="100%" stopColor="#6366f1" />
-                        </linearGradient>
-                      </defs>
-                    </svg>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Discovery & Calibration Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-            {/* Active Application or CTA */}
-            <div className="lg:col-span-2">
-              <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-3">
-                <span className="h-px w-8 bg-slate-200" />
-                Operational Roadmap
-              </h3>
-
-              {latestApp ? (
-                <div className="bg-white rounded-[2.5rem] border border-slate-200 p-8 shadow-sm relative overflow-hidden group hover:shadow-xl transition-all duration-500">
-                  <div className="flex flex-col md:flex-row gap-8 items-start">
-                    <div className="h-20 w-20 rounded-3xl bg-slate-50 border border-slate-100 flex items-center justify-center text-3xl shrink-0 overflow-hidden shadow-inner">
-                      {latestApp.jobs?.companies?.logo_url ? (
-                        <Image
-                          src={latestApp.jobs.companies.logo_url}
-                          alt={latestApp.jobs.companies.name || "Company Logo"}
-                          fill
-                          className="object-contain p-4 group-hover:scale-110 transition-transform"
-                        />
-                      ) : (
-                        <span className="text-slate-300">🏢</span>
-                      )}
-                    </div>
-                    <div className="flex-1 space-y-4">
-                      <div>
-                        <div className="flex items-center gap-3 mb-1">
-                          <h4 className="text-2xl font-black text-slate-900 tracking-tight italic">
-                            {latestApp.jobs?.title}
-                          </h4>
-                          <span
-                            className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${
-                              latestApp.status === "recommended"
-                                ? "bg-blue-50 text-blue-600 border border-blue-100"
-                                : latestApp.status === "shortlisted"
-                                  ? "bg-emerald-50 text-emerald-600 border border-emerald-100"
-                                  : "bg-slate-50 text-slate-500 border border-slate-100"
-                            }`}
-                          >
-                            {latestApp.status.replace("_", " ")}
-                          </span>
-                        </div>
-                        <p className="text-slate-500 font-bold uppercase tracking-tight text-xs">
-                          {latestApp.jobs?.companies?.name} &bull; Pipeline
-                          Active
-                        </p>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-4">
-                        <StatusStep label="Applied" active={true} done={true} />
-                        <StatusStep
-                          label="Shortlist"
-                          active={[
-                            "shortlisted",
-                            "invited",
-                            "interview_scheduled",
-                            "offered",
-                          ].includes(latestApp.status)}
-                          done={["interview_scheduled", "offered"].includes(
-                            latestApp.status,
-                          )}
-                        />
-                        <StatusStep
-                          label="Interview"
-                          active={["interview_scheduled", "offered"].includes(
-                            latestApp.status,
-                          )}
-                          done={["offered"].includes(latestApp.status)}
-                        />
-                      </div>
-
-                      {/* Mission Deployment: Show if any interview is scheduled */}
-                      {(() => {
-                        const scheduledInterview = latestApp.interviews?.find(i => i.status === "scheduled");
-                        const pendingInvitation = latestApp.interviews?.find(i => i.status === "pending_confirmation");
-                        const activeInt = scheduledInterview || pendingInvitation;
-                        
-                        if (!activeInt) return null;
-
-                        return (
-                          <div className="mt-6 p-6 bg-slate-900 rounded-[2rem] border border-white/10 shadow-2xl relative overflow-hidden group/btn">
-                            <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full blur-3xl -mr-16 -mt-16 group-hover/btn:bg-indigo-500/20 transition-all" />
-                            
-                            <div className="flex items-center justify-between mb-4 relative z-10">
-                              <div className="flex items-center gap-3">
-                                <div className="h-10 w-10 bg-white/10 rounded-xl flex items-center justify-center border border-white/5">
-                                  <Calendar className="h-5 w-5 text-indigo-400" />
-                                </div>
-                                <div>
-                                  <p className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em]">
-                                    Mission Deployment
-                                  </p>
-                                  <p className="text-sm font-black text-white tracking-tight">
-                                    {(() => {
-                                      const slot = activeInt.interview_slots?.find((s: any) => s.is_selected);
-                                      if (!slot && activeInt.status === "pending_confirmation") return "Pending Your Confirmation";
-                                      if (!slot) return "Coordinates Pending...";
-                                      return new Date(slot.start_time).toLocaleString([], {
-                                        weekday: 'short',
-                                        month: 'short',
-                                        day: 'numeric',
-                                        hour: '2-digit',
-                                        minute: '2-digit',
-                                        timeZoneName: 'short'
-                                      });
-                                    })()}
-                                  </p>
-                                </div>
-                              </div>
-                              <div className="h-8 w-8 rounded-full border-2 border-indigo-500/30 flex items-center justify-center">
-                                <div className="h-2 w-2 rounded-full bg-indigo-500 animate-pulse" />
-                              </div>
-                            </div>
-
-                            {activeInt.status === "scheduled" ? (() => {
-                              const slot = activeInt.interview_slots?.find((s: any) => s.is_selected);
-                              const now = new Date();
-                              const start = new Date(slot?.start_time || "");
-                              const end = new Date(slot?.end_time || "");
-                              const isActive = now >= new Date(start.getTime() - 5 * 60000) && now <= end;
-
-                              if (isActive) {
-                                return (
-                                  <button
-                                    onClick={async () => {
-                                      try {
-                                        const { data: { session } } = await supabase.auth.getSession();
-                                        if (session) {
-                                          apiClient.post(`/interviews/${activeInt.id}/join-event`, {}, session.access_token);
-                                        }
-                                      } catch (err) {
-                                        console.error("Failed to signal join:", err);
-                                      }
-                                      if (activeInt.meeting_link) {
-                                        window.open(activeInt.meeting_link, "_blank");
-                                      }
-                                    }}
-                                    className="w-full bg-indigo-600 text-white py-4 rounded-xl font-black uppercase tracking-widest text-[10px] flex items-center justify-center gap-2 hover:bg-indigo-700 shadow-lg shadow-indigo-900/20 transition-all active:scale-[0.98] border border-indigo-400/20 relative z-10"
-                                  >
-                                    <Video className="h-4 w-4" />
-                                    Initiate Interview Protocol
-                                  </button>
-                                );
-                              }
-                              return (
-                                <div className="w-full bg-white/5 text-slate-400 py-4 rounded-xl font-black uppercase tracking-widest text-[10px] text-center border border-white/5 italic">
-                                  {now < start ? "Secure: Locked Until Start" : "Secure: Session Expired"}
-                                </div>
-                              );
-                            })() : (
-                              <button
-                                onClick={() => router.push("/dashboard/candidate/applications/")}
-                                className="w-full bg-white/10 text-white py-4 rounded-xl font-black uppercase tracking-widest text-[10px] flex items-center justify-center gap-2 hover:bg-white/20 transition-all active:scale-[0.98] border border-white/10 relative z-10"
-                              >
-                                <Calendar className="h-4 w-4" />
-                                Confirm Slots in Transmission
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="bg-white rounded-[2.5rem] p-10 border-2 border-dashed border-slate-200 text-center space-y-6 hover:border-indigo-300 transition-colors group">
-                  <div className="h-16 w-16 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto group-hover:bg-indigo-50 transition-colors">
-                    <Briefcase className="h-8 w-8 text-slate-300 group-hover:text-indigo-400" />
-                  </div>
-                  <div className="space-y-2">
-                    <h4 className="text-lg font-black text-slate-900 uppercase italic">
-                      Role Inventory Empty
-                    </h4>
-                    <p className="text-slate-500 text-xs font-medium max-w-xs mx-auto">
-                      Your signals are live, but no active applications
-                      detected. Start a new mission.
-                    </p>
-                  </div>
-                  <button
-                    onClick={() =>
-                      router.push("/dashboard/candidate/community")
-                    }
-                    className="bg-slate-900 text-white px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-600 transition-all active:scale-95 shadow-xl shadow-slate-200"
-                  >
-                    Explore Opportunities
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Score Breakdown */}
-            <div className="space-y-6">
-              <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-3">
-                <span className="h-px w-8 bg-slate-200" />
-                Signal Calibration
-              </h3>
-              <div className="grid grid-cols-1 gap-4">
-                <ScoreTile
-                  label="Technical Proficiency"
-                  score={scores.skill}
-                  icon={<Briefcase className="h-4 w-4" />}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-10">
+                <CompletionItem
+                  label="Profile Identity"
+                  done={stats.completion_score > 70}
+                  href="/dashboard/candidate/profile"
+                  icon={<FileText className="h-3.5 w-3.5" />}
                 />
-                <ScoreTile
-                  label="Behavioral Dynamic"
-                  score={scores.behavioral}
-                  icon={<Target className="h-4 w-4" />}
+                <CompletionItem
+                  label="Identity Verification"
+                  done={stats.identity_verified ?? false}
+                  href="/dashboard/candidate/settings"
+                  icon={<ShieldCheck className="h-3.5 w-3.5" />}
                 />
-                <ScoreTile
-                  label="Psychometric Depth"
-                  score={scores.psychometric}
-                  icon={<Zap className="h-4 w-4" />}
+                <CompletionItem
+                  label="Standardized Assessment"
+                  done={isAssessmentCompleted}
+                  href="/onboarding/candidate/assessment"
+                  icon={<Zap className="h-3.5 w-3.5" />}
                 />
-                <ScoreTile
-                  label="Integrity Check"
-                  score={scores.resume}
-                  icon={<ShieldCheck className="h-4 w-4" />}
+                <CompletionItem
+                  label="Job Applications"
+                  done={stats.applications_count > 0}
+                  href="/dashboard/candidate/jobs"
+                  icon={<Briefcase className="h-3.5 w-3.5" />}
                 />
               </div>
             </div>
           </div>
 
-          {/* LLM Feedback Section */}
-          <div className="bg-white rounded-[3rem] p-10 md:p-14 border border-slate-200/60 shadow-xl shadow-slate-200/50 overflow-hidden relative">
-            <div className="relative z-10 space-y-10">
-              <div className="flex items-center justify-between">
-                <h3 className="text-2xl font-black text-slate-900 uppercase italic flex items-center gap-4">
-                  <div className="h-10 w-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-200">
-                    <Zap className="h-6 w-6 text-white" />
+          <div className="space-y-6">
+            {/* Career Trajectory Analysis */}
+            <div className="bg-slate-900 rounded-2xl p-6 text-white shadow-xl shadow-indigo-900/10 flex flex-col items-center text-center justify-between min-h-[300px] relative overflow-hidden group border border-white/5">
+              <div className="absolute top-0 right-0 w-40 h-40 bg-indigo-500/10 rounded-full blur-3xl -mr-20 -mt-20 transition-all duration-700 pointer-events-none" />
+
+              <div className="space-y-4 relative z-10 w-full">
+                <div className="p-3 bg-white/5 border border-white/10 rounded-xl w-fit mx-auto backdrop-blur-xl">
+                  <MapIcon className="h-5 w-5 text-indigo-400" />
+                </div>
+                <div className="space-y-2">
+                  <div className="text-[9px] font-black uppercase tracking-[0.2em] text-indigo-400">
+                    Trajectory Insights
                   </div>
-                  AI Intelligence <span className="text-slate-300">/</span>{" "}
-                  Feedback
+                  <h3 className="text-xl font-black tracking-tighter leading-tight">
+                    Career Trajectory
+                  </h3>
+                  <p className="text-slate-400 text-[11px] leading-relaxed font-medium opacity-80 px-4">
+                    Your standardized profile is trending higher than <span className="text-white font-bold">{stats.profile_score}%</span> of other candidates.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-3 pt-4 mt-4 border-t border-white/5 relative z-10 w-full">
+                <div className="flex items-center justify-between px-2">
+                  <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest leading-none">
+                    Status
+                  </span>
+                  <span className="text-[10px] font-black text-white italic tracking-widest leading-none">
+                    {stats.account_status?.toUpperCase() || "ACTIVE"}
+                  </span>
+                </div>
+                <button
+                  onClick={() => router.push("/dashboard/candidate/gps")}
+                  className="w-full py-2 bg-white/5 border border-white/10 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-white/10 transition-all hover:scale-[1.02] active:scale-95"
+                >
+                  Deep Trajectory
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Visual Assessment Breakdown Section */}
+        {results && (
+          <div className="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <h3 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
+                  <Target className="h-5 w-5 text-indigo-500" />
+                  Assessment Breakdown
                 </h3>
-                <div className="px-3 py-1 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-full text-[9px] font-black uppercase tracking-widest">
-                  Live Analysis
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest opacity-80">
+                  Standardized metrics from your high-fidelity audit
+                </p>
+              </div>
+              <div className="flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-lg">
+                <Zap className="h-3 w-3" />
+                <span className="text-[8px] font-black uppercase tracking-widest">
+                  Live Results
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
+              {[
+                { label: "Behavioral", score: results.component_scores.behavioral, icon: <Users className="h-4 w-4" /> },
+                { label: "Technical", score: results.component_scores.skill, icon: <Zap className="h-4 w-4" /> },
+                { label: "Psychometric", score: results.component_scores.psychometric, icon: <ShieldCheck className="h-4 w-4" /> },
+                { label: "Resume Quality", score: results.component_scores.resume, icon: <FileText className="h-4 w-4" /> },
+                { label: "Reliability", score: results.component_scores.reference, icon: <BadgeCheck className="h-4 w-4" /> },
+              ].map((item) => (
+                <div key={item.label} className="space-y-3 p-4 rounded-3xl bg-slate-50 border border-slate-100 group hover:bg-white hover:border-indigo-100 hover:shadow-xl transition-all duration-300">
+                  <div className="flex items-center justify-between">
+                    <div className="h-8 w-8 rounded-xl bg-white flex items-center justify-center text-slate-400 group-hover:text-indigo-600 shadow-sm border border-slate-100">
+                      {item.icon}
+                    </div>
+                    <span className="text-lg font-black text-slate-900">{item.score || 0}</span>
+                  </div>
+                  <div>
+                    <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{item.label}</div>
+                    <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-indigo-500 rounded-full transition-all duration-1000" 
+                        style={{ width: `${item.score || 0}%` }}
+                      ></div>
+                    </div>
+                  </div>
                 </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                {latestApp?.feedback && (
-                  <FeedbackItem
-                    title="Recruiter Note"
-                    desc={latestApp.feedback}
-                    status="Direct"
-                  />
-                )}
-                <FeedbackItem
-                  title="Decision Logic"
-                  desc="Logical flow in responses is above benchmark. Candidate treats sales scenarios as strategic operations rather than simple transactions."
-                  status="Elite"
-                />
-              </div>
-            </div>
-            {/* Decorative BG */}
-            <div className="absolute -bottom-10 -right-10 text-[180px] font-black text-slate-50 select-none opacity-50 italic">
-              TF
+              ))}
             </div>
           </div>
-        </div>
-      )}
-      <TermsModal isOpen={showTerms} onClose={() => setShowTerms(false)} />
-    </div>
-  );
-}
-
-function ScoreTile({
-  label,
-  score,
-  icon,
-}: {
-  label: string;
-  score: number | undefined;
-  icon: React.ReactNode;
-}) {
-  const hasData = score !== undefined && score !== null;
-  return (
-    <div
-      className={`bg-white p-5 rounded-4xl border transition-all duration-300 group ${
-        hasData
-          ? "border-slate-100 hover:border-indigo-200 hover:shadow-lg hover:shadow-indigo-500/5"
-          : "border-slate-100 opacity-60"
-      }`}
-    >
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-3">
-          <div
-            className={`h-8 w-8 rounded-lg flex items-center justify-center transition-colors ${
-              hasData
-                ? "bg-slate-50 text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-500"
-                : "bg-slate-50 text-slate-300"
-            }`}
-          >
-            {icon}
-          </div>
-          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-slate-900 transition-colors">
-            {label}
-          </span>
-        </div>
-        <span className="text-sm font-black text-slate-900 italic">
-          {hasData ? `${score}%` : "--"}
-        </span>
-      </div>
-      <div className="h-1.5 w-full bg-slate-50 rounded-full overflow-hidden border border-slate-100">
-        <div
-          className="h-full bg-indigo-600 transition-all duration-1500 ease-out shadow-[0_0_10px_rgba(99,102,241,0.5)]"
-          style={{ width: `${hasData ? score : 0}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function FeedbackItem({
-  title,
-  desc,
-  status,
-}: {
-  title: string;
-  desc: string;
-  status: string;
-}) {
-  return (
-    <div className="space-y-4 group">
-      <div className="flex items-center gap-3">
-        <h4 className="font-black text-slate-900 text-sm uppercase italic tracking-tight group-hover:text-indigo-600 transition-colors">
-          {title}
-        </h4>
-        <span className="text-[8px] font-black uppercase bg-slate-50 text-slate-400 border border-slate-100 px-2 py-0.5 rounded-md tracking-widest">
-          {status}
-        </span>
-      </div>
-      <p className="text-slate-500 text-xs leading-relaxed font-semibold">
-        {desc}
-      </p>
-    </div>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  icon,
-  color = "text-slate-900",
-  unit = "",
-  trend = "",
-}: {
-  label: string;
-  value: number;
-  icon: React.ReactNode;
-  color?: string;
-  unit?: string;
-  trend?: string;
-}) {
-  return (
-    <div className="bg-white p-7 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-xl hover:shadow-indigo-500/5 hover:-translate-y-1 transition-all duration-300 group">
-      <div className="flex items-center justify-between mb-5">
-        <div className="h-12 w-12 rounded-2xl bg-slate-50 flex items-center justify-center group-hover:bg-indigo-50 transition-colors duration-300">
-          <div className="text-slate-300 group-hover:text-indigo-500 transition-colors duration-300">
-            {icon}
-          </div>
-        </div>
-        {trend && (
-          <span className="text-[9px] font-black uppercase tracking-widest text-emerald-500 bg-emerald-50 px-2 py-1 rounded-md">
-            {trend}
-          </span>
         )}
       </div>
-      <div className="space-y-1">
-        <div className="flex items-baseline gap-1">
-          <span
-            className={`text-3xl font-black italic tracking-tighter ${color}`}
-          >
-            {value}
-          </span>
-          {unit && (
-            <span className="text-sm font-black text-slate-300">{unit}</span>
-          )}
+    </div>
+  );
+}
+
+function CompletionItem({ label, done, href, icon }: { label: string; done: boolean; href?: string; icon: React.ReactNode }) {
+  return (
+    <div className={`flex items-center justify-between p-5 rounded-2xl border transition-all duration-500 group ${done ? "bg-slate-50 border-slate-100 shadow-sm" : "bg-white border-slate-200 hover:border-indigo-200 hover:shadow-2xl hover:shadow-indigo-500/10"}`}>
+      <div className="flex items-center gap-4">
+        <div className={`h-9 w-9 rounded-xl flex items-center justify-center transition-all duration-500 ${done ? "bg-emerald-100 text-emerald-600 scale-90" : "bg-slate-100 text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-500 group-hover:rotate-6"}`}>
+          {icon}
         </div>
-        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block group-hover:text-slate-600 transition-colors">
+        <span className={`text-xs font-bold tracking-tight transition-colors ${done ? "text-slate-400" : "text-slate-700 group-hover:text-slate-900"}`}>
           {label}
         </span>
       </div>
-    </div>
-  );
-}
-
-function LockStepCard({
-  title,
-  description,
-  status,
-  actionLabel,
-  onAction,
-  secondaryActionLabel,
-  onSecondaryAction,
-}: {
-  title: string;
-  description: string;
-  status: "verified" | "incomplete";
-  actionLabel: string;
-  onAction: () => void;
-  secondaryActionLabel?: string;
-  onSecondaryAction?: () => void;
-}) {
-  const isVerified = status === "verified";
-
-  return (
-    <div
-      className={`p-10 rounded-[3rem] border flex flex-col items-center text-center space-y-8 transition-all duration-500 hover:-translate-y-2 ${
-        isVerified
-          ? "bg-white border-slate-100 opacity-60"
-          : "bg-white border-slate-200 shadow-2xl shadow-slate-200/50 scale-105 z-10"
-      }`}
-    >
-      <div
-        className={`h-20 w-20 rounded-4xl flex items-center justify-center transition-transform duration-500 ${
-          isVerified
-            ? "bg-emerald-50 text-emerald-500"
-            : "bg-amber-50 text-amber-500 animate-pulse"
-        }`}
-      >
-        {isVerified ? (
-          <CheckCircle2 className="h-10 w-10" />
-        ) : (
-          <ShieldCheck className="h-10 w-10" />
-        )}
-      </div>
-
-      <div className="space-y-3">
-        <h3 className="text-base font-black text-slate-900 uppercase tracking-tight italic">
-          {title}
-        </h3>
-        <p className="text-slate-500 text-[11px] font-semibold leading-relaxed">
-          {description}
-        </p>
-      </div>
-
-      {isVerified ? (
-        <div className="flex items-center gap-2 text-emerald-600 font-black text-[10px] uppercase tracking-widest bg-emerald-50 px-5 py-2.5 rounded-full border border-emerald-100">
-          <div className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-pulse" />
-          Synchronized
+      {done ? (
+        <div className="h-7 w-7 bg-emerald-50 rounded-full flex items-center justify-center">
+          <BadgeCheck className="h-4 w-4 text-emerald-500" />
         </div>
       ) : (
-        <div className="w-full space-y-4">
-          <button
-            onClick={onAction}
-            className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-indigo-600 transition-all active:scale-95 shadow-xl shadow-indigo-200/20"
-          >
-            {actionLabel}
-          </button>
-          {secondaryActionLabel && onSecondaryAction && (
-            <button
-              onClick={onSecondaryAction}
-              className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] hover:text-indigo-600 transition-colors"
-            >
-              {secondaryActionLabel}
-            </button>
-          )}
-        </div>
+        href && (
+          <Link href={href} className="px-4 py-1.5 bg-indigo-50 text-[9px] font-black uppercase tracking-widest text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white transition-all transform active:scale-90">
+            Fix Gate
+          </Link>
+        )
       )}
     </div>
   );
 }
 
-function StatusStep({
-  label,
-  active,
-  done,
-}: {
-  label: string;
-  active: boolean;
-  done: boolean;
-}) {
+function StatCard({ label, value, sub, icon: Icon, trend, color = "slate" }: { label: string; value: string; sub: string; icon?: React.ElementType; trend?: string; color?: "slate" | "indigo" | "emerald" | "amber"; }) {
+  const colorMap = {
+    slate: "text-slate-500 bg-slate-50",
+    indigo: "text-indigo-600 bg-indigo-50",
+    emerald: "text-emerald-600 bg-emerald-50",
+    amber: "text-amber-600 bg-amber-50",
+  };
+
   return (
-    <div
-      className={`p-4 rounded-2xl border transition-all duration-300 ${
-        active
-          ? "bg-slate-900 border-slate-900 text-white shadow-lg shadow-slate-900/10"
-          : "bg-white border-slate-100 text-slate-400 opacity-60"
-      }`}
-    >
-      <div className="flex items-center gap-3">
-        <div
-          className={`h-6 w-6 rounded-lg flex items-center justify-center text-[10px] font-black transition-colors ${
-            done
-              ? "bg-emerald-500 text-white"
-              : active
-                ? "bg-white text-slate-900"
-                : "bg-slate-50 text-slate-300"
-          }`}
-        >
-          {done ? <CheckCircle2 className="h-4 w-4" /> : "•"}
+    <div className="bg-white px-6 py-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all duration-300 group flex items-start gap-4">
+      <div className={`p-3 rounded-xl transition-all duration-500 ${colorMap[color]} group-hover:scale-110 shadow-sm shrink-0`}>
+        {Icon && <Icon className="h-5 w-5" />}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-start justify-between">
+          <div className="space-y-0.5">
+            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">{label}</div>
+            <div className="text-2xl font-black text-slate-900 tracking-tighter">{value}</div>
+          </div>
         </div>
-        <span className="text-[10px] font-black uppercase tracking-widest">
-          {label}
-        </span>
+        <div className="text-[9px] font-medium text-slate-400 mt-1 truncate opacity-70 group-hover:opacity-100 transition-opacity">{sub}</div>
       </div>
     </div>
   );

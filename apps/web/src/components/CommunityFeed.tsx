@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useRef } from "react";
 import Image from "next/image";
-import { supabase } from "@/lib/supabaseClient";
+import { format } from "date-fns";
+import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import {
   Trash2,
@@ -28,6 +29,15 @@ interface Author {
   profile_photo_url?: string;
 }
 
+interface Comment {
+  id: string;
+  user_id: string;
+  post_id: string;
+  content: string;
+  created_at: string;
+  author: Author;
+}
+
 interface Post {
   id: string;
   user_id: string;
@@ -38,6 +48,10 @@ interface Post {
   author: Author;
   is_following: boolean;
   is_pinned: boolean;
+  likes_count: number;
+  comments_count: number;
+  is_liked: boolean;
+  comments: Comment[];
 }
 
 export default function CommunityFeed() {
@@ -54,12 +68,122 @@ export default function CommunityFeed() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [pinnedPostIds, setPinnedPostIds] = useState<Set<string>>(new Set());
+  const [expandingComments, setExpandingComments] = useState<Set<string>>(new Set());
+  const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
+
+  const handleLike = async (post: Post) => {
+    const token = awsAuth.getToken();
+    if (!token) return;
+
+    const isLiked = post.is_liked;
+
+    // Optimistic UI
+    setPosts(prev => prev.map(p => {
+      if (p.id === post.id) {
+        return {
+          ...p,
+          is_liked: !isLiked,
+          likes_count: isLiked ? p.likes_count - 1 : p.likes_count + 1
+        };
+      }
+      return p;
+    }));
+
+    try {
+      if (isLiked) {
+        await apiClient.delete(`/posts/${post.id}/unlike`, token);
+      } else {
+        await apiClient.post(`/posts/${post.id}/like`, {}, token);
+      }
+    } catch (err) {
+      console.error("Failed to sync like:", err);
+      // Rollback
+      setPosts(prev => prev.map(p => {
+        if (p.id === post.id) {
+          return {
+            ...p,
+            is_liked: isLiked,
+            likes_count: isLiked ? p.likes_count + 1 : p.likes_count - 1
+          };
+        }
+        return p;
+      }));
+    }
+  };
+
+  const handleAddComment = async (postId: string) => {
+    const content = commentInputs[postId];
+    if (!content?.trim()) return;
+
+    const token = awsAuth.getToken();
+    if (!token) return;
+
+    try {
+      const newComment = await apiClient.post(`/posts/${postId}/comments`, { content }, token) as Comment;
+      
+      setPosts(prev => prev.map(p => {
+        if (p.id === postId) {
+          return {
+            ...p,
+            comments_count: (p.comments_count || 0) + 1,
+            comments: [...(p.comments || []), newComment]
+          };
+        }
+        return p;
+      }));
+
+      setCommentInputs(prev => ({ ...prev, [postId]: "" }));
+    } catch (err) {
+      console.error("Failed to add comment:", err);
+    }
+  };
+
+  const toggleComments = (postId: string) => {
+    setExpandingComments(prev => {
+      const next = new Set(prev);
+      if (next.has(postId)) next.delete(postId);
+      else next.add(postId);
+      return next;
+    });
+  };
+
+  const handleFollow = async (userId: string, isCurrentlyFollowing: boolean) => {
+    const token = awsAuth.getToken();
+    if (!token) return;
+
+    // Optimistic Update
+    setPosts((prev) =>
+      prev.map((p) => {
+        if (p.author.id === userId) {
+          return { ...p, is_following: !isCurrentlyFollowing };
+        }
+        return p;
+      })
+    );
+
+    try {
+      if (isCurrentlyFollowing) {
+        await apiClient.delete(`/posts/unfollow/${userId}`, token);
+      } else {
+        await apiClient.post("/posts/follow", { following_id: userId }, token);
+      }
+    } catch (err) {
+      console.error("Failed to sync connection:", err);
+      // Rollback
+      setPosts((prev) =>
+        prev.map((p) => {
+          if (p.author.id === userId) {
+            return { ...p, is_following: isCurrentlyFollowing };
+          }
+          return p;
+        })
+      );
+    }
+  };
 
   const handlePinPost = async (postId: string) => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session) return;
+    const token = awsAuth.getToken();
+    if (!token) return;
 
     const isCurrentlyPinned = pinnedPostIds.has(postId);
 
@@ -73,9 +197,9 @@ export default function CommunityFeed() {
 
     try {
       if (isCurrentlyPinned) {
-        await apiClient.delete(`/posts/${postId}/unpin`, session.access_token);
+        await apiClient.delete(`/posts/${postId}/unpin`, token);
       } else {
-        await apiClient.post(`/posts/${postId}/pin`, {}, session.access_token);
+        await apiClient.post(`/posts/${postId}/pin`, {}, token);
       }
     } catch (err) {
       console.error("Failed to synchronize cloud pin:", err);
@@ -97,20 +221,21 @@ export default function CommunityFeed() {
   const fetchFeed = async () => {
     try {
       setLoading(true);
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) return;
-      setCurrentUserId(session.user.id);
+      const token = awsAuth.getToken();
+      if (!token) return;
 
-      const data = await apiClient.get("/posts/feed", session.access_token);
-      const feedPosts = data as Post[];
-      setPosts(feedPosts);
+      const user = awsAuth.getUser();
+      if (user) {
+        console.log("DEBUG: Setting Current User ID:", user.id || user.sub);
+        setCurrentUserId(user.id || user.sub);
+      }
 
-      // Initialize pinned posts from server signal
+      const data = await apiClient.get("/posts/feed", token);
+      setPosts(Array.isArray(data) ? data : []);
+
       const pinned = new Set<string>();
-      feedPosts.forEach((p) => {
-        if (p.is_pinned) pinned.add(p.id);
+      (Array.isArray(data) ? data : []).forEach((post: Post) => {
+        if (post.is_pinned) pinned.add(post.id);
       });
       setPinnedPostIds(pinned);
     } catch (err) {
@@ -135,42 +260,26 @@ export default function CommunityFeed() {
 
     setIsSubmitting(true);
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) return;
+      const token = awsAuth.getToken();
+      if (!token) return;
 
       const uploadedUrls: string[] = [];
 
       // Upload media if present
       for (const file of mediaFiles) {
-        const fileExt = file.name.split(".").pop();
-        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
-        const filePath = `${session.user.id}/${fileName}`;
+        const formData = new FormData();
+        formData.append("file", file);
 
-        console.log(`Uploading file: ${filePath}`);
-
-        const { error: uploadError } = await supabase.storage
-          .from("community-media")
-          .upload(filePath, file, {
-            upsert: true,
-            contentType: file.type,
-          });
-
-        if (uploadError) {
+        try {
+          const result = await apiClient.post("/posts/upload", formData, token);
+          if (result.url) {
+            uploadedUrls.push(result.url);
+          }
+        } catch (uploadError) {
           console.error(`Upload error for ${file.name}:`, uploadError);
-          alert(
-            `Failed to upload ${file.name}. Please ensure the STORAGE BUCKET 'community-media' exists and is PUBLIC.`,
-          );
+          alert(`Failed to upload ${file.name}.`);
           continue;
         }
-
-        const {
-          data: { publicUrl },
-        } = supabase.storage.from("community-media").getPublicUrl(filePath);
-
-        console.log(`Uploaded URL: ${publicUrl}`);
-        uploadedUrls.push(publicUrl);
       }
 
       await apiClient.post(
@@ -179,7 +288,7 @@ export default function CommunityFeed() {
           content: newPost,
           media_urls: uploadedUrls,
         },
-        session.access_token,
+        token,
       );
 
       setNewPost("");
@@ -195,39 +304,34 @@ export default function CommunityFeed() {
 
   const handleDeletePost = async (postId: string) => {
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) return;
+      const token = awsAuth.getToken();
+      if (!token) return;
 
-      // Filter out deleted post from state immediately (Optimistic Update)
-      setPosts(posts.filter((p) => p.id !== postId));
+      setPosts((prev) => prev.filter((p) => p.id !== postId));
       setPinnedPostIds((prev) => {
         const next = new Set(prev);
         next.delete(postId);
         return next;
       });
 
-      await apiClient.delete(`/posts/${postId}`, session.access_token);
+      await apiClient.delete(`/posts/${postId}`, token);
     } catch (err) {
       console.error("Error deleting post:", err);
-      fetchFeed(); // Rollback if error
+      fetchFeed();
     }
   };
 
   const handleSaveEdit = async (postId: string) => {
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) return;
+      const token = awsAuth.getToken();
+      if (!token) return;
       await apiClient.patch(
         `/posts/${postId}`,
         {
           content: editContent,
           media_urls: posts.find((p) => p.id === postId)?.media_urls || [],
         },
-        session.access_token,
+        token,
       );
       setEditingPost(null);
       fetchFeed();
@@ -253,37 +357,6 @@ export default function CommunityFeed() {
   const removeMedia = (index: number) => {
     setMediaFiles((prev) => prev.filter((_, i) => i !== index));
     setMediaPreviews((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const handleFollow = async (authorId: string, isFollowing: boolean) => {
-    try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) return;
-
-      if (isFollowing) {
-        await apiClient.delete(
-          `/posts/unfollow/${authorId}`,
-          session.access_token,
-        );
-      } else {
-        await apiClient.post(
-          "/posts/follow",
-          { following_id: authorId },
-          session.access_token,
-        );
-      }
-
-      // Update local state
-      setPosts(
-        posts.map((p) =>
-          p.author.id === authorId ? { ...p, is_following: !isFollowing } : p,
-        ),
-      );
-    } catch (err) {
-      console.error("Error toggling follow:", err);
-    }
   };
 
   return (
@@ -333,22 +406,19 @@ export default function CommunityFeed() {
         {/* Main Feed Column - 65% width equivalent */}
         <div className="col-span-12 lg:col-span-8 space-y-8">
           {/* Create Post Box */}
-          <div className="bg-white rounded-4xl p-6 sm:p-8 border border-slate-200 shadow-xl shadow-slate-100/40 mb-8">
-            <h2 className="text-3xs font-black uppercase text-slate-400 tracking-widest mb-6 flex items-center gap-2">
-              <div className="h-2 w-2 rounded-full bg-indigo-500 shadow-lg shadow-indigo-200" />
+          <div className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm mb-8">
+            <h2 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4 flex items-center gap-2">
+              <div className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
               Start a Conversation
             </h2>
-            <form onSubmit={handleCreatePost} className="space-y-6">
+            <form onSubmit={handleCreatePost} className="space-y-4">
               <div className="relative">
                 <textarea
                   value={newPost}
                   onChange={(e) => setNewPost(e.target.value)}
                   placeholder="Share what's on your mind with the community..."
-                  className="w-full bg-slate-50/50 border-none rounded-3xl p-6 text-base font-bold text-slate-900 placeholder:text-slate-300 focus:outline-none focus:ring-4 focus:ring-indigo-500/5 min-h-30 resize-none transition-all focus:bg-white"
+                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-5 text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-100 min-h-[120px] resize-none transition-all focus:bg-white"
                 />
-                <div className="absolute top-4 left-4 text-indigo-400 opacity-20">
-                  <Zap size={20} fill="currentColor" />
-                </div>
               </div>
 
               {mediaPreviews.length > 0 && (
@@ -417,7 +487,7 @@ export default function CommunityFeed() {
                   <button
                     disabled={isSubmitting || !newPost.trim()}
                     type="submit"
-                    className="bg-slate-900 text-white font-black px-6 py-2.5 rounded-xl text-3xs uppercase tracking-[0.2em] transition-all hover:bg-black shadow-lg shadow-slate-200 border border-slate-700 text-center flex items-center justify-center min-w-22.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="bg-indigo-600 text-white font-black px-10 py-3 rounded-xl text-[11px] uppercase tracking-[0.2em] transition-all hover:bg-slate-900 active:scale-95 shadow-lg shadow-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isSubmitting ? "..." : "POST"}
                   </button>
@@ -431,13 +501,15 @@ export default function CommunityFeed() {
             {loading ? (
               <div className="py-20 flex flex-col items-center justify-center space-y-4">
                 <div className="h-10 w-10 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
-                <p className="text-3xs font-black uppercase tracking-[0.2em] text-slate-400">
-                  Synchronizing Signals
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                  Loading Feed...
                 </p>
               </div>
             ) : filteredPosts.length === 0 ? (
-              <div className="bg-slate-50/50 rounded-4xl p-16 text-center border-2 border-dashed border-slate-100">
-                <Radio className="mx-auto text-slate-300 mb-4" size={32} />
+              <div className="bg-white rounded-[2.5rem] p-16 text-center border border-dashed border-slate-200">
+                <div className="h-16 w-16 bg-slate-50 flex items-center justify-center rounded-full mx-auto mb-4 border border-slate-100 text-slate-200">
+                  <Radio size={28} />
+                </div>
                 <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">
                   No activity detected here
                 </p>
@@ -446,13 +518,13 @@ export default function CommunityFeed() {
               filteredPosts.map((post) => (
                 <div
                   key={post.id}
-                  className="bg-white rounded-3xl p-0 border border-slate-200 shadow-sm overflow-hidden group hover:shadow-lg transition-all"
+                  className="bg-white rounded-[2rem] p-0 border border-slate-100 shadow-sm overflow-hidden group hover:shadow-xl transition-all duration-300"
                 >
                   {/* Post Header */}
-                  <div className="p-8 pb-4">
+                  <div className="p-6 sm:p-8 pb-4">
                     <div className="flex justify-between items-start">
                       <div className="flex items-center gap-4">
-                        <div className="h-12 w-12 rounded-full ring-2 ring-slate-100 ring-offset-2 overflow-hidden bg-slate-50 relative border-2 border-white shadow-sm">
+                        <div className="relative h-12 w-12 rounded-full overflow-hidden bg-slate-50 shrink-0 border border-slate-100">
                           {post.author?.profile_photo_url ? (
                             <Image
                               src={post.author.profile_photo_url}
@@ -461,66 +533,50 @@ export default function CommunityFeed() {
                               className="object-cover"
                             />
                           ) : (
-                            <div className="h-full w-full flex items-center justify-center font-black text-indigo-300 text-lg bg-indigo-50/50">
+                            <div className="h-full w-full flex items-center justify-center font-black text-indigo-400 text-sm bg-indigo-50">
                               {post.author?.full_name?.[0] || "?"}
                             </div>
                           )}
                         </div>
-                        <div>
-                          <h3 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
-                            {post.author?.full_name || "Anonymous Professional"}
+                        <div className="min-w-0">
+                          <h3 className="font-black text-slate-900 text-sm tracking-tight truncate">
+                            {post.author?.full_name || "Anonymous"}
                           </h3>
-                          <div className="flex items-center gap-2 text-3xs font-bold text-slate-400">
-                            <span className="uppercase tracking-widest text-indigo-500">
+                          <div className="flex items-center gap-2 text-[9px] font-bold text-slate-400 mt-0.5">
+                            <span className="uppercase tracking-widest text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
                               {post.author?.role === "recruiter"
-                                ? "Project Manager"
-                                : "Elite Talent"}
+                                ? "Recruiter"
+                                : "Candidate"}
                             </span>
                             <span className="h-0.5 w-0.5 rounded-full bg-slate-300" />
                             <span>
-                              {new Date(post.created_at)
-                                .toLocaleDateString(undefined, {
-                                  month: "short",
-                                  day: "numeric",
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })
-                                .replace(",", " • ")}
+                              {format(new Date(post.created_at), "MMM d • h:mm a")}
                             </span>
                           </div>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-2">
                         <button
                           onClick={() => handlePinPost(post.id)}
-                          className={`p-1.5 transition-all hover:scale-110 ${pinnedPostIds.has(post.id) ? "text-indigo-600" : "text-slate-300 hover:text-slate-900"}`}
+                          className={`p-2 rounded-lg transition-all ${pinnedPostIds.has(post.id) ? "text-indigo-600 bg-indigo-50" : "text-slate-300 hover:text-slate-600 hover:bg-slate-50"}`}
                         >
                           <Pin
                             size={16}
-                            className={
-                              pinnedPostIds.has(post.id)
-                                ? "fill-indigo-600"
-                                : "rotate-45"
-                            }
+                            className={pinnedPostIds.has(post.id) ? "fill-indigo-600" : ""}
                           />
                         </button>
                       </div>
                     </div>
 
-                    <div className="mt-4 space-y-3">
-                      <div className="flex items-center gap-1.5 text-4xs font-black uppercase tracking-[0.2em] text-emerald-600 bg-emerald-50 w-fit px-2.5 py-1 rounded-md border border-emerald-100">
-                        <Radio size={12} />
-                        Post Published
-                      </div>
-
-                      <div className="text-slate-600 text-sm font-medium leading-[1.6] whitespace-pre-wrap">
+                    <div className="mt-4 space-y-4">
+                      <div className="text-slate-600 text-[13px] leading-relaxed font-medium whitespace-pre-wrap">
                         {editingPost === post.id ? (
                           <div className="space-y-4 py-2">
                             <textarea
                               value={editContent}
                               onChange={(e) => setEditContent(e.target.value)}
-                              className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-6 text-sm focus:outline-none focus:ring-4 focus:ring-indigo-500/10 min-h-32 resize-none font-bold text-slate-900"
+                              className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-6 text-sm focus:outline-none focus:ring-2 focus:ring-slate-200 min-h-32 resize-none font-bold text-slate-900"
                             />
                             <div className="flex justify-end gap-3">
                               <button
@@ -544,118 +600,79 @@ export default function CommunityFeed() {
                     </div>
                   </div>
 
-                  {/* Media Rendering */}
+                  {/* Media Content */}
                   {post.media_urls &&
                     post.media_urls.length > 0 &&
                     !editingPost && (
-                      <div className="px-6 sm:px-8 pb-6">
+                      <div className="px-6 sm:px-8 pb-4">
                         <div
-                          className={`grid gap-2 rounded-2xl overflow-hidden border border-slate-100 ${post.media_urls.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}
+                          className={`rounded-2xl overflow-hidden border border-slate-100 shadow-sm ${post.media_urls.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}
                         >
-                          {post.media_urls.map((url, i) => {
-                            const isVideo =
-                              /\.(mp4|webm|ogg)/i.test(url.split("?")[0]) ||
-                              url.includes("video");
-                            if (isVideo) {
-                              return (
-                                <video
-                                  key={i}
-                                  src={url}
-                                  controls
-                                  className="w-full h-full max-h-100 object-cover bg-slate-900 shadow-inner"
-                                />
-                              );
-                            }
-                            return (
-                              <div
-                                key={i}
-                                className="relative aspect-video group cursor-zoom-in"
-                              >
-                                <Image
-                                  src={url}
-                                  alt="Post media"
-                                  fill
-                                  className="object-cover transition-transform duration-700 group-hover:scale-105"
-                                  loading="lazy"
-                                />
-                              </div>
-                            );
-                          })}
+                          {post.media_urls.map((url, i) => (
+                            <div key={i} className="relative aspect-video">
+                               <Image
+                                src={url}
+                                alt=""
+                                fill
+                                className="object-cover"
+                                unoptimized
+                              />
+                            </div>
+                          ))}
                         </div>
                       </div>
                     )}
 
                   {/* Interaction Bar */}
-                  <div className="px-6 sm:px-8 py-4 border-t border-slate-100 bg-slate-50/20">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div className="flex items-center gap-1 sm:gap-4">
-                        <button className="flex items-center gap-2 px-3 py-2 hover:bg-white rounded-xl transition-all text-slate-500 group">
-                          <Heart
-                            size={16}
-                            className="group-hover:text-rose-500 transition-colors"
-                          />
-                          <span className="text-3xs font-black uppercase tracking-widest leading-none">
-                            Like
-                          </span>
-                        </button>
-                        <button className="flex items-center gap-2 px-3 py-2 hover:bg-white rounded-xl transition-all text-slate-500 group">
-                          <MessageSquare
-                            size={16}
-                            className="group-hover:text-indigo-600 transition-colors"
-                          />
-                          <span className="text-3xs font-black uppercase tracking-widest leading-none">
-                            Comment
-                          </span>
-                        </button>
+                  <div className="px-6 sm:px-8 py-4 border-t border-slate-50 bg-white">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
                         <button
-                          onClick={() => handleShare(post.id)}
-                          className="flex items-center gap-2 px-3 py-2 hover:bg-white rounded-xl transition-all text-slate-500 group"
+                          onClick={() => handleLike(post)}
+                          className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest transition-colors ${
+                            post.is_liked ? "text-rose-600" : "text-slate-500 hover:text-rose-500"
+                          }`}
                         >
-                          <Share2
-                            size={16}
-                            className="group-hover:text-emerald-500 transition-colors"
-                          />
-                          <span className="text-3xs font-black uppercase tracking-widest leading-none">
-                            Share
-                          </span>
+                          <Heart size={16} className={post.is_liked ? "fill-rose-600" : ""} />
+                          {post.likes_count > 0 ? `${post.likes_count} LIKE${post.likes_count > 1 ? "S" : ""}` : "LIKE"}
+                        </button>
+                        <button 
+                          onClick={() => toggleComments(post.id)}
+                          className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest transition-colors ${
+                            expandingComments.has(post.id) ? "text-indigo-600" : "text-slate-500 hover:text-indigo-600"
+                          }`}
+                        >
+                          <MessageSquare size={16} className={expandingComments.has(post.id) ? "fill-indigo-600" : ""} />
+                          {post.comments_count > 0 ? `${post.comments_count} COMMENT${post.comments_count > 1 ? "S" : ""}` : "COMMENT"}
                         </button>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-2 ml-auto">
-                        {currentUserId !== post.user_id && (
+                      <div className="flex items-center gap-2">
+                         {currentUserId !== post.user_id && (
                           <button
                             onClick={() =>
                               handleFollow(post.author.id, post.is_following)
                             }
-                            className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all border ${
+                            className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
                               post.is_following
-                                ? "bg-emerald-50 text-emerald-600 border-emerald-100"
-                                : "bg-slate-900 text-white border-slate-700 hover:bg-black shadow-md shadow-slate-200"
+                                ? "bg-slate-100 text-slate-400 border border-slate-200"
+                                : "bg-slate-900 text-white hover:bg-black shadow-lg"
                             }`}
                           >
-                            {post.is_following ? (
-                              <UserCheck size={14} />
-                            ) : (
-                              <UserPlus size={14} />
-                            )}
-                            <span className="text-3xs font-black uppercase tracking-widest leading-none whitespace-nowrap">
-                              {post.is_following ? "Connected" : "Connect"}
-                            </span>
+                            {post.is_following ? "Following" : "Follow"}
                           </button>
                         )}
                         {currentUserId === post.user_id && (
-                          <div className="flex gap-2">
+                          <div className="flex gap-1">
                             <button
                               onClick={() => startEditing(post)}
-                              className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
-                              title="Edit Post"
+                              className="p-2 text-slate-400 hover:text-indigo-600 transition-all"
                             >
                               <Edit3 size={16} />
                             </button>
                             <button
                               onClick={() => handleDeletePost(post.id)}
-                              className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all"
-                              title="Delete Post"
+                              className="p-2 text-slate-400 hover:text-rose-500 transition-all"
                             >
                               <Trash2 size={16} />
                             </button>
@@ -664,104 +681,162 @@ export default function CommunityFeed() {
                       </div>
                     </div>
                   </div>
+
+                  {/* Comments Section */}
+                  {expandingComments.has(post.id) && (
+                    <div className="px-6 sm:px-8 pb-6 bg-white border-t border-slate-50 animate-in slide-in-from-top-2 duration-300">
+                      <div className="pt-6 space-y-6">
+                        {/* New Comment Input */}
+                        <div className="flex gap-4">
+                          <div className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center shrink-0 border border-slate-200">
+                             <span className="text-[10px] font-black text-slate-400">?</span>
+                          </div>
+                          <div className="w-full flex gap-3">
+                            <input
+                              value={commentInputs[post.id] || ""}
+                              onChange={(e) => setCommentInputs(prev => ({ ...prev, [post.id]: e.target.value }))}
+                              onKeyDown={(e) => e.key === "Enter" && handleAddComment(post.id)}
+                              placeholder="Add a comment..."
+                              className="w-full bg-white border border-slate-100 rounded-xl px-4 py-2 text-[11px] font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-100 placeholder:text-slate-300 placeholder:font-black placeholder:uppercase placeholder:tracking-widest"
+                            />
+                            <button
+                              disabled={!(commentInputs[post.id]?.trim())}
+                              onClick={() => handleAddComment(post.id)}
+                              className="text-indigo-600 font-black text-[10px] uppercase tracking-widest disabled:opacity-30 disabled:grayscale transition-all hover:text-indigo-700"
+                            >
+                              Post
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Comments List */}
+                        <div className="space-y-6">
+                          {(post.comments || []).map((comment) => (
+                            <div key={comment.id} className="flex gap-4 group/comment">
+                              <div className="h-8 w-8 rounded-full bg-slate-50 overflow-hidden relative border border-slate-100 shrink-0">
+                                {comment.author?.profile_photo_url ? (
+                                  <Image src={comment.author.profile_photo_url} alt="" fill className="object-cover" />
+                                ) : (
+                                  <div className="h-full w-full flex items-center justify-center font-black text-indigo-400 text-[10px] bg-indigo-50">
+                                    {comment.author?.full_name?.[0] || "?"}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex-1">
+                                <div className="bg-slate-50/50 rounded-2xl px-5 py-3 border border-slate-100 group-hover/comment:bg-white group-hover/comment:shadow-lg transition-all">
+                                  <div className="flex items-center justify-between mb-1">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[10px] font-black text-slate-900 tracking-tight">
+                                        {comment.author?.full_name || "Anonymous Member"}
+                                      </span>
+                                      <span className="text-[9px] font-bold text-slate-300">
+                                        {format(new Date(comment.created_at), "MMM d")}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <p className="text-[11px] text-slate-600 leading-relaxed font-medium">
+                                    {comment.content}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))
             )}
           </div>
         </div>
 
-        <div className="col-span-12 lg:col-span-4 space-y-6">
-          <div className="flex items-center justify-between mb-4">
-            <h4 className="font-black text-3xs uppercase tracking-widest text-slate-400 flex items-center gap-2">
-              <Pin size={14} className="text-indigo-600" />
-              Pinned for You
-            </h4>
-            <span className="bg-indigo-50 text-indigo-600 text-3xs font-black px-2 py-0.5 rounded-full border border-indigo-100 italic">
-              {posts.filter((p) => pinnedPostIds.has(p.id)).length} Saved
-            </span>
-          </div>
+        {/* Sidebar Column */}
+        <div className="col-span-12 lg:col-span-4 space-y-8">
+          <div className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm relative overflow-hidden group">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full -mr-16 -mt-16 group-hover:scale-110 transition-transform duration-700" />
+            <div className="flex items-center justify-between mb-6">
+              <h4 className="font-black text-[10px] uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                <Pin size={14} className="text-indigo-600" />
+                Pinned Signals
+              </h4>
+              <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100 italic">
+                {posts.filter((p) => pinnedPostIds.has(p.id)).length}
+              </span>
+            </div>
 
-          <div className="space-y-6">
-            {posts.filter((p) => pinnedPostIds.has(p.id)).length === 0 ? (
-              <div className="bg-white rounded-4xl p-12 border-2 border-dashed border-slate-100 text-center flex flex-col items-center justify-center space-y-4">
-                <div className="p-4 bg-slate-50 rounded-full text-slate-300">
-                  <Pin size={24} className="rotate-45" />
+            <div className="space-y-4">
+              {posts.filter((p) => pinnedPostIds.has(p.id)).length === 0 ? (
+                <div className="py-8 text-center bg-slate-50/50 rounded-2xl border border-dashed border-slate-100">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 italic">
+                    No signals pinned
+                  </p>
                 </div>
-                <p className="text-3xs font-black uppercase tracking-widest text-slate-400">
-                  No signals pinned
-                </p>
-              </div>
-            ) : (
-              posts
-                .filter((p) => pinnedPostIds.has(p.id))
-                .map((post) => (
-                  <div
-                    key={`pinned-${post.id}`}
-                    className="bg-white rounded-[2.5rem] border border-slate-200 overflow-hidden shadow-sm hover:shadow-xl hover:shadow-indigo-100/40 transition-all duration-500 group relative"
-                  >
-                    <div className="p-6">
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 rounded-full bg-slate-100 overflow-hidden relative border-2 border-slate-50 shadow-sm">
+              ) : (
+                posts
+                  .filter((p) => pinnedPostIds.has(p.id))
+                  .map((post) => (
+                    <div
+                      key={`pinned-${post.id}`}
+                      className="p-4 rounded-2xl bg-slate-50 border border-slate-100 hover:bg-white hover:shadow-lg transition-all cursor-pointer group/item"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2 overflow-hidden">
+                          <div className="h-7 w-7 rounded-full bg-indigo-50 overflow-hidden relative border border-white shrink-0 flex items-center justify-center">
                             {post.author?.profile_photo_url ? (
-                              <Image
-                                src={post.author.profile_photo_url}
-                                alt=""
-                                fill
-                                className="object-cover"
+                              <Image 
+                                src={post.author.profile_photo_url} 
+                                alt="" 
+                                fill 
+                                className="object-cover" 
                               />
                             ) : (
-                              <div className="h-full w-full flex items-center justify-center text-xs font-black bg-indigo-50 text-indigo-400">
+                              <span className="text-[10px] font-black text-indigo-400">
                                 {post.author?.full_name?.[0] || "?"}
-                              </div>
+                              </span>
                             )}
                           </div>
-                          <div className="flex flex-col">
-                            <span className="text-2xs font-black text-slate-900 uppercase tracking-wider">
-                              {post.author?.full_name || "Nexus Member"}
-                            </span>
-                            <span className="text-4xs font-bold text-slate-400 uppercase tracking-widest">
-                              {new Date(post.created_at).toLocaleDateString()}
-                            </span>
-                          </div>
+                          <span className="text-[10px] font-black text-slate-900 uppercase truncate">
+                            {post.author?.full_name || "Anonymous"}
+                          </span>
                         </div>
-                        <button
+                        <button 
                           onClick={() => handlePinPost(post.id)}
-                          className="p-1.5 text-indigo-600 hover:text-rose-500 transition-colors"
-                          title="Unpin Signal"
+                          className="text-indigo-400 hover:text-rose-500 transition-colors shrink-0 px-1"
                         >
-                          <Pin size={16} className="fill-indigo-600" />
+                          <Pin size={12} className="fill-current" />
                         </button>
                       </div>
-
-                      <p className="mt-4 text-sm font-bold text-slate-600 leading-relaxed line-clamp-3 italic">
+                      <p className="text-[11px] font-bold text-slate-500 leading-relaxed line-clamp-2 italic pl-1 border-l-2 border-indigo-100/50">
                         &ldquo;{post.content}&rdquo;
                       </p>
 
                       {post.media_urls && post.media_urls.length > 0 && (
-                        <div className="mt-4 rounded-xl overflow-hidden border border-slate-100 aspect-video relative">
-                          <Image
-                            src={post.media_urls[0]}
-                            alt="Pinned preview"
-                            fill
-                            className="object-cover group-hover:scale-110 transition-transform duration-700"
-                          />
+                        <div className="mt-3 rounded-xl overflow-hidden aspect-video relative border border-slate-100 shadow-sm">
+                          {/\.(mp4|webm|ogg)/i.test(post.media_urls[0].split("?")[0]) || post.media_urls[0].includes("video") ? (
+                            <div className="w-full h-full bg-slate-900 flex items-center justify-center">
+                              <Video size={20} className="text-white/50" />
+                            </div>
+                          ) : (
+                            <Image
+                              src={post.media_urls[0]}
+                              alt=""
+                              fill
+                              className="object-cover group-hover/item:scale-110 transition-transform duration-700"
+                              unoptimized
+                            />
+                          )}
                           {post.media_urls.length > 1 && (
-                            <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[8px] font-black px-2 py-1 rounded-md uppercase tracking-tighter backdrop-blur-sm">
+                            <div className="absolute bottom-1.5 right-1.5 bg-black/60 text-white text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter backdrop-blur-sm">
                               +{post.media_urls.length - 1} More
                             </div>
                           )}
                         </div>
                       )}
                     </div>
-
-                    {/* Decorative Pinned Ribbon */}
-                    <div className="absolute top-0 right-12 h-6 w-12 bg-indigo-600/5 rounded-b-xl flex items-center justify-center">
-                      <div className="h-1 w-4 bg-indigo-600/20 rounded-full" />
-                    </div>
-                  </div>
-                ))
-            )}
+                  ))
+              )}
+            </div>
           </div>
         </div>
       </div>

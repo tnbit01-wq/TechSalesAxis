@@ -1,7 +1,7 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import { useRouter } from "next/navigation";
 import {
@@ -31,6 +31,8 @@ interface Application {
     id: string;
     status: string;
     meeting_link?: string;
+    round_number?: number;
+    round_name?: string;
     interview_slots?: Array<{
       id: string;
       start_time: string;
@@ -51,18 +53,17 @@ export default function CandidateApplicationsPage() {
 
   const loadData = async () => {
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) {
+      const token = awsAuth.getToken();
+      if (!token) {
         router.replace("/login");
         return;
       }
 
       const appsData = await apiClient.get(
         "/candidate/applications",
-        session.access_token,
+        token,
       );
+      console.log("DEBUG: Refreshing Candidate Applications Data", appsData);
       setApplications(appsData);
     } catch (err) {
       console.error("Failed to load applications:", err);
@@ -73,6 +74,9 @@ export default function CandidateApplicationsPage() {
 
   useEffect(() => {
     loadData();
+    // Refresh every 30 seconds to catch schedule changes
+    const interval = setInterval(loadData, 30000);
+    return () => clearInterval(interval);
   }, [router]);
 
   if (loading) {
@@ -170,30 +174,40 @@ export default function CandidateApplicationsPage() {
                                 (s: any) => s.is_selected,
                               );
                             if (!slot) return "Pending Coord...";
-                            return new Date(slot.start_time).toLocaleString([], {
-                              month: "short",
-                              day: "numeric",
+                            return new Date(slot.start_time).toLocaleString("en-IN", {
+                              day: "2-digit",
+                              month: "2-digit",
+                              year: "numeric",
                               hour: "2-digit",
                               minute: "2-digit",
-                              timeZoneName: 'short'
+                              hour12: true,
+                              timeZone: "Asia/Kolkata"
                             });
                           })()}
                         </div>
                         {(() => {
                           const slot = app.active_interview?.interview_slots?.find((s: any) => s.is_selected);
                           const now = new Date();
-                          const start = new Date(slot?.start_time || "");
-                          const end = new Date(slot?.end_time || "");
-                          const isActive = now >= new Date(start.getTime() - 5 * 60000) && now <= end;
+                          
+                          // Handle cases where no slot is selected for display but UI expects it
+                          if (!slot) return null;
+
+                          const start = new Date(slot.start_time);
+                          
+                          // Window Strategy: Join opens 15m before START until 10m AFTER start
+                          const allowedStart = new Date(start.getTime() - 15 * 60000);
+                          const allowedEnd = new Date(start.getTime() + 10 * 60000);
+                          const nowInBrowser = new Date();
+                          const isActive = nowInBrowser >= allowedStart && nowInBrowser <= allowedEnd;
 
                           if (isActive) {
                             return (
                               <button
                                 onClick={async () => {
                                   try {
-                                    const { data: { session } } = await supabase.auth.getSession();
-                                    if (session) {
-                                      apiClient.post(`/interviews/${app.active_interview?.id}/join-event`, {}, session.access_token);
+                                    const token = awsAuth.getToken();
+                                    if (token) {
+                                      apiClient.post(`/interviews/${app.active_interview?.id}/join-event`, { role: "candidate" }, token);
                                     }
                                   } catch (err) {
                                     console.error("Failed to signal join:", err);
@@ -203,16 +217,18 @@ export default function CandidateApplicationsPage() {
                                     "_blank",
                                   );
                                 }}
-                                className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-indigo-700 transition flex items-center gap-2 shadow-lg shadow-indigo-200 active:scale-95"
+                                className={`px-6 py-2.5 ${app.active_interview?.status === "in_progress" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-indigo-600 hover:bg-indigo-700"} text-white rounded-xl font-black text-[10px] uppercase tracking-widest transition flex items-center gap-2 shadow-lg active:scale-95`}
                               >
                                 <Video className="h-3.5 w-3.5" />
-                                Initiate Meeting Protocol
+                                {app.active_interview?.status === "in_progress" ? "Live Stream Active" : "Initiate Meeting Protocol"}
                               </button>
                             );
                           }
                           return (
                             <div className="px-4 py-2 bg-slate-50 text-slate-400 rounded-xl font-black text-[10px] uppercase tracking-widest border border-slate-100 italic">
-                              {now < start ? "Secure: Locked Until Start" : "Secure: Session Expired"}
+                              {nowInBrowser < allowedStart 
+                                ? "Secure: Locked Until Start (15m before)" 
+                                : "Window Closed (10m Late)"}
                             </div>
                           );
                         })()}
@@ -239,7 +255,7 @@ export default function CandidateApplicationsPage() {
                   )}
                   <button
                     onClick={() =>
-                      router.push("/dashboard/candidate/applications/")
+                      router.push(`/dashboard/candidate/applications/${app.id}`)
                     }
                     className="p-3 bg-slate-50 text-slate-400 rounded-xl hover:bg-slate-100 hover:text-slate-900 transition-all active:scale-95"
                   >

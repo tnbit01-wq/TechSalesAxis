@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { awsAuth } from "@/lib/awsAuth";
 import { useRouter } from "next/navigation";
 
 export default function LogoutPage() {
@@ -9,8 +9,8 @@ export default function LogoutPage() {
 
   useEffect(() => {
     async function performLogout() {
-      // 1. Sign out from Supabase
-      await supabase.auth.signOut();
+      // 1. Sign out 
+      awsAuth.logout();
       
       // 2. Clear all local storage
       localStorage.clear();

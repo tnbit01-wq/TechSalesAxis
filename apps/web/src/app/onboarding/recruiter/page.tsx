@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { supabase } from "@/lib/supabaseClient";
+import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import { useVoice } from "@/hooks/useVoice";
 import { extractNameFromEmail } from "@/utils/emailValidation";
@@ -97,7 +97,7 @@ export default function RecruiterOnboarding() {
 
   const handleLogout = useCallback(async () => {
     localStorage.removeItem("tf_recruiter_onboarding");
-    await supabase.auth.signOut();
+    awsAuth.logout();
     router.push("/login");
   }, [router]);
 
@@ -138,12 +138,11 @@ export default function RecruiterOnboarding() {
   const startAssessment = useCallback(async () => {
     setIsLoading(true);
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      const token = awsAuth.getToken();
+      if (!token) throw new Error("No token found");
       const questions = await apiClient.get(
         "/recruiter/assessment-questions",
-        session?.access_token,
+        token,
       );
 
       if (questions && questions.length > 0) {
@@ -193,10 +192,7 @@ export default function RecruiterOnboarding() {
       setIsLoading(true);
 
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        const token = session?.access_token;
+        const token = awsAuth.getToken();
 
         if (state === "REGISTRATION") {
           const gstinRegex =
@@ -349,9 +345,7 @@ export default function RecruiterOnboarding() {
       if (initialized.current) return;
       initialized.current = true;
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = awsAuth.getUser();
       if (!user) {
         router.replace("/login");
         return;
@@ -359,12 +353,14 @@ export default function RecruiterOnboarding() {
 
       const name = extractNameFromEmail(user.email || "");
 
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      const token = awsAuth.getToken();
+      if (!token) {
+        router.replace("/login");
+        return;
+      }
       const profile = await apiClient.get(
         "/recruiter/profile",
-        session?.access_token,
+        token,
       );
 
       if (profile) {
@@ -435,20 +431,23 @@ export default function RecruiterOnboarding() {
     const handleVisibilityChange = async () => {
       if (document.visibilityState === "hidden") {
         try {
-          const {
-            data: { session },
-          } = await supabase.auth.getSession();
-          if (!session) return;
+          const token = awsAuth.getToken();
+          if (!token) return;
 
           const res = await apiClient.post(
             "/recruiter/tab-switch",
             {},
-            session.access_token,
+            token,
           );
 
           if (res.status === "blocked") {
+            // Blocked state - direct logout and error
+            awsAuth.logout();
             window.location.href = "/login?error=blocked";
           } else {
+            // Immediate alert for the warning strike
+            alert(res.message);
+            // Also log in chat for persistence
             addMessage(res.message, "bot");
           }
         } catch (err) {
@@ -479,133 +478,258 @@ export default function RecruiterOnboarding() {
   }, [isAssessmentActive, timeLeft, handleSend]);
 
   return (
-    <div className="flex flex-col h-screen bg-black text-white p-4 max-w-2xl mx-auto border-x border-zinc-800">
-      <div className="flex justify-between items-center mb-6 border-b border-zinc-800 pb-4">
+    <div className={`flex flex-col h-screen ${isAssessmentActive ? "bg-black text-white" : "bg-white text-slate-900"} font-sans transition-colors duration-700`}>
+      {/* Dynamic Header */}
+      <header className={`flex justify-between items-center py-4 px-6 border-b ${isAssessmentActive ? "border-zinc-800 bg-black/80" : "border-slate-100 bg-white/80"} backdrop-blur-md sticky top-0 z-50`}>
         <div className="flex items-center gap-4">
-          <Link
-            href="/"
-            className="p-2 hover:bg-zinc-800 rounded-full transition-colors text-zinc-500 hover:text-blue-500"
-            aria-label="Back to home"
-          >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
+          {!isAssessmentActive && (
+            <Link
+              href="/"
+              className="p-2 hover:bg-slate-50 rounded-full transition-colors text-slate-400 hover:text-indigo-600"
+              aria-label="Back to home"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M10 19l-7-7m0 0l7-7m-7 7h18"
-              />
-            </svg>
-          </Link>
-          <div className="flex items-center gap-2">
-            <div className="h-7 w-7 rounded bg-blue-600 flex items-center justify-center">
-              <div className="h-3 w-3 rounded-sm bg-black rotate-45" />
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+            </Link>
+          )}
+          <div className="flex items-center gap-2.5">
+            <div className={`h-9 w-9 rounded-xl ${isAssessmentActive ? "bg-blue-600 shadow-blue-900/20" : "bg-indigo-600 shadow-indigo-200"} flex items-center justify-center shadow-lg`}>
+              <div className={`h-4 w-4 rounded ${isAssessmentActive ? "bg-black" : "bg-white"} rotate-45`} />
             </div>
-            <h1 className="text-lg font-bold tracking-tighter text-white uppercase italic">
-              TalentFlow
+            <h1 className={`text-xl font-bold tracking-tight ${isAssessmentActive ? "text-white uppercase italic" : "text-slate-800"}`}>
+              TalentFlow {isAssessmentActive ? "" : <span className="font-medium text-slate-400 ml-1">Onboarding</span>}
             </h1>
           </div>
         </div>
-        <div className="flex items-center gap-4">
-          {isAssessmentActive && (
-            <div
-              className={`px-3 py-1 rounded-full text-xs font-mono border ${timeLeft < 15 ? "bg-red-950 border-red-500 text-red-500 animate-pulse" : "bg-zinc-900 border-zinc-700 text-zinc-400"}`}
-            >
-              {Math.floor(timeLeft / 60)
-                .toString()
-                .padStart(2, "0")}
-              :{(timeLeft % 60).toString().padStart(2, "0")}
+        <div className="flex items-center gap-6">
+          {isAssessmentActive ? (
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-3 bg-zinc-900 px-4 py-2 rounded-xl border border-zinc-800">
+                <div className="flex items-center gap-2 text-zinc-500">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span className="text-[10px] font-bold uppercase tracking-widest">Countdown</span>
+                </div>
+                <span className={`font-mono text-sm font-bold ${timeLeft < 15 ? "text-red-500 animate-pulse" : "text-blue-400"}`}>
+                  00:{timeLeft.toString().padStart(2, "0")}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="h-1.5 w-24 bg-zinc-800 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-blue-600 transition-all duration-500" 
+                    style={{ width: `${((currentQuestionIndex + 1) / dynamicQuestions.length) * 100}%` }}
+                  />
+                </div>
+                <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
+                  Signal: {currentQuestionIndex + 1} / {dynamicQuestions.length}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-6">
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-red-600 transition-colors py-2 px-3 rounded-lg hover:bg-red-50"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                Logout
+              </button>
             </div>
           )}
-          <button
-            onClick={handleLogout}
-            className="text-[10px] font-bold text-zinc-600 hover:text-red-500 transition-colors uppercase tracking-[0.2em]"
-          >
-            Logout
-          </button>
-        </div>
-      </div>
-
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-y-auto space-y-4 mb-4 scrollbar-hide pb-10"
-      >
-        {messages.map((m) => (
-          <div
-            key={m.id}
-            className={`flex ${m.sender === "bot" ? "justify-start" : "justify-end"}`}
-          >
-            <div
-              className={`max-w-[85%] p-4 rounded-2xl ${m.sender === "bot" ? "bg-zinc-900 border border-zinc-800" : "bg-blue-600 text-white"}`}
+          {isAssessmentActive && (
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2 text-sm font-semibold text-zinc-500 hover:text-red-500 transition-colors py-2 px-3 rounded-lg hover:bg-red-950/30"
             >
-              <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                {m.text}
-              </p>
-              {m.options && (
-                <div className="flex flex-wrap gap-2 mt-4">
-                  {m.options.map((opt) => (
-                    <button
-                      key={opt}
-                      onClick={() => handleSend(opt)}
-                      disabled={isLoading}
-                      className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-xs transition-all active:scale-95"
-                    >
-                      {opt}
-                    </button>
-                  ))}
-                </div>
-              )}
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              Logout
+            </button>
+          )}
+        </div>
+      </header>
+
+      <main className={`flex-1 overflow-hidden relative flex flex-col ${isAssessmentActive ? "max-w-4xl" : "max-w-5xl"} mx-auto w-full`}>
+        {isAssessmentActive ? (
+          /* Assessment View (Second Image Style) */
+          <div className="flex-1 flex flex-col px-6 py-12 space-y-12">
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-blue-500">
+                <div className="h-px w-8 bg-blue-500" />
+                <span className="text-[10px] font-bold uppercase tracking-[0.3em]">System_Origin: Audit_Module</span>
+              </div>
+              <h2 className="text-3xl font-bold leading-tight tracking-tight text-zinc-100 max-w-3xl">
+                {dynamicQuestions[currentQuestionIndex]?.question_text || dynamicQuestions[currentQuestionIndex]?.text}
+              </h2>
             </div>
-          </div>
-        ))}
-        {isLoading && (
-          <div className="flex justify-start animate-pulse">
-            <div className="bg-zinc-900 p-4 rounded-2xl border border-zinc-800">
-              <div className="flex space-x-2">
-                <div className="w-1.5 h-1.5 bg-zinc-600 rounded-full animate-bounce"></div>
-                <div className="w-1.5 h-1.5 bg-zinc-600 rounded-full animate-bounce delay-75"></div>
-                <div className="w-1.5 h-1.5 bg-zinc-600 rounded-full animate-bounce delay-150"></div>
+
+            <div className="flex-1 flex flex-col justify-end pb-12">
+              <div className="relative group">
+                <div className="absolute -inset-1 bg-gradient-to-r from-blue-600/20 to-purple-600/20 rounded-2xl blur opacity-25 group-focus-within:opacity-100 transition duration-1000"></div>
+                <div className="relative flex flex-col bg-zinc-900/50 border border-zinc-800 focus-within:border-blue-500/50 transition-all rounded-2xl p-4">
+                  <textarea
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    placeholder="Type your strategic response..."
+                    className="w-full bg-transparent border-none focus:ring-0 text-zinc-200 placeholder:text-zinc-600 text-lg min-h-[160px] resize-none font-medium"
+                    onCopy={(e) => e.preventDefault()}
+                    onPaste={(e) => e.preventDefault()}
+                  />
+                  <div className="flex justify-between items-center mt-4 border-t border-zinc-800/50 pt-4">
+                    <button
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        if (!isListening) startListening();
+                      }}
+                      onMouseUp={(e) => {
+                        e.preventDefault();
+                        if (isListening) stopListening();
+                      }}
+                      className={`p-3 rounded-xl transition-all ${isListening ? "bg-red-500 text-white" : "text-zinc-500 hover:text-white"}`}
+                    >
+                      <MicIcon />
+                    </button>
+                    <button
+                      onClick={() => handleSend()}
+                      disabled={isLoading || !input.trim()}
+                      className="flex items-center gap-3 bg-zinc-800 hover:bg-blue-600 text-zinc-400 hover:text-white px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-[0.2em] transition-all disabled:opacity-50 group"
+                    >
+                      <span>Transmit Signal</span>
+                      <SendIcon />
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div className="flex justify-between items-center mt-6 px-2">
+                <div className="flex items-center gap-6">
+                  <div className="flex items-center gap-2">
+                    <div className="h-1 w-1 rounded-full bg-blue-500 animate-pulse" />
+                    <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">Evaluation_Mode: Active</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="h-1 w-1 rounded-full bg-zinc-700" />
+                    <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">Encryption: Shield-V3.0-AES-256</span>
+                  </div>
+                </div>
+                <span className="text-[10px] font-bold text-zinc-700 uppercase tracking-widest">© 2026 TalentFlow AI Corp</span>
               </div>
             </div>
           </div>
-        )}
-      </div>
+        ) : (
+          /* Onboarding View (First Image Style) */
+          <>
+            <div
+              ref={scrollRef}
+              className="flex-1 overflow-y-auto px-6 py-8 space-y-8 scroll-smooth"
+            >
+              {messages.map((m) => (
+                <div
+                  key={m.id}
+                  className={`flex w-full ${m.sender === "bot" ? "justify-start" : "justify-end animate-in slide-in-from-right-4 duration-300"}`}
+                >
+                  <div className={`max-w-[80%] flex flex-col ${m.sender === "bot" ? "items-start" : "items-end"}`}>
+                    <div
+                      className={`px-5 py-4 rounded-2xl shadow-sm text-sm leading-relaxed ${
+                        m.sender === "bot" 
+                          ? "bg-slate-50 border border-slate-100 text-slate-700 rounded-tl-none" 
+                          : "bg-indigo-600 text-white rounded-tr-none shadow-indigo-100 font-semibold"
+                      }`}
+                    >
+                      <p className="whitespace-pre-wrap font-medium">
+                        {m.text}
+                      </p>
+                    </div>
+                    
+                    {m.options && (
+                      <div className="flex flex-wrap gap-2.5 mt-4">
+                        {m.options.map((opt) => (
+                          <button
+                            key={opt}
+                            onClick={() => handleSend(opt)}
+                            disabled={isLoading}
+                            className="px-5 py-2.5 bg-white hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 rounded-full text-sm font-semibold text-slate-600 hover:text-indigo-600 transition-all shadow-sm active:scale-95 disabled:opacity-50"
+                          >
+                            {opt}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+              
+              {isLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-slate-50 px-5 py-4 rounded-2xl border border-slate-100 rounded-tl-none shadow-sm">
+                    <div className="flex space-x-1.5 items-center h-4">
+                      <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce"></div>
+                      <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce delay-100"></div>
+                      <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce delay-200"></div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
 
-      <div className="relative group">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyPress={(e) => e.key === "Enter" && handleSend()}
-            placeholder={isListening ? "Listening..." : "Type your response..."}
-            className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition-colors"
-            autoComplete="off"
-            onCopy={(e) => isAssessmentActive && e.preventDefault()}
-            onPaste={(e) => isAssessmentActive && e.preventDefault()}
-          />
-          <button
-            onMouseDown={startListening}
-            onMouseUp={stopListening}
-            onTouchStart={startListening}
-            onTouchEnd={stopListening}
-            className={`p-3 rounded-xl border transition-all ${isListening ? "bg-red-600 border-red-500 scale-95" : "bg-zinc-900 border-zinc-800 hover:border-zinc-600"}`}
-          >
-            <MicIcon />
-          </button>
-          <button
-            onClick={() => handleSend()}
-            disabled={isLoading}
-            className="bg-blue-600 hover:bg-blue-500 text-white p-3 rounded-xl transition-colors disabled:opacity-50"
-          >
-            <SendIcon />
-          </button>
-        </div>
-      </div>
+            {/* Action Bar */}
+            <div className="px-6 py-6 bg-white border-t border-slate-100">
+              <div className="max-w-4xl mx-auto relative">
+                <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 focus-within:border-indigo-500 focus-within:ring-4 focus-within:ring-indigo-50 transition-all px-2 py-2 rounded-2xl">
+                  <input
+                    type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyPress={(e) => e.key === "Enter" && handleSend()}
+                    placeholder={isListening ? "Listening..." : "Type your response..."}
+                    className="flex-1 bg-transparent px-4 py-2 text-slate-700 placeholder:text-slate-400 focus:outline-none text-sm font-medium"
+                    autoComplete="off"
+                  />
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        if (!isListening) startListening();
+                      }}
+                      onMouseUp={(e) => {
+                        e.preventDefault();
+                        if (isListening) stopListening();
+                      }}
+                      onTouchStart={(e) => {
+                        e.preventDefault();
+                        if (!isListening) startListening();
+                      }}
+                      onTouchEnd={(e) => {
+                        e.preventDefault();
+                        if (isListening) stopListening();
+                      }}
+                      className={`p-2.5 rounded-xl transition-all ${
+                        isListening 
+                          ? "bg-red-500 text-white animate-pulse" 
+                          : "text-slate-400 hover:text-indigo-600 hover:bg-white border border-transparent hover:border-slate-100"
+                      }`}
+                    >
+                      <MicIcon />
+                    </button>
+                    <button
+                      onClick={() => handleSend()}
+                      disabled={isLoading || !input.trim()}
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white p-2.5 rounded-xl transition-all shadow-md shadow-indigo-100 disabled:opacity-40 active:scale-95"
+                    >
+                      <SendIcon />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </main>
     </div>
   );
 }

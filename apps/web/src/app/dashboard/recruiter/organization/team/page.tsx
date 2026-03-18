@@ -12,7 +12,7 @@ import {
   X,
   Loader2,
 } from "lucide-react";
-import { supabase } from "@/lib/supabaseClient";
+import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 
 interface TeamMember {
@@ -43,23 +43,21 @@ export default function TeamManagementPage() {
 
   const loadTeamData = useCallback(async () => {
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) {
+      const token = awsAuth.getToken();
+      if (!token) {
         router.replace("/login");
         return;
       }
 
       const profileData = await apiClient.get(
         "/recruiter/profile",
-        session.access_token,
+        token,
       );
       setProfile(profileData);
 
       const teamData = await apiClient.get(
         "/recruiter/team",
-        session.access_token,
+        token,
       );
       setTeam(teamData || []);
     } catch (err) {
@@ -79,15 +77,13 @@ export default function TeamManagementPage() {
 
     setInviting(true);
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) return;
+      const token = awsAuth.getToken();
+      if (!token) return;
 
       await apiClient.post(
         "/recruiter/invite",
         { email: inviteEmail },
-        session.access_token,
+        token,
       );
       setIsInviteModalOpen(false);
       setInviteEmail("");
@@ -110,14 +106,12 @@ export default function TeamManagementPage() {
 
     setActioningId(memberId);
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) return;
+      const token = awsAuth.getToken();
+      if (!token) return;
 
       await apiClient.delete(
         `/recruiter/team/${memberId}`,
-        session.access_token,
+        token,
       );
       setTeam((prev) => prev.filter((m) => m.user_id !== memberId));
     } catch (err) {
@@ -139,15 +133,13 @@ export default function TeamManagementPage() {
 
     setActioningId(member.user_id);
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) return;
+      const token = awsAuth.getToken();
+      if (!token) return;
 
       await apiClient.patch(
         `/recruiter/team/${member.user_id}/role`,
         { is_admin: !member.is_admin },
-        session.access_token,
+        token,
       );
       setTeam((prev) =>
         prev.map((m) =>
@@ -252,7 +244,7 @@ export default function TeamManagementPage() {
                       }`}
                     >
                       <BadgeCheck size={10} />
-                      {member.assessment_status.split("_")[0]}
+                      {member.assessment_status?.split("_")[0] || "Pending"}
                     </span>
                   </div>
 

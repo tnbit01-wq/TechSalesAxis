@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import { awsAuth } from "@/lib/awsAuth";
 import {
   LayoutDashboard,
   Briefcase,
@@ -50,8 +50,8 @@ export default function RecruiterSidebar({
 
   const isLocked = profileScore === 0;
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
+  const handleLogout = () => {
+    awsAuth.logout();
     router.replace("/login");
   };
 
@@ -75,6 +75,11 @@ export default function RecruiterSidebar({
           href: "/dashboard/recruiter/messages",
           icon: <MessageSquare className="h-4 w-4" />,
           locked: isLocked,
+        },
+        {
+          label: "Community Feed",
+          href: "/dashboard/recruiter/organization/community",
+          icon: <Users className="h-4 w-4" />,
         },
       ],
     },
@@ -129,7 +134,7 @@ export default function RecruiterSidebar({
           locked: isLocked,
         },
         {
-          label: "Career GPS",
+          label: "Market Insights",
           href: "/dashboard/recruiter/intelligence/gps",
           icon: <Compass className="h-4 w-4" />,
           locked: isLocked,
@@ -144,11 +149,6 @@ export default function RecruiterSidebar({
           label: "Employer Branding",
           href: "/dashboard/recruiter/organization/branding",
           icon: <Globe className="h-4 w-4" />,
-        },
-        {
-          label: "Feed",
-          href: "/dashboard/recruiter/organization/community",
-          icon: <Users className="h-4 w-4" />,
         },
         teamRole === "admin"
           ? {

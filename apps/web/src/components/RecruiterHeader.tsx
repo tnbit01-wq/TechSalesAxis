@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Bell, Check } from "lucide-react";
-import { supabase } from "@/lib/supabaseClient";
+import { Bell, Check, Sparkles } from "lucide-react";
+import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
+import { useChatViewStore } from "@/hooks/useChatViewStore";
 
 interface Notification {
   id: string;
@@ -15,6 +16,7 @@ interface Notification {
 }
 
 export default function RecruiterHeader() {
+  const { toggleChatMode } = useChatViewStore();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
@@ -22,14 +24,12 @@ export default function RecruiterHeader() {
   useEffect(() => {
     async function fetchNotifications() {
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        if (!session) return;
+        const token = awsAuth.getToken();
+        if (!token) return;
 
         const data = await apiClient.get(
           "/notifications",
-          session.access_token,
+          token,
         );
         if (data && Array.isArray(data)) {
           setNotifications(data);
@@ -48,15 +48,13 @@ export default function RecruiterHeader() {
 
   const markAsRead = async (id: string) => {
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) return;
+      const token = awsAuth.getToken();
+      if (!token) return;
 
       await apiClient.patch(
         `/notifications/${id}/read`,
         {},
-        session.access_token,
+        token,
       );
       setNotifications((prev) =>
         prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)),
@@ -69,15 +67,13 @@ export default function RecruiterHeader() {
 
   const markAllRead = async () => {
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) return;
+      const token = awsAuth.getToken();
+      if (!token) return;
 
       await apiClient.patch(
         `/notifications/read-all`,
         {},
-        session.access_token,
+        token,
       );
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
       setUnreadCount(0);
@@ -87,7 +83,15 @@ export default function RecruiterHeader() {
   };
 
   return (
-    <div className="flex justify-end p-4 absolute top-0 right-0 z-50">
+    <div className="flex items-center gap-3 p-4 absolute top-4 right-8 z-50">
+      <button
+        onClick={toggleChatMode}
+        className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl border border-blue-500/20 hover:from-blue-700 hover:to-indigo-700 transition-all shadow-lg shadow-blue-500/20 active:scale-95 group"
+      >
+        <Sparkles className="h-4 w-4 text-blue-100 group-hover:rotate-12 transition-transform" />
+        <span className="text-sm font-semibold tracking-wide uppercase">AI Chat Mode</span>
+      </button>
+
       <div className="relative">
         <button
           onClick={() => setIsOpen(!isOpen)}

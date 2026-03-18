@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { supabase } from "@/lib/supabaseClient";
+import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import { useVoice } from "@/hooks/useVoice";
 import { extractNameFromEmail } from "@/utils/emailValidation";
@@ -19,6 +19,7 @@ type LoginState =
   | "INITIAL"
   | "AWAITING_EMAIL"
   | "AWAITING_PASSWORD"
+  | "FORGOT_PASSWORD"
   | "COMPLETED";
 
 function LoginForm() {
@@ -62,15 +63,14 @@ function LoginForm() {
 
   useEffect(() => {
     async function checkSession() {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (session) {
+      const token = awsAuth.getToken();
+      if (token) {
         // If already logged in, run the post-login handshake to find where they belong
         try {
-          const handshake = await apiClient.get(
+          const handshake = await apiClient.post(
             "/auth/post-login",
-            session.access_token,
+            {},
+            token,
           );
           router.replace(handshake.next_step);
         } catch (err) {
@@ -83,7 +83,16 @@ function LoginForm() {
     if (state === "INITIAL" && !initialized.current) {
       initialized.current = true;
       checkSession().then(() => {
-        addMessage("Welcome back! Please enter your email to sign in.", "bot");
+        // Check for error in URL (e.g. from tab-switch block)
+        const urlParams = new URLSearchParams(window.location.search);
+        const error = urlParams.get("error");
+        
+        if (error === "blocked") {
+          addMessage("CRITICAL SECURITY ALERT: Your account has been permanently blocked for security violations. Access denied.", "bot");
+          addMessage("Please contact support@talentflow.ai for recovery options.", "bot");
+        } else {
+          addMessage("Welcome back! Please enter your email to sign in.", "bot");
+        }
         setState("AWAITING_EMAIL");
       });
     }
@@ -98,38 +107,47 @@ function LoginForm() {
     setInput("");
     setIsLoading(true);
 
+    if (workingInput.toLowerCase().includes("forgot password") || workingInput.toLowerCase() === "reset") {
+      addMessage("Protocol Recovery Initiated. Please enter your registered email to receive a reset link.", "bot");
+      setState("FORGOT_PASSWORD");
+      setIsLoading(false);
+      return;
+    }
+
     try {
+      if (state === "FORGOT_PASSWORD") {
+        const resetEmail = workingInput.toLowerCase();
+        try {
+          await apiClient.post("/auth/forgot-password", { email: resetEmail });
+          addMessage("Recovery signal transmitted. Check your inbox for the reset link.", "bot");
+          addMessage("Would you like to try logging in again? Tell me your email.", "bot");
+          setState("AWAITING_EMAIL");
+        } catch (err: any) {
+          addMessage(`Recovery failed: ${err.message}`, "bot");
+          addMessage("Please check the email and try again.", "bot");
+        }
+        return;
+      }
+
       if (state === "AWAITING_EMAIL") {
-        setEmail(workingInput.toLowerCase());
+        setEmail(workingInput.toLowerCase().trim());
         const name = extractNameFromEmail(workingInput);
         addMessage(`Got it, ${name}. Now, please enter your password.`, "bot");
         setState("AWAITING_PASSWORD");
       } else if (state === "AWAITING_PASSWORD") {
-        const { data: authData, error } =
-          await supabase.auth.signInWithPassword({
-            email,
-            password: workingInput,
-          });
-
-        if (error) {
-          addMessage(
-            `Login failed: ${error.message}. Please check your credentials and try again.`,
-            "bot",
-          );
-          setState("AWAITING_EMAIL");
-          addMessage("Let's start over. What is your email?", "bot");
-        } else {
+        try {
+          const authRes = await awsAuth.login(email, workingInput);
           addMessage(
             "Success! Synchronizing with the TalentFlow security layer...",
             "bot",
           );
 
           try {
-            const token = authData.session?.access_token;
-            if (!token)
-              throw new Error("Authentication failed: No token received.");
-
-            const handshake = await apiClient.get("/auth/post-login", token);
+            const handshake = await apiClient.post(
+              "/auth/post-login",
+              {},
+              authRes.access_token,
+            );
 
             addMessage(
               `Verified. Redirecting you to your ${handshake.role} dashboard...`,
@@ -140,14 +158,33 @@ function LoginForm() {
             setTimeout(() => {
               router.replace(handshake.next_step);
             }, 2000);
-          } catch (err) {
-            const errorMessage =
-              err instanceof Error ? err.message : "Unknown error";
-            addMessage(
-              `Security handshake failed: ${errorMessage}. Please contact support.`,
-              "bot",
-            );
+          } catch (err: any) {
+            // Enhanced blocked state handling - support both status code and message check
+            const isBlocked = err.status === 403 || 
+                             (err.message && (err.message.includes("blocked") || err.message.includes("security violations")));
+            
+            if (isBlocked) {
+              addMessage(
+                "CRITICAL SECURITY ALERT: Your account has been permanently blocked for security violations. Access denied.",
+                "bot",
+              );
+              addMessage("Please contact support@talentflow.ai if you believe this is an error.", "bot");
+              awsAuth.logout();
+            } else {
+              const errorMessage = err instanceof Error ? err.message : "Unknown error";
+              addMessage(
+                `Security handshake failed: ${errorMessage}. Please contact support.`,
+                "bot",
+              );
+            }
           }
+        } catch (err: any) {
+          addMessage(
+            `Login failed: ${err.message}. Please check your credentials and try again.`,
+            "bot",
+          );
+          addMessage("Lost your password? Just type 'forgot password' or tell me your email again.", "bot");
+          setState("AWAITING_EMAIL");
         }
       }
     } catch {
@@ -158,8 +195,7 @@ function LoginForm() {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    window.location.reload(); // Refresh to clear state and re-initialize
+    awsAuth.logout();
   };
 
   return (

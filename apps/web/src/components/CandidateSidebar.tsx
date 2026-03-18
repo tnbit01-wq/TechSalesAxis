@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import { awsAuth } from "@/lib/awsAuth";
 import {
   LayoutDashboard,
   Briefcase,
@@ -44,12 +44,8 @@ export default function CandidateSidebar({
   const isVerified = assessmentStatus === "completed";
 
   const handleLogout = async () => {
-    await supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session) {
-        await supabase.auth.signOut();
-      }
-      router.replace("/login");
-    });
+    awsAuth.logout();
+    router.replace("/login");
   };
 
   const groups: SidebarGroup[] = [
@@ -72,6 +68,11 @@ export default function CandidateSidebar({
           icon: <MessageSquare className="h-4 w-4" />,
           locked: !isVerified,
         },
+        {
+          label: "Community Feed",
+          href: "/dashboard/candidate/community",
+          icon: <Radio className="h-4 w-4" />,
+        },
       ],
     },
     {
@@ -82,7 +83,6 @@ export default function CandidateSidebar({
           href: "/dashboard/candidate/jobs",
           icon: <Compass className="h-4 w-4" />,
           description: "Global role inventory",
-          locked: !isVerified,
         },
         {
           label: "Applications",
@@ -96,29 +96,25 @@ export default function CandidateSidebar({
           icon: <Compass className="h-4 w-4 text-indigo-400" />,
           description: "Professional pathing",
         },
+        {
+          label: "Recommended",
+          href: "/dashboard/candidate/recommendations",
+          icon: <Radio className="h-4 w-4 text-emerald-400" />,
+          description: "AI-matched corporate roles",
+          locked: !isVerified,
+        },
       ],
     },
     {
-      label: "Professional Node",
+      label: "Account",
       items: [
         {
-          label: "Community Feed",
-          href: "/dashboard/candidate/community",
-          icon: <Radio className="h-4 w-4" />,
-        },
-        {
-          label: "Elite Profile",
+          label: "Profile",
           href: "/dashboard/candidate/profile",
           icon: <User className="h-4 w-4" />,
-          description: "Public identity status",
         },
-      ],
-    },
-    {
-      label: "Management",
-      items: [
         {
-          label: "Account Settings",
+          label: "Settings",
           href: "/dashboard/candidate/settings",
           icon: <Settings className="h-4 w-4" />,
         },

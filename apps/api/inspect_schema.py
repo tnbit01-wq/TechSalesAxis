@@ -12,7 +12,7 @@ def inspect_schema():
         r.raise_for_status()
         schema = r.json()
         
-        tables = ["candidate_profiles", "resume_data", "interviews", "interview_slots"]
+        tables = ["recruiter_profiles", "companies", "users", "job_applications", "jobs", "candidate_profiles"]
         for table in tables:
             print(f"\n--- {table} Columns ---")
             props = schema.get("definitions", {}).get(table, {}).get("properties", {})

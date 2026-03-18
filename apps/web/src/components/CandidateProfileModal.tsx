@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import Image from "next/image";
@@ -19,10 +19,11 @@ import {
   Send,
   Building2,
   BrainCircuit,
+  Zap
 } from "lucide-react";
 import { format } from "date-fns";
 import { apiClient } from "@/lib/apiClient";
-import { supabase } from "@/lib/supabaseClient";
+import { awsAuth } from "@/lib/awsAuth";
 import InterviewScheduler from "./InterviewScheduler";
 import InterviewFeedbackModal from "./InterviewFeedbackModal";
 
@@ -35,14 +36,10 @@ interface CandidateProfile {
   location?: string;
   gender?: string;
   birthdate?: string;
-  university?: string;
-  qualification_held?: string;
-  graduation_year?: number;
   referral?: string;
   skills: string[];
   email?: string | null;
   resume_path?: string | null;
-  resume_url?: string | null;
 }
 
 interface ExperienceEntry {
@@ -107,12 +104,21 @@ export default function CandidateProfileModal({
 
   // Find the active (scheduled or pending) interview
   const activeInterview = interviews.find(i => 
-    i.status === "scheduled" || i.status === "pending_confirmation"
+    i.status === "scheduled" || i.status === "pending_confirmation" || i.status === "in_progress"
   );
   const completedInterviews = interviews.filter(i => i.status === "completed")
     .sort((a, b) => b.round_number - a.round_number);
   
-  const confirmedSlot = activeInterview?.interview_slots?.find((s: any) => s.is_selected);
+  // SUPPORT BOTH interview_slots AND slots (API Parity)
+  const confirmedSlot = activeInterview?.interview_slots?.find((s: any) => s.is_selected) || 
+                        activeInterview?.slots?.find((s: any) => s.is_selected);
+
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 10000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (initialFeedbackOpen) {
@@ -134,7 +140,7 @@ export default function CandidateProfileModal({
       id: "original_resume",
       label: "Original PDF",
       icon: Download,
-      hidden: !(candidate.resume_path || candidate.resume_url),
+      hidden: !candidate.resume_path,
     },
     {
       id: "form",
@@ -169,19 +175,16 @@ export default function CandidateProfileModal({
     ? normalizedResume.timeline
     : [];
 
-  // Education fallbacks: Profile -> Resume Table -> Parsed JSON
+  // Education fallbacks: Resume Table -> Parsed JSON
   const eduInstitution =
-    candidate.university ||
     (normalizedResume?.education as Record<string, string>)?.institution ||
     parsedDetails?.education?.institution ||
     "Not Provided";
   const eduDegree =
-    candidate.qualification_held ||
     (normalizedResume?.education as Record<string, string>)?.degree ||
     parsedDetails?.education?.degree ||
     "Not Provided";
   const eduYear =
-    candidate.graduation_year?.toString() ||
     (normalizedResume?.education as Record<string, string>)?.year ||
     parsedDetails?.education?.year ||
     "N/A";
@@ -235,8 +238,8 @@ export default function CandidateProfileModal({
                 >
                   {isDiscovery && score ? (
                     <>
-                      <BrainCircuit className="w-2.5 h-2.5 text-white" />
-                      {score}% Neural Sync
+                      <Zap className="w-2.5 h-2.5 text-white fill-white" />
+                      {score}% Best Match
                     </>
                   ) : (
                     <>
@@ -420,17 +423,14 @@ export default function CandidateProfileModal({
                 </div>
               )}
               {activeTab === "original_resume" &&
-                (candidate.resume_url || candidate.resume_path) && (
+                candidate.resume_path && (
                   <div className="flex flex-col h-full bg-slate-900">
                     <div className="bg-slate-800 p-3 flex justify-between items-center px-6">
                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
                         Candidate Uploaded Document
                       </span>
                       <a
-                        href={
-                          candidate.resume_url ||
-                          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${candidate.resume_path}`
-                        }
+                        href={candidate.resume_path || "#"}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest flex items-center gap-2 shadow-lg transition-all active:scale-95"
@@ -441,10 +441,7 @@ export default function CandidateProfileModal({
                     </div>
                     <div className="flex-1 overflow-hidden">
                       <iframe
-                        src={
-                          candidate.resume_url ||
-                          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${candidate.resume_path}`
-                        }
+                        src={candidate.resume_path || ""}
                         className="w-full h-full border-none"
                         title="Original Resume PDF"
                       />
@@ -516,18 +513,18 @@ export default function CandidateProfileModal({
                       <div className="space-y-4">
                         <div>
                           <label className="text-[8px] font-black text-slate-300 uppercase tracking-widest">
-                            University
+                            Primary Institution
                           </label>
                           <p className="text-xs font-bold text-slate-700">
-                            {candidate.university || "Not Provided"}
+                            {eduInstitution}
                           </p>
                         </div>
                         <div>
                           <label className="text-[8px] font-black text-slate-300 uppercase tracking-widest">
-                            Qualification
+                            Degree Level
                           </label>
                           <p className="text-xs font-bold text-slate-700">
-                            {candidate.qualification_held || "Not Provided"}
+                            {eduDegree}
                           </p>
                         </div>
                       </div>
@@ -539,10 +536,10 @@ export default function CandidateProfileModal({
                       <div className="space-y-4">
                         <div>
                           <label className="text-[8px] font-black text-slate-300 uppercase tracking-widest">
-                            Graduation Year
+                            Graduation/End Date
                           </label>
                           <p className="text-xs font-bold text-slate-700">
-                            {candidate.graduation_year || "Not Provided"}
+                            {eduYear}
                           </p>
                         </div>
                         <div>
@@ -577,8 +574,8 @@ export default function CandidateProfileModal({
                             : "bg-amber-50 text-amber-600 border border-amber-100"
                         }`}>
                           {activeInterview.status === "scheduled" 
-                            ? (confirmedSlot && new Date(confirmedSlot.start_time) < new Date() ? "● Conducted" : "● Confirmed") 
-                            : "○ Awaiting Candidate"}
+                            ? (confirmedSlot && new Date(confirmedSlot.start_time) < new Date() ? "? Conducted" : "? Confirmed") 
+                            : "? Awaiting Candidate"}
                         </div>
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">
                           {activeInterview.round_name}
@@ -586,27 +583,39 @@ export default function CandidateProfileModal({
                       </div>
 
                       <div className={`p-4 rounded-2xl border ${
-                        activeInterview.status === "scheduled" 
-                          ? "bg-indigo-50 border-indigo-100/50" 
-                          : "bg-slate-50 border-slate-100"
+                        activeInterview.status === "in_progress"
+                          ? "bg-emerald-50 border-emerald-100/50"
+                          : activeInterview.status === "scheduled" 
+                            ? "bg-indigo-50 border-indigo-100/50" 
+                            : "bg-slate-50 border-slate-100"
                       }`}>
                         <div className="flex items-center gap-3 mb-2">
-                          <Clock className={`h-4 w-4 ${activeInterview.status === "scheduled" ? "text-indigo-600" : "text-slate-400"}`} />
-                          <p className={`text-[9px] font-black uppercase tracking-widest ${activeInterview.status === "scheduled" ? "text-indigo-700" : "text-slate-500"}`}>
-                            {activeInterview.status === "scheduled" ? "Scheduled Transmission" : "Proposed Slots"}
+                          {activeInterview.status === "in_progress" ? (
+                            <div className="h-4 w-4 rounded-full bg-emerald-500 animate-pulse" />
+                          ) : (
+                            <Clock className={`h-4 w-4 ${activeInterview.status === "scheduled" ? "text-indigo-600" : "text-slate-400"}`} />
+                          )}
+                          <p className={`text-[9px] font-black uppercase tracking-widest ${
+                            activeInterview.status === "in_progress" 
+                              ? "text-emerald-700" 
+                              : activeInterview.status === "scheduled" 
+                                ? "text-indigo-700" 
+                                : "text-slate-500"
+                          }`}>
+                            {activeInterview.status === "in_progress" ? "Live: Interview in Progress" : activeInterview.status === "scheduled" ? "Scheduled Transmission" : "Proposed Slots"}
                           </p>
                         </div>
                         <p className="text-[11px] font-black text-slate-700 leading-tight">
                           {confirmedSlot ? (
-                            new Date(confirmedSlot.start_time).toLocaleString('en-US', {
+                            new Date(confirmedSlot.start_time).toLocaleString('en-IN', {
                               month: 'long',
                               day: 'numeric',
                               year: 'numeric',
                               hour: '2-digit',
                               minute: '2-digit',
                               hour12: true,
-                              timeZoneName: 'short'
-                            })
+                              timeZone: 'Asia/Kolkata'
+                            }) + " IST"
                           ) : (
                             "Candidate is reviewing available slots..."
                           )}
@@ -614,40 +623,42 @@ export default function CandidateProfileModal({
                       </div>
 
                       <div className="space-y-3">
-                        {activeInterview.status === "scheduled" && activeInterview.meeting_link && (() => {
-                          const now = new Date();
+                        {(activeInterview.status === "scheduled" || activeInterview.status === "in_progress") && activeInterview.meeting_link && (() => {
+                          const nowInBrowser = currentTime;
                           const start = new Date(confirmedSlot?.start_time || "");
-                          const end = new Date(confirmedSlot?.end_time || "");
-                          // Allow join 5 minutes before start and until the end of the slot
-                          const isActive = now >= new Date(start.getTime() - 5 * 60000) && now <= end;
+                          
+                          // Protocol: Join opens 15m before START until 10m AFTER start
+                          const allowedStart = new Date(start.getTime() - 15 * 60000);
+                          const allowedEnd = new Date(start.getTime() + 10 * 60000);
+                          const isActive = nowInBrowser >= allowedStart && nowInBrowser <= allowedEnd;
 
-                          if (isActive) {
-                            return (
-                              <button
-                                onClick={async () => {
-                                  try {
-                                    const { data: { session } } = await supabase.auth.getSession();
-                                    if (session) {
-                                      apiClient.post(`/interviews/${activeInterview.id}/join-event`, {}, session.access_token);
-                                    }
-                                  } catch (err) {
-                                    console.error("Failed to signal join:", err);
-                                  }
-                                  window.open(activeInterview.meeting_link, "_blank");
-                                }}
-                                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] shadow-lg shadow-indigo-600/20 transition-all flex items-center justify-center gap-2"
-                              >
-                                <Video className="w-4 h-4" />
-                                Join Session
-                              </button>
-                            );
-                          }
                           return (
-                            <div className="p-3 bg-slate-50 border border-slate-100 rounded-2xl text-center">
-                              <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">
-                                {now < start ? "Session Opening Soon" : "Session Expired"}
-                              </p>
-                            </div>
+                            <button
+                              disabled={!isActive}
+                              onClick={async () => {
+                                try {
+                                  const token = awsAuth.getToken();
+                                  if (token) {
+                                    apiClient.post(`/interviews/${activeInterview.id}/join-event`, { role: "recruiter" }, token);
+                                  }
+                                } catch (err) {
+                                  console.error("Failed to signal join:", err);
+                                }
+                                window.open(activeInterview.meeting_link, "_blank");
+                              }}
+                              className={`w-full py-4 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] shadow-lg transition-all flex items-center justify-center gap-2 ${
+                                isActive 
+                                  ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20" 
+                                  : "bg-slate-100 text-slate-400 cursor-not-allowed"
+                              }`}
+                            >
+                              <Video className="w-4 h-4" />
+                              {isActive 
+                                ? activeInterview.status === "in_progress" ? "Return to Live Session" : "Join Session"
+                                : nowInBrowser < allowedStart 
+                                  ? "Locked: Opens 15m Early" 
+                                  : "Window Closed (10m Late)"}
+                            </button>
                           );
                         })()}
                         

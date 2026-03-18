@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { X, Clock, User, ArrowRight, MessageSquare } from "lucide-react";
 import { apiClient } from "@/lib/apiClient";
-import { supabase } from "@/lib/supabaseClient";
+import { awsAuth } from "@/lib/awsAuth";
 
 interface HistoryItem {
   id: string;
@@ -37,14 +37,12 @@ export default function ApplicationHistoryModal({
     if (isOpen && applicationId) {
       async function loadHistory() {
         try {
-          const {
-            data: { session },
-          } = await supabase.auth.getSession();
-          if (!session) return;
+          const token = awsAuth.getToken();
+          if (!token) return;
 
           const data = await apiClient.get(
             `/recruiter/applications/${applicationId}/history`,
-            session.access_token,
+            token,
           );
           setHistory(data || []);
         } catch (err) {

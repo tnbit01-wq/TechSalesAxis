@@ -1,18 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
-import { apiClient } from "@/lib/apiClient";
-import {
-  Bell,
-  CheckCircle2,
-  Briefcase,
-  Info,
-  MessageSquare,
-  Clock,
-  Globe,
-  Calendar,
+import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { 
+  Bell, 
+  Check, 
+  CheckCircle2, 
+  Clock, 
+  Trash2, 
+  Square, 
+  CheckSquare,
+  AlertCircle
 } from "lucide-react";
+import { awsAuth } from "@/lib/awsAuth";
+import { apiClient } from "@/lib/apiClient";
 import CandidateInterviewConfirmModal from "@/components/CandidateInterviewConfirmModal";
 
 interface Notification {
@@ -22,188 +23,320 @@ interface Notification {
   message: string;
   is_read: boolean;
   created_at: string;
-  metadata: Record<string, unknown>;
+  metadata: Record<string, any>;
 }
 
-export default function NotificationsPage() {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+export default function CandidateNotificationsPage() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [selectedInterviewId, setSelectedInterviewId] = useState<string | null>(
-    null,
-  );
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [filter, setFilter] = useState<"all" | "unread">("all");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedInterviewId, setSelectedInterviewId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        if (session) {
-          const notifs = await apiClient.get(
-            "/notifications",
-            session.access_token,
-          );
-          setNotifications(notifs);
-        }
-      } catch (err) {
-        console.error("Error fetching notifications:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchData();
-  }, []);
-
-  const markAllAsRead = async () => {
+  const loadNotifications = useCallback(async () => {
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (session) {
-        await apiClient.patch(
-          "/notifications/read-all",
-          {},
-          session.access_token,
-        );
-        setNotifications(notifications.map((n) => ({ ...n, is_read: true })));
+      const token = awsAuth.getToken();
+      if (!token) {
+        router.replace("/login");
+        return;
+      }
+
+      const data = await apiClient.get("/notifications", token);
+      if (data && Array.isArray(data)) {
+        setNotifications(data);
       }
     } catch (err) {
-      console.error("Failed to mark all as read:", err);
+      console.error("Failed to load notifications:", err);
+    } finally {
+      setLoading(false);
     }
+  }, [router]);
+
+  useEffect(() => {
+    loadNotifications();
+  }, [loadNotifications]);
+
+  const toggleSelectAll = () => {
+    const visibleNotifs = filter === "all" ? notifications : notifications.filter(n => !n.is_read);
+    if (selectedIds.size === visibleNotifs.length && visibleNotifs.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(visibleNotifs.map(n => n.id)));
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedIds(next);
   };
 
   const markAsRead = async (id: string) => {
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (session) {
-        await apiClient.patch(
-          `/notifications/${id}/read`,
-          {},
-          session.access_token,
-        );
-        setNotifications(
-          notifications.map((n) => (n.id === id ? { ...n, is_read: true } : n)),
-        );
-      }
+      const token = awsAuth.getToken();
+      if (!token) return;
+      await apiClient.patch(`/notifications/${id}/read`, {}, token);
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
     } catch (err) {
-      console.error("Failed to mark as read:", err);
+      console.error("Mark read failed:", err);
     }
   };
 
+  const markAllRead = async () => {
+    try {
+      const token = awsAuth.getToken();
+      if (!token) return;
+      await apiClient.patch(`/notifications/read-all`, {}, token);
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+    } catch (err) {
+      console.error("Mark all read failed:", err);
+    }
+  };
+
+  const deleteOne = async (id: string) => {
+    try {
+      const token = awsAuth.getToken();
+      if (!token) return;
+      await apiClient.delete(`/notifications/${id}`, token);
+      setNotifications(prev => prev.filter(n => n.id !== id));
+      const next = new Set(selectedIds);
+      next.delete(id);
+      setSelectedIds(next);
+    } catch (err) {
+      console.error("Delete failed:", err);
+    }
+  };
+
+  const deleteSelected = async () => {
+    if (selectedIds.size === 0) return;
+    try {
+      const token = awsAuth.getToken();
+      if (!token) return;
+      
+      const idsArray = Array.from(selectedIds);
+      await apiClient.request('DELETE', '/notifications/bulk', { notification_ids: idsArray }, token);
+      
+      setNotifications(prev => prev.filter(n => !selectedIds.has(n.id)));
+      setSelectedIds(new Set());
+    } catch (err) {
+      console.error("Bulk delete failed:", err);
+    }
+  };
+
+  const handleAction = (notif: Notification) => {
+    if (notif.type === "INTERVIEW_PROPOSED") {
+      setSelectedInterviewId(notif.metadata?.interview_id as string);
+      setIsModalOpen(true);
+    } else if (notif.type === "ASSESSMENT_REMINDER") {
+      router.push("/dashboard/candidate/assessments");
+    }
+  };
+
+  const filteredNotifications = filter === "all" 
+    ? notifications 
+    : notifications.filter((n) => !n.is_read);
+
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
+      <div className="flex h-screen items-center justify-center bg-slate-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-12 animate-in fade-in duration-700">
-      <header className="flex items-end justify-between">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-4xl font-black text-slate-900 tracking-tighter uppercase italic">
-              Signal <span className="text-indigo-600 font-black">Nexus</span>
+    <div className="h-full bg-slate-50/50">
+      <div className="max-w-4xl mx-auto p-10">
+        <header className="mb-10 flex justify-between items-end">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <div className="h-8 w-8 rounded-xl bg-white shadow-sm border border-slate-200 flex items-center justify-center">
+                <Bell className="h-4 w-4 text-indigo-600" />
+              </div>
+              <span className="text-indigo-600 font-black text-[10px] uppercase tracking-widest opacity-80">
+                Inbox
+              </span>
+            </div>
+            <h1 className="text-3xl font-black text-slate-900 tracking-tight leading-none mb-3">
+              Your <span className="text-indigo-600">Notifications.</span>
             </h1>
-            <div className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-widest rounded-md border border-indigo-200">
-              Intelligence
-            </div>
-          </div>
-          <p className="mt-1 text-slate-500 font-bold uppercase tracking-[0.2em] text-[10px] flex items-center gap-2">
-            <Bell className="h-3 w-3 text-indigo-500" />
-            Stay synchronized with your career transmissions.
-          </p>
-        </div>
-        {notifications.some((n) => !n.is_read) && (
-          <button
-            onClick={markAllAsRead}
-            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border border-slate-200"
-          >
-            Acknowledge All
-          </button>
-        )}
-      </header>
-
-      <div className="space-y-4">
-        {notifications.length === 0 ? (
-          <div className="bg-white rounded-[2.5rem] border border-slate-200/60 p-20 text-center shadow-sm">
-            <div className="h-16 w-16 bg-slate-50 rounded-4xl flex items-center justify-center mx-auto mb-6">
-              <Bell className="w-8 h-8 text-slate-300" />
-            </div>
-            <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight mb-2">
-              All Quiet in the Hub
-            </h3>
-            <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">
-              No new transmissions detected.
+            <p className="text-slate-500 text-sm font-bold opacity-60 max-w-lg leading-relaxed uppercase tracking-widest">
+              Stay updated with your latest alerts.
             </p>
           </div>
-        ) : (
-          notifications.map((notif) => (
-            <div
-              key={notif.id}
-              onClick={() => {
-                if (!notif.is_read) markAsRead(notif.id);
-                if (
-                  notif.type === "INTERVIEW_PROPOSED" &&
-                  notif.metadata?.interview_id
-                ) {
-                  setSelectedInterviewId(notif.metadata.interview_id as string);
-                  setIsModalOpen(true);
-                }
-              }}
-              className={`
-                bg-white rounded-4xl p-8 border transition-all cursor-pointer group
-                ${notif.is_read ? "border-slate-100 opacity-80" : "border-indigo-100 shadow-xl shadow-indigo-100/30 hover:border-indigo-200"}
-              `}
+
+          <div className="flex gap-3 mb-1">
+            {selectedIds.size > 0 && (
+              <button
+                onClick={deleteSelected}
+                className="px-4 py-2.5 bg-red-50 border border-red-100 rounded-xl font-black text-[10px] uppercase tracking-[0.15em] text-red-600 hover:bg-red-600 hover:text-white transition-all flex items-center gap-2 animate-in fade-in slide-in-from-right-2"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Delete ({selectedIds.size})
+              </button>
+            )}
+            <button
+              onClick={markAllRead}
+              className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-black text-[10px] uppercase tracking-[0.15em] text-slate-600 hover:text-indigo-600 hover:border-indigo-600 transition-all flex items-center gap-2"
             >
-              <div className="flex gap-6">
-                <div
-                  className={`
-                  h-14 w-14 rounded-2xl shrink-0 flex items-center justify-center shadow-sm
-                  ${getNotificationStyle(notif.type)}
-                `}
-                >
-                  {getNotificationIcon(notif.type)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-2">
-                    <h4
-                      className={`text-lg font-black uppercase tracking-tight ${notif.is_read ? "text-slate-700" : "text-indigo-900"}`}
-                    >
-                      {notif.title}
-                    </h4>
-                    <div className="flex items-center gap-2 text-slate-400">
-                      <Clock className="w-3 h-3" />
-                      <span className="text-[10px] font-bold uppercase tracking-tighter">
-                        {formatTimestamp(notif.created_at)}
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Mark All Read
+            </button>
+          </div>
+        </header>
+
+        <div className="flex justify-between items-center mb-8">
+          <div className="flex gap-3">
+            <button
+              onClick={() => setFilter("all")}
+              className={`px-4 py-2 rounded-xl font-black text-[9px] uppercase tracking-[0.2em] transition-all ${
+                filter === "all"
+                  ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200/40"
+                  : "bg-white text-slate-400 border border-slate-200 hover:border-slate-300"
+              }`}
+            >
+              All Events
+            </button>
+            <button
+              onClick={() => setFilter("unread")}
+              className={`px-4 py-2 rounded-xl font-black text-[9px] uppercase tracking-[0.2em] transition-all ${
+                filter === "unread"
+                  ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200/40"
+                  : "bg-white text-slate-400 border border-slate-200 hover:border-slate-300"
+              }`}
+            >
+              Unread Only
+            </button>
+          </div>
+
+          {filteredNotifications.length > 0 && (
+            <button 
+              onClick={toggleSelectAll}
+              className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-indigo-600 transition-colors"
+            >
+              {selectedIds.size === filteredNotifications.length ? (
+                <CheckSquare className="h-4 w-4 text-indigo-600" />
+              ) : (
+                <Square className="h-4 w-4" />
+              )}
+              Select All
+            </button>
+          )}
+        </div>
+
+        <div className="space-y-3">
+          {filteredNotifications.length === 0 ? (
+            <div className="bg-white rounded-[2rem] border border-dashed border-slate-200 p-20 text-center">
+              <div className="h-16 w-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-100">
+                <Bell className="h-6 w-6 text-slate-200" />
+              </div>
+              <h3 className="text-lg font-black text-slate-900 mb-1">
+                Clear Frequency
+              </h3>
+              <p className="text-slate-400 text-xs font-bold uppercase tracking-widest opacity-60">
+                No active signals found.
+              </p>
+            </div>
+          ) : (
+            filteredNotifications.map((notif) => (
+              <div
+                key={notif.id}
+                className={`group relative bg-white rounded-2xl border transition-all duration-300 hover:shadow-xl hover:shadow-indigo-100/30 overflow-hidden ${
+                  !notif.is_read
+                    ? "border-indigo-200 bg-indigo-50/5"
+                    : "border-slate-100"
+                } ${selectedIds.has(notif.id) ? "ring-2 ring-indigo-600 ring-offset-2" : ""}`}
+              >
+                <div className="p-5 flex items-start gap-4">
+                  <button 
+                    onClick={() => toggleSelect(notif.id)}
+                    className={`mt-3 shrink-0 rounded transition-colors ${
+                      selectedIds.has(notif.id) ? "text-indigo-600" : "text-slate-200 group-hover:text-slate-300"
+                    }`}
+                  >
+                    {selectedIds.has(notif.id) ? <CheckSquare className="h-5 w-5" /> : <Square className="h-5 w-5" />}
+                  </button>
+
+                  <div
+                    className={`h-11 w-11 shrink-0 rounded-xl flex items-center justify-center border transition-transform group-hover:scale-105 ${
+                      notif.type === "INTERVIEW_PROPOSED"
+                        ? "bg-amber-50 border-amber-100"
+                        : notif.type === "ASSESSMENT_REMINDER"
+                          ? "bg-indigo-50 border-indigo-100"
+                          : "bg-slate-50 border-white shadow-sm"
+                    }`}
+                  >
+                    {notif.type === "ASSESSMENT_REMINDER" ? (
+                      <AlertCircle className="h-5 w-5 text-indigo-600" />
+                    ) : (
+                      <Bell
+                        className={`h-5 w-5 ${
+                          notif.type === "INTERVIEW_PROPOSED"
+                            ? "text-amber-500"
+                            : "text-indigo-600"
+                        }`}
+                      />
+                    )}
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-3 mb-1.5">
+                      <span className="text-[8px] font-black text-indigo-600 uppercase tracking-[0.2em] py-0.5 px-2 bg-indigo-50 rounded-md border border-indigo-100">
+                        {notif.type?.replace("_", " ")}
+                      </span>
+                      <span className="text-[8px] font-bold text-slate-300 uppercase tracking-[0.2em] flex items-center gap-1">
+                        <Clock className="h-2.5 w-2.5" />
+                        {new Date(notif.created_at).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
                       </span>
                     </div>
+                    <h3
+                      className={`text-sm font-black tracking-tight mb-1 truncate ${!notif.is_read ? "text-slate-900" : "text-slate-600"}`}
+                    >
+                      {notif.title}
+                    </h3>
+                    <p className="text-slate-500 text-xs font-medium leading-relaxed max-w-2xl line-clamp-2">
+                      {notif.message}
+                    </p>
+                    
+                    {notif.type === "INTERVIEW_PROPOSED" && !notif.is_read && (
+                      <button 
+                        onClick={() => handleAction(notif)}
+                        className="mt-3 px-3 py-1.5 bg-amber-500 text-white text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-amber-600 transition-colors"
+                      >
+                        Respond Now
+                      </button>
+                    )}
                   </div>
-                  <p className="text-sm text-slate-500 font-medium leading-relaxed mb-4">
-                    {notif.message}
-                  </p>
-                  
-                  {notif.type === "INTERVIEW_PROPOSED" && (
-                    <button className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition">
-                      Schedule Now
-                    </button>
-                  )}
 
-                  {!notif.is_read && notif.type !== "INTERVIEW_PROPOSED" && (
-                    <div className="flex items-center gap-2 text-indigo-600 font-bold text-[9px] uppercase tracking-widest">
-                      <div className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-pulse" />
-                      New Transmission
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2 self-center">
+                    {!notif.is_read && (
+                      <button
+                        onClick={() => markAsRead(notif.id)}
+                        className="p-2.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white transition-all lg:opacity-0 group-hover:opacity-100"
+                        title="Mark as Read"
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => deleteOne(notif.id)}
+                      className="p-2.5 bg-slate-50 text-slate-400 rounded-lg hover:text-red-500 hover:bg-red-50 transition-all lg:opacity-0 group-hover:opacity-100"
+                      title="Clear Notification"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))
-        )}
+            ))
+          )}
+        </div>
       </div>
 
       <CandidateInterviewConfirmModal
@@ -211,57 +344,10 @@ export default function NotificationsPage() {
         onClose={() => setIsModalOpen(false)}
         interviewId={selectedInterviewId || ""}
         onSuccess={() => {
-          // You could reload notifications or redirect to applications
-          console.log("Interview confirmed!");
+          loadNotifications();
+          setIsModalOpen(false);
         }}
       />
     </div>
   );
-}
-
-function getNotificationIcon(type: string) {
-  switch (type) {
-    case "APPLICATION_SUBMITTED":
-      return <Briefcase className="w-6 h-6" />;
-    case "INVITE_RECEIVED":
-      return <Globe className="w-6 h-6" />;
-    case "ASSESSMENT_COMPLETED":
-      return <CheckCircle2 className="w-6 h-6" />;
-    case "MESSAGE_RECEIVED":
-      return <MessageSquare className="w-6 h-6" />;
-    case "INTERVIEW_PROPOSED":
-      return <Calendar className="w-6 h-6" />;
-    default:
-      return <Info className="w-6 h-6" />;
-  }
-}
-
-function getNotificationStyle(type: string) {
-  switch (type) {
-    case "APPLICATION_SUBMITTED":
-      return "bg-indigo-50 text-indigo-600";
-    case "INVITE_RECEIVED":
-      return "bg-emerald-50 text-emerald-600";
-    case "ASSESSMENT_COMPLETED":
-      return "bg-purple-50 text-purple-600";
-    case "MESSAGE_RECEIVED":
-      return "bg-blue-50 text-blue-600";
-    case "INTERVIEW_PROPOSED":
-      return "bg-amber-50 text-amber-600";
-    default:
-      return "bg-slate-50 text-slate-600";
-  }
-}
-
-function formatTimestamp(timestamp: string) {
-  const date = new Date(timestamp);
-  const now = new Date();
-  const diffInMinutes = Math.floor(
-    (now.getTime() - date.getTime()) / (1000 * 60),
-  );
-
-  if (diffInMinutes < 1) return "Just now";
-  if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
-  if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}h ago`;
-  return date.toLocaleDateString();
 }

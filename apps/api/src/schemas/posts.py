@@ -14,6 +14,20 @@ class PostAuthor(BaseModel):
     role: str
     profile_photo_url: Optional[str] = None
 
+class FollowRequest(BaseModel):
+    following_id: UUID
+
+class CommentCreate(BaseModel):
+    content: str
+
+class CommentResponse(BaseModel):
+    id: UUID
+    user_id: UUID
+    post_id: UUID
+    content: str
+    created_at: datetime
+    author: Optional[PostAuthor] = None
+
 class PostResponse(BaseModel):
     id: UUID
     user_id: UUID
@@ -24,6 +38,7 @@ class PostResponse(BaseModel):
     author: Optional[PostAuthor] = None
     is_following: bool = False
     is_pinned: bool = False
-
-class FollowRequest(BaseModel):
-    following_id: UUID
+    likes_count: int = 0
+    comments_count: int = 0
+    is_liked: bool = False
+    comments: List[CommentResponse] = []

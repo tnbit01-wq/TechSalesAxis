@@ -1,5 +1,5 @@
 from pydantic import BaseModel, HttpUrl, EmailStr, Field
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
 
 class CandidateProfileUpdate(BaseModel):
@@ -12,29 +12,19 @@ class CandidateProfileUpdate(BaseModel):
     years_of_experience: Optional[int] = None
     primary_industry_focus: Optional[str] = None
     current_employment_status: Optional[str] = None
-    current_company_name: Optional[str] = None
-    previous_companies: Optional[List[str]] = None
     key_responsibilities: Optional[str] = None
     major_achievements: Optional[str] = None
-    sales_metrics: Optional[Dict[str, Any]] = None
-    crm_tools: Optional[List[str]] = None
-    sales_methodologies: Optional[List[str]] = None
-    product_domain_expertise: Optional[List[str]] = None
-    target_market_exposure: Optional[str] = None
     linkedin_url: Optional[str] = None
     portfolio_url: Optional[str] = None
     location: Optional[str] = None
     expected_salary: Optional[int] = None
     location_tier: Optional[str] = None
     learning_links: Optional[List[Dict[str, str]]] = None
-    career_interests: Optional[List[str]] = None
-    learning_interests: Optional[List[str]] = None
+    career_interests: Optional[Union[str, List[str]]] = None
+    learning_interests: Optional[Union[str, List[str]]] = None
     job_type: Optional[str] = None
     gender: Optional[str] = None
     birthdate: Optional[str] = None
-    university: Optional[str] = None
-    qualification_held: Optional[str] = None
-    graduation_year: Optional[int] = None
     referral: Optional[str] = None
     identity_verified: Optional[bool] = None
     identity_proof_path: Optional[str] = None
@@ -60,6 +50,7 @@ class CandidateStats(BaseModel):
     identity_proof_path: Optional[str] = None
     terms_accepted: bool
     account_status: str
+    onboarding_step: str = "INITIAL"
 
 class CandidateJobResponse(BaseModel):
     id: str
@@ -84,3 +75,14 @@ class JobApplicationResponse(BaseModel):
     feedback: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
     active_interview: Optional[Dict[str, Any]] = None
+
+class JobApplicationDetailResponse(BaseModel):
+    id: str
+    job_id: str
+    status: str
+    applied_at: datetime
+    job: Dict[str, Any]
+    company: Dict[str, Any]
+    interviews: List[Dict[str, Any]] = []
+    metadata: Optional[Dict[str, Any]] = None
+    feedback: Optional[str] = None

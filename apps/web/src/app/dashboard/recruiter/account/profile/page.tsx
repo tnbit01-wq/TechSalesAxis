@@ -17,7 +17,7 @@ import {
   FileText,
   CheckCircle2,
 } from "lucide-react";
-import { supabase } from "@/lib/supabaseClient";
+import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 
 interface Company {
@@ -42,7 +42,14 @@ interface RecruiterProfile {
   companies: Company;
   is_verified?: boolean;
   assessment_status?: string;
+  completion_score?: number;
   team_role?: string;
+  professional_persona?: {
+    focus_areas: string[];
+    years_experience: number;
+    preferred_hiring_style: string;
+    languages: string[];
+  };
 }
 
 export default function RecruiterProfilePage() {
@@ -53,25 +60,23 @@ export default function RecruiterProfilePage() {
   const [generatingBio, setGeneratingBio] = useState(false);
   const [message, setMessage] = useState({ type: "", text: "" });
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
+  const handleLogout = () => {
+    awsAuth.logout();
     router.replace("/login");
   };
 
   useEffect(() => {
     async function loadData() {
       try {
-        const {
-          data: { session: authSession },
-        } = await supabase.auth.getSession();
-        if (!authSession) {
+        const token = awsAuth.getToken();
+        if (!token) {
           router.replace("/login");
           return;
         }
 
         const data = await apiClient.get(
           "/recruiter/profile",
-          authSession.access_token,
+          token,
         );
         setProfile(data);
       } catch (err) {
@@ -94,15 +99,13 @@ export default function RecruiterProfilePage() {
 
     setGeneratingBio(true);
     try {
-      const {
-        data: { session: authSession },
-      } = await supabase.auth.getSession();
-      if (!authSession) return;
+      const token = awsAuth.getToken();
+      if (!token) return;
 
       const res = await apiClient.post(
         "/recruiter/generate-bio",
         { website: profile.companies.website },
-        authSession.access_token,
+        token,
       );
 
       if (res.bio) {
@@ -142,10 +145,8 @@ export default function RecruiterProfilePage() {
     setMessage({ type: "", text: "" });
 
     try {
-      const {
-        data: { session: authSession },
-      } = await supabase.auth.getSession();
-      if (!authSession) return;
+      const token = awsAuth.getToken();
+      if (!token) return;
 
       // Update Recruiter Info
       await apiClient.patch(
@@ -155,8 +156,9 @@ export default function RecruiterProfilePage() {
           job_title: profile.job_title,
           linkedin_url: profile.linkedin_url,
           bio: profile.bio,
+          professional_persona: profile.professional_persona,
         },
-        authSession.access_token,
+        token,
       );
 
       // Update Company Info
@@ -173,18 +175,18 @@ export default function RecruiterProfilePage() {
           avg_deal_size_range: profile.companies.avg_deal_size_range,
           hiring_focus_areas: profile.companies.hiring_focus_areas,
         },
-        authSession.access_token,
+        token,
       );
 
       setMessage({
         type: "success",
-        text: "Identity signals synchronized successfully.",
+        text: "Profile settings saved successfully.",
       });
     } catch (err) {
       console.error("Failed to update profile:", err);
       setMessage({
         type: "error",
-        text: "Failed to sync signals. Please check your connection.",
+        text: "Failed to save changes. Please check your connection.",
       });
     } finally {
       setSaving(false);
@@ -267,13 +269,22 @@ export default function RecruiterProfilePage() {
                   Profile Strength
                 </div>
                 <div className="flex items-end gap-3 mb-2">
-                  <div className="text-3xl font-black text-white">85%</div>
-                  <div className="text-indigo-400 text-xs font-bold mb-1">
-                    OPTIMIZED
+                  <div className="text-3xl font-black text-white">
+                    {profile?.completion_score || 0}%
+                  </div>
+                  <div className="text-indigo-400 text-xs font-bold mb-1 uppercase">
+                    {(profile?.completion_score || 0) >= 80
+                      ? "Optimized"
+                      : (profile?.completion_score || 0) >= 50
+                        ? "Getting There"
+                        : "Incomplete"}
                   </div>
                 </div>
                 <div className="w-48 h-1.5 bg-white/10 rounded-full overflow-hidden">
-                  <div className="w-[85%] h-full bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)]" />
+                  <div
+                    className="h-full bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)] transition-all duration-500"
+                    style={{ width: `${profile?.completion_score || 0}%` }}
+                  />
                 </div>
               </div>
             </div>
@@ -532,6 +543,119 @@ export default function RecruiterProfilePage() {
                       {generatingBio ? "SYNTHESIZING..." : "AI SUGGEST"}
                     </button>
                   </div>
+                </Field>
+              </div>
+            </Section>
+
+            {/* Professional Persona - AI Enhanced */}
+            <Section title="Professional Persona" icon={User}>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <Field label="Years Recruiting" icon={Briefcase}>
+                  <input
+                    type="number"
+                    value={profile?.professional_persona?.years_experience || 0}
+                    onChange={(e) =>
+                      setProfile((p) =>
+                        p
+                          ? {
+                              ...p,
+                              professional_persona: {
+                                ...(p.professional_persona || {
+                                  focus_areas: [],
+                                  years_experience: 0,
+                                  preferred_hiring_style: "",
+                                  languages: [],
+                                }),
+                                years_experience: parseInt(e.target.value),
+                              },
+                            }
+                          : null,
+                      )
+                    }
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all outline-none"
+                  />
+                </Field>
+                <Field label="Hiring Style" icon={Target}>
+                  <select
+                    value={profile?.professional_persona?.preferred_hiring_style || ""}
+                    onChange={(e) =>
+                      setProfile((p) =>
+                        p
+                          ? {
+                              ...p,
+                              professional_persona: {
+                                ...(p.professional_persona || {
+                                  focus_areas: [],
+                                  years_experience: 0,
+                                  preferred_hiring_style: "",
+                                  languages: [],
+                                }),
+                                preferred_hiring_style: e.target.value,
+                              },
+                            }
+                          : null,
+                      )
+                    }
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all outline-none appearance-none"
+                  >
+                    <option value="">Select Style</option>
+                    <option value="Aggressive">Aggressive Growth</option>
+                    <option value="Measured">Measured Quality</option>
+                    <option value="Data-Driven">Data-Driven Precision</option>
+                    <option value="Relationship">Relationship Centric</option>
+                  </select>
+                </Field>
+                <Field label="Primary Language" icon={Globe}>
+                  <input
+                    type="text"
+                    value={profile?.professional_persona?.languages?.[0] || ""}
+                    onChange={(e) =>
+                      setProfile((p) =>
+                        p
+                          ? {
+                              ...p,
+                              professional_persona: {
+                                ...(p.professional_persona || {
+                                  focus_areas: [],
+                                  years_experience: 0,
+                                  preferred_hiring_style: "",
+                                  languages: [],
+                                }),
+                                languages: [e.target.value],
+                              },
+                            }
+                          : null,
+                      )
+                    }
+                    placeholder="e.g. English, Spanish"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-purple-500/20 focus:border-indigo-500 transition-all outline-none"
+                  />
+                </Field>
+                <Field label="Recruitment Specialization" icon={Tag}>
+                  <input
+                    type="text"
+                    value={profile?.professional_persona?.focus_areas?.join(", ") || ""}
+                    onChange={(e) =>
+                      setProfile((p) =>
+                        p
+                          ? {
+                              ...p,
+                              professional_persona: {
+                                ...(p.professional_persona || {
+                                  focus_areas: [],
+                                  years_experience: 0,
+                                  preferred_hiring_style: "",
+                                  languages: [],
+                                }),
+                                focus_areas: e.target.value.split(",").map(s => s.trim()),
+                              },
+                            }
+                          : null,
+                      )
+                    }
+                    placeholder="e.g. Technical Sales, Account Management"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all outline-none"
+                  />
                 </Field>
               </div>
             </Section>

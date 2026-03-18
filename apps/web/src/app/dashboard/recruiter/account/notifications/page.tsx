@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bell, Check, CheckCircle2, Clock, Trash2 } from "lucide-react";
-import { supabase } from "@/lib/supabaseClient";
+import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import { useCallback } from "react";
 
@@ -24,15 +24,13 @@ export default function RecruiterNotificationsPage() {
 
   const loadNotifications = useCallback(async () => {
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) {
+      const token = awsAuth.getToken();
+      if (!token) {
         router.replace("/login");
         return;
       }
 
-      const data = await apiClient.get("/notifications", session.access_token);
+      const data = await apiClient.get("/notifications", token);
       if (data && Array.isArray(data)) {
         setNotifications(data);
       }
@@ -49,14 +47,12 @@ export default function RecruiterNotificationsPage() {
 
   const markAsRead = async (id: string) => {
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) return;
+      const token = awsAuth.getToken();
+      if (!token) return;
       await apiClient.patch(
         `/notifications/${id}/read`,
         {},
-        session.access_token,
+        token,
       );
       setNotifications((prev) =>
         prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)),
@@ -68,14 +64,12 @@ export default function RecruiterNotificationsPage() {
 
   const markAllRead = async () => {
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) return;
+      const token = awsAuth.getToken();
+      if (!token) return;
       await apiClient.patch(
         `/notifications/read-all`,
         {},
-        session.access_token,
+        token,
       );
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
     } catch (err) {
@@ -110,14 +104,14 @@ export default function RecruiterNotificationsPage() {
                 <Bell className="h-4 w-4 text-indigo-600" />
               </div>
               <span className="text-indigo-600 font-black text-[10px] uppercase tracking-widest opacity-80">
-                Communication Hub
+                Inbox
               </span>
             </div>
             <h1 className="text-3xl font-black text-slate-900 tracking-tight leading-none mb-3">
-              Intelligence <span className="text-indigo-600">Signals.</span>
+              Your <span className="text-indigo-600">Notifications.</span>
             </h1>
             <p className="text-slate-500 text-sm font-bold opacity-60 max-w-lg leading-relaxed uppercase tracking-widest">
-              Hiring Pipeline Operational Awareness.
+              Manage alerts from your hiring activity.
             </p>
           </div>
 

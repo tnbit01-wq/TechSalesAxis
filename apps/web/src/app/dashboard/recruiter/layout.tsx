@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import { useRouter } from "next/navigation";
 import RecruiterSidebar from "@/components/RecruiterSidebar";
@@ -24,10 +24,8 @@ export default function RecruiterDashboardLayout({
 
   useEffect(() => {
     async function init() {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) {
+      const token = awsAuth.getToken();
+      if (!token) {
         router.replace("/login");
         return;
       }
@@ -35,7 +33,7 @@ export default function RecruiterDashboardLayout({
       try {
         const profileData = await apiClient.get(
           "/recruiter/profile",
-          session.access_token,
+          token,
         );
         setProfile(profileData);
       } catch (err) {
@@ -67,12 +65,10 @@ export default function RecruiterDashboardLayout({
         teamRole={profile?.team_role}
         profileScore={profile?.companies?.profile_score ?? 0}
       />
-      <div className="flex-1 ml-64 min-h-screen relative">
+      <div className="flex-1 ml-64 min-h-screen relative overflow-x-hidden">
         <RecruiterHeader />
         <div className="relative">
-          {/* Subtle top decoration */}
-          <div className="absolute top-0 right-0 left-0 h-64 bg-linear-to-b from-indigo-50/50 to-transparent -z-10" />
-          <main className="p-8">{children}</main>
+          <main className="p-8 pt-20">{children}</main>
         </div>
       </div>
     </div>

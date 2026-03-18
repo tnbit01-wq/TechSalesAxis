@@ -12,7 +12,7 @@ import {
   Quote,
 } from "lucide-react";
 import { apiClient } from "@/lib/apiClient";
-import { supabase } from "@/lib/supabaseClient";
+import { awsAuth } from "@/lib/awsAuth";
 
 interface InterviewFeedbackModalProps {
   isOpen: boolean;
@@ -48,13 +48,13 @@ export default function InterviewFeedbackModal({
     setError(null);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+      const token = awsAuth.getToken();
+      if (!token) return;
 
       await apiClient.post(`/interviews/${interviewId}/feedback`, {
         feedback: feedback.trim(),
         next_status: decision
-      }, session.access_token);
+      }, token);
 
       onSuccess();
       onClose();

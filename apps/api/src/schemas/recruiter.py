@@ -37,6 +37,7 @@ class RecruiterAccountSettingsUpdate(BaseModel):
     profile_visibility: Optional[str] = None
     language: Optional[str] = None
     timezone: Optional[str] = None
+    ghost_mode: Optional[bool] = None
 
 class RecruiterStats(BaseModel):
     active_jobs_count: int

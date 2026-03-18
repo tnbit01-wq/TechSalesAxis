@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 
 export default function Home() {
@@ -15,14 +15,12 @@ export default function Home() {
       if (isInit) return;
       isInit = true;
 
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (session) {
+      const token = awsAuth.getToken();
+      if (token) {
         try {
           const handshake = await apiClient.get(
             "/auth/post-login",
-            session.access_token,
+            token,
           );
           if (handshake && handshake.next_step) {
             router.replace(handshake.next_step);

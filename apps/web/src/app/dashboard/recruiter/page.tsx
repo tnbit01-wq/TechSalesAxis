@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { supabase } from "@/lib/supabaseClient";
+import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import { useRouter } from "next/navigation";
 import {
@@ -61,23 +61,21 @@ export default function RecruiterDashboard() {
   const [error, setError] = useState<string | null>(null);
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    await awsAuth.logout();
     router.replace("/login");
   };
 
   const loadData = useCallback(async () => {
     try {
-      const {
-        data: { session: authSession },
-      } = await supabase.auth.getSession();
-      if (!authSession) {
+      const token = awsAuth.getToken();
+      if (!token) {
         router.replace("/login");
         return;
       }
 
       const [profileData, statsData] = await Promise.all([
-        apiClient.get("/recruiter/profile", authSession.access_token),
-        apiClient.get("/recruiter/stats", authSession.access_token),
+        apiClient.get("/recruiter/profile", token),
+        apiClient.get("/recruiter/stats", token),
       ]);
 
       setProfile(profileData);
@@ -94,33 +92,13 @@ export default function RecruiterDashboard() {
   useEffect(() => {
     loadData();
 
-    // Set up real-time listener for dashboard-critical tables
-    const dashboardChannel = supabase
-      .channel("recruiter_dashboard_sync")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "job_applications" },
-        () => {
-          console.log(
-            "Real-time: Data drift detected in applications. Re-syncing...",
-          );
-          loadData();
-        },
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "jobs" },
-        () => {
-          console.log(
-            "Real-time: Role inventory change detected. Re-syncing...",
-          );
-          loadData();
-        },
-      )
-      .subscribe();
+    // Replaced real-time with polling every 30 seconds
+    const interval = setInterval(() => {
+      loadData();
+    }, 30000);
 
     return () => {
-      supabase.removeChannel(dashboardChannel);
+      clearInterval(interval);
     };
   }, [loadData]);
 
@@ -211,7 +189,7 @@ export default function RecruiterDashboard() {
               <h1 className="text-4xl font-bold text-slate-900 tracking-tight">
                 Recruiter <span className="text-indigo-600">Overview</span>
               </h1>
-              <div className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-widest rounded-md">
+              <div className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-widest rounded-md border border-indigo-200">
                 Admin
               </div>
             </div>
@@ -231,6 +209,7 @@ export default function RecruiterDashboard() {
                 OPERATIONAL
               </div>
             </div>
+            <div className="h-10 w-px bg-slate-200 mx-2 hidden md:block" />
             <button
               onClick={handleLogout}
               className="px-4 py-2 bg-slate-100 hover:bg-red-100 text-slate-600 hover:text-red-600 rounded-xl text-xs font-bold transition-all border border-slate-200"
@@ -252,26 +231,25 @@ export default function RecruiterDashboard() {
                   <div className="px-3 py-1 bg-white/10 backdrop-blur-md rounded-full border border-white/10 flex items-center gap-2">
                     <ShieldCheck className="h-3 w-3 text-indigo-400" />
                     <span className="text-[9px] font-black uppercase tracking-[0.2em] text-indigo-400">
-                      Live Verification Analysis
+                      Profile Analysis
                     </span>
                   </div>
                 </div>
                 <h2 className="text-4xl md:text-5xl font-black text-white tracking-tighter leading-tight">
                   Company{" "}
                   <span className="text-transparent bg-clip-text bg-linear-to-r from-indigo-400 to-purple-400">
-                    Trust Score
+                    Trust score
                   </span>
                 </h2>
                 <p className="text-slate-400 text-sm md:text-base font-medium leading-relaxed max-w-md opacity-80">
-                  This score is calculated based on your brand transparency,
-                  onboarding accuracy, and culture audit results.
+                  Your trust score is based on company verification, culture details, and job quality.
                 </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="p-5 rounded-3xl bg-white/5 border border-white/10 backdrop-blur-md hover:bg-white/10 transition-colors">
                   <div className="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">
-                    Hiring Tier
+                    Ranking
                   </div>
                   <div className="flex items-end gap-2">
                     <div className="text-3xl font-black text-white leading-none">
@@ -283,12 +261,12 @@ export default function RecruiterDashboard() {
                     </div>
                   </div>
                   <div className="mt-2 text-[8px] font-bold text-slate-500 uppercase tracking-widest leading-normal">
-                    Based on audit quality
+                    Based on profile quality
                   </div>
                 </div>
                 <div className="p-5 rounded-3xl bg-white/5 border border-white/10 backdrop-blur-md hover:bg-white/10 transition-colors">
                   <div className="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">
-                    Profile completion
+                    Completion
                   </div>
                   <div className="flex items-end gap-2">
                     <div className="text-3xl font-black text-white leading-none">
@@ -296,7 +274,7 @@ export default function RecruiterDashboard() {
                     </div>
                   </div>
                   <div className="mt-2 text-[8px] font-bold text-slate-500 uppercase tracking-widest leading-normal">
-                    Data provided to candidates
+                    Data transparency
                   </div>
                 </div>
               </div>
@@ -522,7 +500,10 @@ export default function RecruiterDashboard() {
                     {stats?.visibility_tier?.toUpperCase() || "GROWTH"}
                   </span>
                 </div>
-                <button className="w-full py-2 bg-white/5 border border-white/10 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-white/10 transition-all hover:scale-[1.02] active:scale-95">
+                <button 
+                  onClick={() => router.push("/dashboard/recruiter/intelligence/gps")}
+                  className="w-full py-2 bg-white/5 border border-white/10 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-white/10 transition-all hover:scale-[1.02] active:scale-95"
+                >
                   Deep Insights
                 </button>
               </div>

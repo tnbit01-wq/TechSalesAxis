@@ -27,7 +27,7 @@ import {
   Mail,
   Video,
 } from "lucide-react";
-import { supabase } from "@/lib/supabaseClient";
+import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import RecruiterSidebar from "@/components/RecruiterSidebar";
 import RejectionModal from "@/components/RejectionModal";
@@ -58,15 +58,11 @@ interface Application {
     location: string | null;
     gender: string | null;
     birthdate: string | null;
-    university: string | null;
-    qualification_held: string | null;
-    graduation_year: number | null;
     referral: string | null;
     bio: string | null;
     profile_photo_url: string | null;
     email?: string | null;
     resume_path?: string | null;
-    resume_url?: string | null;
   };
   resume_data?: {
     timeline: any;
@@ -143,16 +139,14 @@ export default function ApplicationsPipelinePage() {
 
   const fetchApplications = useCallback(async () => {
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) {
+      const token = awsAuth.getToken();
+      if (!token) {
         router.replace("/login");
         return;
       }
       const [data, profileData] = await Promise.all([
-        apiClient.get("/recruiter/applications/pipeline", session.access_token),
-        apiClient.get("/recruiter/profile", session.access_token),
+        apiClient.get("/recruiter/applications/pipeline", token),
+        apiClient.get("/recruiter/profile", token),
       ]);
 
       const appsData = data || [];
@@ -173,6 +167,9 @@ export default function ApplicationsPipelinePage() {
 
   useEffect(() => {
     fetchApplications();
+    // Refresh recruiter pipeline every 1 minute to track selection updates
+    const interval = setInterval(fetchApplications, 60000);
+    return () => clearInterval(interval);
   }, [fetchApplications]);
 
   const exportToCSV = () => {
@@ -227,10 +224,8 @@ export default function ApplicationsPipelinePage() {
     if (targets.length === 0) return;
 
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) return;
+      const token = awsAuth.getToken();
+      if (!token) return;
 
       await apiClient.post(
         "/recruiter/applications/bulk-status",
@@ -239,7 +234,7 @@ export default function ApplicationsPipelinePage() {
           status,
           feedback,
         },
-        session.access_token,
+        token,
       );
 
       setIsRejectionModalOpen(false);
@@ -385,13 +380,12 @@ export default function ApplicationsPipelinePage() {
                 const totalApps = group.applications.length;
                 const today = new Date().toISOString().split("T")[0];
                 const todayApps = group.applications.filter((a) =>
-                  a.created_at.startsWith(today),
+                  a.created_at && String(a.created_at).startsWith(today),
                 ).length;
 
                 // Calculate days left (fallback: 30 days from creation)
-                const createdAt = new Date(
-                  group.applications[0]?.jobs.created_at || Date.now(),
-                );
+                const createdAtStr = group.applications[0]?.jobs?.created_at || group.applications[0]?.created_at || new Date().toISOString();
+                const createdAt = new Date(createdAtStr);
                 const deadline = new Date(
                   createdAt.getTime() + 30 * 24 * 60 * 60 * 1000,
                 );
@@ -754,9 +748,9 @@ export default function ApplicationsPipelinePage() {
                                             onClick={async (e) => {
                                               e.stopPropagation();
                                               try {
-                                                const { data: { session } } = await supabase.auth.getSession();
-                                                if (session) {
-                                                  apiClient.post(`/interviews/${interview.id}/join-event`, {}, session.access_token);
+                                                const token = awsAuth.getToken();
+                                                if (token) {
+                                                  apiClient.post(`/interviews/${interview.id}/join-event`, {}, token);
                                                 }
                                               } catch (err) {
                                                 console.error("Failed to signal join:", err);

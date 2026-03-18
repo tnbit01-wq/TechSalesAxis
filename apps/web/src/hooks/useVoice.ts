@@ -100,13 +100,22 @@ export const useVoice = () => {
 
   const startListening = useCallback(() => {
     if (recognitionRef.current) {
-      setTranscript("");
-      setIsListening(true);
-      recognitionRef.current.start();
+      if (isListening) {
+        console.warn("Speech recognition is already in progress.");
+        return;
+      }
+      try {
+        setTranscript("");
+        setIsListening(true);
+        recognitionRef.current.start();
+      } catch (e) {
+        console.error("Speech recognition start failed:", e);
+        setIsListening(false);
+      }
     } else {
       alert("Speech recognition not supported in this browser.");
     }
-  }, []);
+  }, [isListening]);
 
   const stopListening = useCallback(() => {
     if (recognitionRef.current) {

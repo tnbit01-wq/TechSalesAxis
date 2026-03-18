@@ -1,20 +1,17 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { awsAuth } from "@/lib/awsAuth";
 import ChatCenter from "@/components/ChatCenter";
-import type { User as SupabaseUser } from "@supabase/supabase-js";
 import { MessageSquare, Sparkles, User } from "lucide-react";
 
 export default function CandidateMessagesPage() {
-  const [user, setUser] = useState<SupabaseUser | null>(null);
+  const [user, setUser] = useState<{ email: string; id: string } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const getInitialData = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = awsAuth.getUser();
       if (user) {
         setUser(user);
       }
@@ -31,7 +28,7 @@ export default function CandidateMessagesPage() {
         <div className="space-y-1">
           <div className="flex items-center gap-3">
             <h1 className="text-4xl font-black text-slate-900 tracking-tighter uppercase italic">
-              Comm <span className="text-indigo-600">Nexus</span>
+              Your <span className="text-indigo-600">Messages</span>
             </h1>
             <div className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-widest rounded-md border border-indigo-200">
               Encrypted
@@ -39,7 +36,7 @@ export default function CandidateMessagesPage() {
           </div>
           <p className="text-slate-500 font-bold uppercase tracking-[0.2em] text-[10px] flex items-center gap-2">
             <MessageSquare className="h-3 w-3 text-indigo-500" />
-            Manage your high-stakes professional conversations.
+            Communicate with recruiters and stay updated.
           </p>
         </div>
         <div className="hidden md:flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 px-4 py-2 rounded-xl border border-slate-100">

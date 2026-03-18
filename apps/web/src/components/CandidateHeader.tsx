@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Bell, Check, Trash2, X, Sparkles, Zap, Clock } from "lucide-react";
-import { supabase } from "@/lib/supabaseClient";
+import { useRouter } from "next/navigation";
+import { Bell, Check, Trash2, X, Sparkles, Zap, Clock, Calendar } from "lucide-react";
+import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
+import { useChatViewStore } from "@/hooks/useChatViewStore";
 
 interface Notification {
   id: string;
@@ -15,6 +17,8 @@ interface Notification {
 }
 
 export default function CandidateHeader() {
+  const router = useRouter();
+  const { toggleChatMode } = useChatViewStore();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
@@ -23,14 +27,12 @@ export default function CandidateHeader() {
   useEffect(() => {
     async function fetchNotifications() {
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        if (!session) return;
+        const token = awsAuth.getToken();
+        if (!token) return;
 
         const data = await apiClient.get(
           "/notifications",
-          session.access_token,
+          token,
         );
         if (data && Array.isArray(data)) {
           setNotifications(data);
@@ -64,15 +66,13 @@ export default function CandidateHeader() {
   const markAsRead = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) return;
+      const token = awsAuth.getToken();
+      if (!token) return;
 
       await apiClient.patch(
         `/notifications/${id}/read`,
         {},
-        session.access_token,
+        token,
       );
       setNotifications((prev) =>
         prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)),
@@ -85,15 +85,13 @@ export default function CandidateHeader() {
 
   const markAllRead = async () => {
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) return;
+      const token = awsAuth.getToken();
+      if (!token) return;
 
       await apiClient.patch(
         `/notifications/read-all`,
         {},
-        session.access_token,
+        token,
       );
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
       setUnreadCount(0);
@@ -105,12 +103,10 @@ export default function CandidateHeader() {
   const deleteNotification = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) return;
+      const token = awsAuth.getToken();
+      if (!token) return;
 
-      await apiClient.delete(`/notifications/${id}`, session.access_token);
+      await apiClient.delete(`/notifications/${id}`, token);
       setNotifications((prev) => {
         const item = prev.find((n) => n.id === id);
         if (item && !item.is_read) setUnreadCount((u) => Math.max(0, u - 1));
@@ -122,7 +118,15 @@ export default function CandidateHeader() {
   };
 
   return (
-    <div className="flex justify-end p-4 absolute top-0 right-0 z-50">
+    <div className="flex items-center gap-3 p-4 absolute top-0 right-0 z-50">
+      <button
+        onClick={toggleChatMode}
+        className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-black text-white rounded-2xl border border-slate-800 transition-all shadow-lg active:scale-95 group overflow-hidden relative"
+      >
+        <Sparkles className="h-4 w-4 text-indigo-400 group-hover:rotate-12 transition-transform" />
+        <span className="text-[11px] font-black tracking-[0.1em] uppercase">AI Assistant</span>
+      </button>
+
       <div className="relative" ref={dropdownRef}>
         <button
           onClick={() => setIsOpen(!isOpen)}
@@ -137,18 +141,18 @@ export default function CandidateHeader() {
         </button>
 
         {isOpen && (
-          <div className="absolute right-0 mt-4 w-104 bg-white/95 backdrop-blur-2xl border border-slate-200/60 rounded-5xl shadow-[0_32px_128px_-12px_rgba(0,0,0,0.15)] overflow-hidden animate-in fade-in slide-in-from-top-4 duration-500 origin-top-right ring-1 ring-slate-900/5">
-            <div className="p-7 border-b border-slate-100 flex justify-between items-center bg-linear-to-r from-white via-slate-50/50 to-white">
+          <div className="absolute right-0 mt-4 w-104 bg-white border border-slate-200 rounded-3xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-4 duration-500 origin-top-right">
+            <div className="p-7 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
               <div className="flex items-center gap-3">
                 <div className="h-8 w-8 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-200 rotate-3 group-hover:rotate-0 transition-transform">
                   <Zap className="h-4 w-4 text-white" />
                 </div>
                 <div>
                   <h3 className="text-[11px] font-black text-slate-900 uppercase tracking-[0.2em] italic">
-                    Signal <span className="text-indigo-600">Nexus</span>
+                    Notification <span className="text-indigo-600">Center</span>
                   </h3>
                   <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
-                    Tactical Intelligence Feed
+                    Your latest updates
                   </p>
                 </div>
               </div>

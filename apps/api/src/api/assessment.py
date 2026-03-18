@@ -1,9 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 from src.core.dependencies import get_current_user
 from src.services.assessment_service import assessment_service
-from src.core.supabase import async_supabase
+from src.core.database import SessionLocal
+from src.core.models import BlockedUser, AssessmentSession, CandidateProfile, AssessmentResponse
 from pydantic import BaseModel
 from typing import Optional
+from sqlalchemy.orm import Session
+from src.core.dependencies import get_db
 
 router = APIRouter()
 
@@ -15,104 +18,112 @@ class AnswerSubmission(BaseModel):
     metadata: dict = {}
 
 @router.post("/start")
-async def start_assessment(user: dict = Depends(get_current_user)):
+async def start_assessment(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     user_id = user["sub"]
     # Check if blocked
-    blocked_res = await async_supabase.table("blocked_users").select("*").eq("user_id", user_id).execute()
-    if blocked_res.data:
+    blocked = db.query(BlockedUser).filter(BlockedUser.user_id == user_id).first()
+    if blocked:
         raise HTTPException(status_code=403, detail="Your account has been permanently blocked due to security violations.")
     
-    session = await assessment_service.get_or_create_session(user_id)
+    # Use await because the service methods are defined with async in some places or we want to remain consistent
+    # Actually, the methods in assessment_service.py are NOT async for get_or_create_session
+    session = assessment_service.get_or_create_session(user_id, db)
     return session
 
 @router.get("/next")
-async def get_next_question(user: dict = Depends(get_current_user)):
+async def get_next_question(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     user_id = user["sub"]
     # Check if blocked
-    blocked_res = await async_supabase.table("blocked_users").select("*").eq("user_id", user_id).execute()
-    if blocked_res.data:
+    blocked = db.query(BlockedUser).filter(BlockedUser.user_id == user_id).first()
+    if blocked:
         raise HTTPException(status_code=403, detail="Your account has been permanently blocked.")
 
-    question = await assessment_service.get_next_question(user_id)
+    # Check session status first
+    session = db.query(AssessmentSession).filter(AssessmentSession.candidate_id == user_id).first()
+    if session and session.status == "completed":
+        return {"status": "completed", "message": "Assessment already finished."}
+
+    question = assessment_service.get_next_question(user_id, db)
+    
+    if not question:
+        # Check if we should actually be done
+        session = db.query(AssessmentSession).filter(AssessmentSession.candidate_id == user_id).first()
+        if (session and session.current_step > session.total_budget):
+             session.status = "completed"
+             db.commit()
+             return {"status": "completed", "message": "Assessment finished."}
+             
+        return {"status": "error", "message": "No more questions available for your experience level."}
+        
     return question
 
 @router.post("/submit")
-async def submit_answer(submission: AnswerSubmission, user: dict = Depends(get_current_user)):
+async def submit_answer(submission: AnswerSubmission, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     user_id = user["sub"]
     # Check if blocked
-    blocked_res = await async_supabase.table("blocked_users").select("*").eq("user_id", user_id).execute()
-    if blocked_res.data:
+    blocked = db.query(BlockedUser).filter(BlockedUser.user_id == user_id).first()
+    if blocked:
         raise HTTPException(status_code=403, detail="Your account has been permanently blocked.")
 
-    result = await assessment_service.evaluate_answer(
+    result = await assessment_service.submit_answer(
         user_id, 
         submission.question_id,
-        submission.category,
         submission.answer,
-        submission.difficulty,
-        submission.metadata
+        db
     )
     return result
 
 @router.post("/tab-switch")
-async def handle_tab_switch(user: dict = Depends(get_current_user)):
+async def handle_tab_switch(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     user_id = user["sub"]
     
-    # 1. Increment switch count in the session (Safer select to handle missing DB column)
-    session_res = await async_supabase.table("assessment_sessions").select("*").eq("candidate_id", user_id).execute()
+    # 1. Increment switch count in the session
+    session = db.query(AssessmentSession).filter(AssessmentSession.candidate_id == user_id).first()
     
-    current_count = 0
-    if session_res.data and len(session_res.data) > 0:
-        current_count = session_res.data[0].get("warning_count", 0)
+    if not session:
+         return {"status": "error", "message": "No active session"}
     
-    new_count = current_count + 1
+    session.warning_count += 1
+    db.commit()
     
-    # Update count (Try-catch to fail gracefully if DB schema isn't synced yet)
-    try:
-        await async_supabase.table("assessment_sessions").update({"warning_count": new_count}).eq("candidate_id", user_id).execute()
-    except Exception as e:
-        print(f"DEBUG: warning_count update failed (likely missing column): {str(e)}")
-    
-    if new_count >= 2:
+    if session.warning_count >= 2:
         # BAN USER
-        await async_supabase.table("blocked_users").insert({
-            "user_id": user_id,
-            "reason": "Security violation: Multiple tab switches during assessment."
-        }).execute()
+        blocked = BlockedUser(
+            user_id=user_id,
+            reason="Security violation: Multiple tab switches during assessment."
+        )
+        db.add(blocked)
         
         # Update candidate status
-        await async_supabase.table("candidate_profiles").update({"assessment_status": "disqualified"}).eq("user_id", user_id).execute()
+        profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == user_id).first()
+        if profile:
+            profile.assessment_status = "disqualified"
+        
+        db.commit()
         
         return {"status": "blocked", "message": "Security violation detected. You have been permanently blocked. Any further access is denied."}
     
     return {"status": "warning", "message": "Final warning: Tab switching is strictly prohibited. Your next attempt will result in a permanent ban."}
 
 @router.get("/results")
-async def get_results(user: dict = Depends(get_current_user)):
+async def get_results(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     user_id = user["sub"]
     
-    # 1. Fetch current session (Safe fetch)
-    res = await async_supabase.table("assessment_sessions").select("*").eq("candidate_id", user_id).execute()
-    if not res.data:
-        return None
-    
-    session = res.data[0]
-    
-    # 2. FORCE RE-CALCULATION if status is completed
-    if session.get("status") == "completed":
-        await assessment_service.complete_assessment(user_id, session)
-        # Refetch to get updated values
-        res = await async_supabase.table("assessment_sessions").select("*").eq("candidate_id", user_id).execute()
-        return res.data[0] if res.data else session
-        
+    # 1. Fetch current session
+    session = db.query(AssessmentSession).filter(AssessmentSession.candidate_id == user_id).first()
     return session
 
 @router.post("/retake")
-async def retake_assessment(user: dict = Depends(get_current_user)):
+async def retake_assessment(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     user_id = user["sub"]
     # Check if blocked
-    blocked_res = await async_supabase.table("blocked_users").select("*").eq("user_id", user_id).execute()
-    if blocked_res.data:
+    blocked = db.query(BlockedUser).filter(BlockedUser.user_id == user_id).first()
+    if blocked:
         raise HTTPException(status_code=403, detail="Your account has been permanently blocked.")
         
-    return await assessment_service.retake_assessment(user_id)
+    # delete current session and responses
+    db.query(AssessmentResponse).filter(AssessmentResponse.candidate_id == user_id).delete()
+    db.query(AssessmentSession).filter(AssessmentSession.candidate_id == user_id).delete()
+    db.commit()
+    
+    return assessment_service.get_or_create_session(user_id, db)
