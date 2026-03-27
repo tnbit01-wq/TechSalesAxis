@@ -1,56 +1,110 @@
+"""
+Debug Resume Parsing - Check what's missing
+"""
 
-import asyncio
 import os
 import sys
+import io
 
-# Ensure backend root is in path
-sys.path.append(os.path.join(os.getcwd(), "apps", "api"))
+# Set stdout to UTF-8 encoding to handle Unicode characters
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
-from src.core.supabase import async_supabase as supabase
+sys.path.insert(0, 'src')
 
-async def check_user_data(user_id):
-    print(f"--- DATA AUDIT FOR USER: {user_id} ---")
-    
-    # 1. Check resume_data table
-    try:
-        res_data = await supabase.table("resume_data").select("*").eq("user_id", user_id).execute()
-        if res_data.data:
-            print("\n[+] TABLE: resume_data")
-            row = res_data.data[0]
-            print(f" - Extraction status: SUCCESS")
-            print(f" - Skills count: {len(row.get('skills', []) or [])}")
-            print(f" - Raw Experience count: {len(row.get('raw_experience', []) or [])}")
-            print(f" - Raw Education count: {len(row.get('raw_education', []) or [])}")
-            print(f" - Raw Text size: {len(row.get('raw_text', '') or '')} chars")
-            print(f" - Career Gaps: {row.get('career_gaps')}")
-        else:
-            print("\n[-] TABLE: resume_data (NO ENTRY FOUND)")
-    except Exception as e:
-        print(f"\n[!] Error reading resume_data: {e}")
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from dotenv import load_dotenv
+from src.core.models import ResumeData
+from src.services.comprehensive_extractor import ComprehensiveResumeExtractor
 
-    # 2. Check candidate_profiles table
-    try:
-        prof_data = await supabase.table("candidate_profiles").select("*").eq("user_id", user_id).execute()
-        if prof_data.data:
-            print("\n[+] TABLE: candidate_profiles")
-            p = prof_data.data[0]
-            print(f" - Location: {p.get('location')}")
-            print(f" - Current Role: {p.get('current_role')}")
-            print(f" - Current Company: {p.get('current_company_name')}")
-            print(f" - Years of Exp: {p.get('years_of_experience')}")
-            print(f" - Experience Band: {p.get('experience')}")
-            print(f" - Skills Length: {len(p.get('skills', []) or [])}")
-            print(f" - Education History Count: {len(p.get('education_history', []) or [])}")
-            print(f" - Experience History Count: {len(p.get('experience_history', []) or [])}")
-            print(f" - AI Confidence: {p.get('ai_extraction_confidence')}")
-            print(f" - Status: {p.get('assessment_status')}")
-            
-            print("\n[DEBUG] SPECIFIC FIELD CHECK:")
-            print(f" - Skills Array: {p.get('skills')}")
-        else:
-            print("\n[-] TABLE: candidate_profiles (NO ENTRY FOUND)")
-    except Exception as e:
-        print(f"\n[!] Error reading candidate_profiles: {e}")
+# Load environment
+load_dotenv()
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-if __name__ == '__main__':
-    asyncio.run(check_user_data('c32e36c5-f2ed-40ba-a0a2-7819b7721290'))
+# Create engine and session
+engine = create_engine(DATABASE_URL)
+Session = sessionmaker(bind=engine)
+db = Session()
+
+USER_ID = "c32e36c5-f2ed-40ba-a0a2-7819b7721290"
+
+# Get the resume
+resume = db.query(ResumeData).filter(ResumeData.user_id == USER_ID).first()
+
+if not resume or not resume.raw_text:
+    print("No resume found")
+    sys.exit(1)
+
+print("=" * 80)
+print("RESUME RAW TEXT")
+print("=" * 80)
+print(resume.raw_text)
+print("\n" + "=" * 80)
+print("EXTRACTION TEST")
+print("=" * 80)
+
+# Test extraction methods
+text = resume.raw_text
+
+print("\n1. YEARS OF EXPERIENCE EXTRACTION:")
+years = ComprehensiveResumeExtractor.extract_experience_years(text)
+print(f"   Result: {years}")
+
+print("\n2. CURRENT ROLE EXTRACTION:")
+exp_list, current_role, previous_role = ComprehensiveResumeExtractor.extract_experience(text)
+print(f"   Current Role: {current_role}")
+print(f"   Previous Role: {previous_role}")
+print(f"   Experience Count: {len(exp_list)}")
+
+print("\n3. CERTIFICATIONS EXTRACTION:")
+certs = ComprehensiveResumeExtractor.extract_certifications(text)
+print(f"   Certifications Found: {len(certs)}")
+for cert in certs:
+    print(f"     - {cert}")
+
+print("\n4. SKILLS EXTRACTION:")
+skills = ComprehensiveResumeExtractor.extract_skills(text)
+print(f"   Skills Found: {len(skills)}")
+print(f"   Skills: {skills[:5]}...")
+
+print("\n5. LOCATION EXTRACTION:")
+location = ComprehensiveResumeExtractor.extract_location(text)
+print(f"   Location: {location}")
+
+print("\n" + "=" * 80)
+print("ISSUE ANALYSIS")
+print("=" * 80)
+
+# Check if "5+" appears in the text
+if "5+" in text.lower():
+    print("\n✓ Found '5+' in resume text")
+else:
+    print("\n❌ '5+' not found in resume text")
+
+# Check for experience word
+if "experience" in text.lower():
+    print("✓ Found 'experience' keyword")
+    # Show context
+    idx = text.lower().find("experience")
+    context_start = max(0, idx - 50)
+    context_end = min(len(text), idx + 100)
+    print(f"  Context: ...{text[context_start:context_end]}...")
+else:
+    print("❌ 'experience' keyword not found")
+
+# Check for certification patterns
+if "certification" in text.lower() or "certified" in text.lower():
+    print("✓ Found certification keywords")
+else:
+    print("❌ No certification keywords found")
+
+# Check all sections
+print("\n" + "-" * 80)
+print("TEXT SECTIONS:")
+print("-" * 80)
+sections = text.split("---")
+for i, section in enumerate(sections):
+    print(f"\nSection {i+1} ({len(section)} chars):")
+    print(f"{section[:150]}...")
+
+db.close()

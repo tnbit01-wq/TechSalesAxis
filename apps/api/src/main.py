@@ -14,9 +14,11 @@ from src.api.interviews import router as interviews_router
 from src.api.career_gps import router as career_gps_router
 from src.api.ai_intent import router as ai_intent_router
 from src.api.storage import router as storage_router
+from src.api.analytics import router as analytics_router
+from bulk_upload_api import router as bulk_upload_router
 import time
 
-app = FastAPI(title="TalentFlow API")
+app = FastAPI(title="TechSales Axis API")
 print(">>> V3 BACKEND ACTIVE - LOCK 403 BYPASS ENABLED <<<")
 
 @app.exception_handler(Exception)
@@ -63,9 +65,11 @@ app.include_router(chat_router)
 app.include_router(interviews_router)
 app.include_router(career_gps_router)
 app.include_router(storage_router)
+app.include_router(analytics_router, prefix="/analytics")
 app.include_router(ai_intent_router) # AI Intelligence Core
+app.include_router(bulk_upload_router, prefix="/api/v1/bulk-upload", tags=["bulk-upload"])
 
 @app.get("/")
 async def root():
-    return {"status": "ok", "service": "TalentFlow API", "version": "1.0.0"}
+    return {"status": "ok", "service": "TechSales Axis API", "version": "1.0.0"}
  

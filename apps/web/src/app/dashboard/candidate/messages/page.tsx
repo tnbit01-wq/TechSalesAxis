@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { awsAuth } from "@/lib/awsAuth";
 import ChatCenter from "@/components/ChatCenter";
-import { MessageSquare, Sparkles, User } from "lucide-react";
+import { User } from "lucide-react";
 
 export default function CandidateMessagesPage() {
   const [user, setUser] = useState<{ email: string; id: string } | null>(null);
@@ -23,29 +23,15 @@ export default function CandidateMessagesPage() {
   if (loading) return null;
 
   return (
-    <div className="max-w-7xl mx-auto space-y-12">
-      <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div className="space-y-1">
-          <div className="flex items-center gap-3">
-            <h1 className="text-4xl font-black text-slate-900 tracking-tighter uppercase italic">
-              Your <span className="text-indigo-600">Messages</span>
-            </h1>
-            <div className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-widest rounded-md border border-indigo-200">
-              Encrypted
-            </div>
-          </div>
-          <p className="text-slate-500 font-bold uppercase tracking-[0.2em] text-[10px] flex items-center gap-2">
-            <MessageSquare className="h-3 w-3 text-indigo-500" />
-            Communicate with recruiters and stay updated.
-          </p>
-        </div>
-        <div className="hidden md:flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 px-4 py-2 rounded-xl border border-slate-100">
-          <Sparkles className="h-3 w-3 text-amber-400" />
-          Real-time Sync Active
+    <div className="max-w-6xl mx-auto px-4 py-8 space-y-10 pb-20">
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Messages</h1>
+          <p className="text-slate-500 text-sm mt-1">Communicate with recruiters and stay updated with encrypted messaging.</p>
         </div>
       </header>
 
-      <div className="bg-white rounded-[2.5rem] border border-slate-200/60 shadow-sm overflow-hidden min-h-[70vh]">
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden min-h-[70vh]">
         {user?.id ? (
           <ChatCenter userId={user.id} role="candidate" />
         ) : (

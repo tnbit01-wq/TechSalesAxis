@@ -41,8 +41,8 @@ Thumbs.db
 # IDE
 .vscode/
 
-# Supabase
-.supabase/
+# AWS local config (if any)
+.aws-config/
 
 # Misc
 coverage/

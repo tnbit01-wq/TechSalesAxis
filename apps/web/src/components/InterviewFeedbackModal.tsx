@@ -10,6 +10,8 @@ import {
   Loader2,
   AlertCircle,
   Quote,
+  Clock,
+  AlertTriangle,
 } from "lucide-react";
 import { apiClient } from "@/lib/apiClient";
 import { awsAuth } from "@/lib/awsAuth";
@@ -21,6 +23,8 @@ interface InterviewFeedbackModalProps {
   applicationId: string;
   candidateName: string;
   roundName: string;
+  recruiterJoinedAt?: string | null;
+  candidateJoinedAt?: string | null;
   onSuccess: () => void;
 }
 
@@ -31,16 +35,27 @@ export default function InterviewFeedbackModal({
   applicationId,
   candidateName,
   roundName,
+  recruiterJoinedAt,
+  candidateJoinedAt,
   onSuccess,
 }: InterviewFeedbackModalProps) {
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState("");
-  const [decision, setDecision] = useState<"offered" | "rejected" | "shortlisted" | null>(null);
+  const [decision, setDecision] = useState<"offered" | "rejected" | "shortlisted" | "no_show" | "not_conducted" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  
+  const recruiterAttended = !!recruiterJoinedAt;
+  const candidateAttended = !!candidateJoinedAt;
 
   const handleSubmit = async () => {
-    if (!decision || !feedback.trim()) {
-      setError("Please provide feedback and select a decision.");
+    if (!decision) {
+      setError("Please select a decision.");
+      return;
+    }
+    
+    // Only require feedback for normal decisions, not for no_show or not_conducted
+    if (decision !== "no_show" && decision !== "not_conducted" && !feedback.trim()) {
+      setError("Please provide feedback.");
       return;
     }
 
@@ -96,17 +111,28 @@ export default function InterviewFeedbackModal({
               {error}
             </div>
           )}
-
+          {!recruiterAttended && (
+            <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3 text-amber-700 text-xs font-bold animate-in slide-in-from-top-2">
+              <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="font-black">ATTENDANCE REQUIRED</p>
+                <p className="font-medium text-amber-600 mt-1">You must attend the interview to submit feedback. Select "Not Conducted" only if neither of you attended.</p>
+              </div>
+            </div>
+          )}
           {/* Decision Selector */}
           <div className="space-y-4">
             <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
               Select Strategic Decision
             </h3>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={() => setDecision("offered")}
+                disabled={!recruiterAttended}
+                title={!recruiterAttended ? "You must attend the interview to submit this feedback" : ""}
                 className={`
                   p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 group
+                  ${!recruiterAttended ? "opacity-40 cursor-not-allowed" : ""}
                   ${decision === "offered" 
                     ? "border-emerald-500 bg-emerald-50 shadow-lg shadow-emerald-100" 
                     : "border-slate-100 hover:border-emerald-200 bg-white"}
@@ -120,8 +146,11 @@ export default function InterviewFeedbackModal({
 
               <button
                 onClick={() => setDecision("shortlisted")}
+                disabled={!recruiterAttended}
+                title={!recruiterAttended ? "You must attend the interview to submit this feedback" : ""}
                 className={`
                   p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 group
+                  ${!recruiterAttended ? "opacity-40 cursor-not-allowed" : ""}
                   ${decision === "shortlisted" 
                     ? "border-indigo-500 bg-indigo-50 shadow-lg shadow-indigo-100" 
                     : "border-slate-100 hover:border-indigo-200 bg-white"}
@@ -135,8 +164,11 @@ export default function InterviewFeedbackModal({
 
               <button
                 onClick={() => setDecision("rejected")}
+                disabled={!recruiterAttended}
+                title={!recruiterAttended ? "You must attend the interview to submit this feedback" : ""}
                 className={`
                   p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 group
+                  ${!recruiterAttended ? "opacity-40 cursor-not-allowed" : ""}
                   ${decision === "rejected" 
                     ? "border-red-500 bg-red-50 shadow-lg shadow-red-100" 
                     : "border-slate-100 hover:border-red-200 bg-white"}
@@ -145,6 +177,42 @@ export default function InterviewFeedbackModal({
                 <XCircle className={`h-6 w-6 ${decision === "rejected" ? "text-red-500" : "text-slate-300 group-hover:text-red-400"}`} />
                 <span className={`text-[9px] font-black uppercase tracking-widest ${decision === "rejected" ? "text-red-700" : "text-slate-500"}`}>
                   Reject
+                </span>
+              </button>
+
+              <button
+                onClick={() => setDecision("no_show")}
+                disabled={!recruiterAttended}
+                title={!recruiterAttended ? "You must attend the interview to report candidate no-show" : ""}
+                className={`
+                  p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 group
+                  ${!recruiterAttended ? "opacity-40 cursor-not-allowed" : ""}
+                  ${decision === "no_show" 
+                    ? "border-orange-500 bg-orange-50 shadow-lg shadow-orange-100" 
+                    : "border-slate-100 hover:border-orange-200 bg-white"}
+                `}
+              >
+                <Clock className={`h-6 w-6 ${decision === "no_show" ? "text-orange-500" : "text-slate-300 group-hover:text-orange-400"}`} />
+                <span className={`text-[9px] font-black uppercase tracking-widest ${decision === "no_show" ? "text-orange-700" : "text-slate-500"}`}>
+                  No Show
+                </span>
+              </button>
+
+              <button
+                onClick={() => setDecision("not_conducted")}
+                disabled={recruiterAttended || candidateAttended}
+                title={recruiterAttended || candidateAttended ? "Select only if neither attended" : ""}
+                className={`
+                  p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 group
+                  ${recruiterAttended || candidateAttended ? "opacity-40 cursor-not-allowed" : ""}
+                  ${decision === "not_conducted" 
+                    ? "border-purple-500 bg-purple-50 shadow-lg shadow-purple-100" 
+                    : "border-slate-100 hover:border-purple-200 bg-white"}
+                `}
+              >
+                <AlertTriangle className={`h-6 w-6 ${decision === "not_conducted" ? "text-purple-500" : "text-slate-300 group-hover:text-purple-400"}`} />
+                <span className={`text-[9px] font-black uppercase tracking-widest ${decision === "not_conducted" ? "text-purple-700" : "text-slate-500"}`}>
+                  Not Conducted
                 </span>
               </button>
             </div>
@@ -180,10 +248,10 @@ export default function InterviewFeedbackModal({
             </button>
             <button
               onClick={handleSubmit}
-              disabled={loading || !decision || !feedback.trim()}
+              disabled={loading || !decision || (decision !== "no_show" && decision !== "not_conducted" && !feedback.trim())}
               className={`
                 flex-[2] py-4 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] transition-all shadow-xl
-                ${loading || !decision || !feedback.trim()
+                ${loading || !decision || (decision !== "no_show" && decision !== "not_conducted" && !feedback.trim())
                   ? "bg-slate-200 text-slate-400 cursor-not-allowed"
                   : "bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-600/20 active:scale-[0.98]"}
               `}

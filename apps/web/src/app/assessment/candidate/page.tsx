@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
@@ -12,7 +12,9 @@ import {
   Timer, 
   SkipForward, 
   Loader2,
-  ArrowRight
+  ArrowRight,
+  MicOff,
+  Square
 } from "lucide-react";
 
 type Question = {
@@ -38,9 +40,15 @@ type AssessmentSession = {
 
 export default function AssessmentExam() {
   const router = useRouter();
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  
   const [session, setSession] = useState<AssessmentSession | null>(null);
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
   const [answer, setAnswer] = useState("");
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
   const [timeLeft, setTimeLeft] = useState(60);
   const [isLoading, setIsLoading] = useState(true);
   const [isFinishing, setIsFinishing] = useState(false);
@@ -154,6 +162,50 @@ export default function AssessmentExam() {
     router.replace("/login");
   };
 
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        audioChunksRef.current.push(event.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        setAudioBlob(audioBlob);
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecordingTime(0);
+    } catch (err) {
+      console.error("Microphone access denied:", err);
+      alert("Microphone access denied. Please allow microphone permissions to record audio responses.");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+      setIsRecording(false);
+    }
+  };
+
+  // Recording timer
+  useEffect(() => {
+    if (!isRecording) return;
+
+    const timer = setInterval(() => {
+      setRecordingTime((prev) => prev + 1);
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isRecording]);
+
   const handleNext = useCallback(
     async (isTimeout = false) => {
       if (isLoading || isFinishing) return;
@@ -163,7 +215,23 @@ export default function AssessmentExam() {
         const token = awsAuth.getToken();
         if (!token) return;
 
+        // Stop recording if still active
+        if (isRecording) {
+          stopRecording();
+        }
+
         // Submit answer
+        let audioBase64 = null;
+        if (audioBlob) {
+          const reader = new FileReader();
+          audioBase64 = await new Promise((resolve) => {
+            reader.onloadend = () => {
+              resolve(reader.result as string);
+            };
+            reader.readAsDataURL(audioBlob);
+          });
+        }
+
         const submitRes = await apiClient.post(
           "/assessment/submit",
           {
@@ -172,6 +240,7 @@ export default function AssessmentExam() {
             answer: isTimeout ? "" : answer,
             difficulty: currentQuestion?.difficulty,
             metadata: currentQuestion,
+            audio_response: audioBase64 || null,
           },
           token,
         );
@@ -227,6 +296,8 @@ export default function AssessmentExam() {
           
           setCurrentQuestion(nextQ);
           setAnswer("");
+          setAudioBlob(null);
+          setRecordingTime(0);
           setTimeLeft(60);
         }
       } catch (err) {
@@ -235,7 +306,7 @@ export default function AssessmentExam() {
         setIsLoading(false);
       }
     },
-    [isLoading, isFinishing, currentQuestion, answer, identityVerified, router],
+    [isLoading, isFinishing, currentQuestion, answer, audioBlob, isRecording, identityVerified, router],
   );
 
   // Timer logic
@@ -256,6 +327,13 @@ export default function AssessmentExam() {
 
   const handleAadhaarUpload = async () => {
     if (!aadhaarFile) return;
+
+    // Client-side size restriction (5MB)
+    if (aadhaarFile.size > 5 * 1024 * 1024) {
+      alert("Aadhaar file is too large! Maximum allowed is 5MB.");
+      return;
+    }
+
     setIsUploading(true);
     try {
       const user = awsAuth.getUser();
@@ -318,7 +396,7 @@ export default function AssessmentExam() {
           <p className="text-gray-400 mb-8 leading-relaxed">
             A security violation (tab switching) was detected. Due to our
             high-trust policy, you are permanently disqualified from using
-            TalentFlow.
+            TechSales Axis.
           </p>
           <div className="text-[10px] font-black tracking-widest text-red-500 bg-red-500/5 p-4 rounded-2xl border border-red-500/10 mb-8 uppercase">
             This action is irreversible.
@@ -347,7 +425,7 @@ export default function AssessmentExam() {
             </div>
           </div>
           <h1 className="text-4xl font-black text-white mb-4 tracking-tight">
-            Signals Captured.
+            Assessment Complete!
           </h1>
           <p className="text-gray-400 mb-10 leading-relaxed text-lg">
             Your evaluation is complete. To finalize your high-trust profile, 
@@ -422,7 +500,7 @@ export default function AssessmentExam() {
             <div className="h-11 w-11 bg-blue-600 rounded-[14px] flex items-center justify-center shadow-2xl shadow-blue-900/40">
               <div className="h-5 w-5 bg-black rounded-md transform rotate-45" />
             </div>
-            <span className="text-xl font-black tracking-[0.1em] text-white">TALENTFLOW</span>
+            <span className="text-xl font-black tracking-[0.1em] text-white">TECHSALES AXIS</span>
           </div>
         </div>
 
@@ -452,7 +530,7 @@ export default function AssessmentExam() {
           {session && !showAadhaar && (
             <div className="hidden lg:flex flex-col items-end gap-1.5 pt-1">
               <div className="flex items-center gap-3 text-[10px] font-black text-gray-400 tracking-[0.15em] uppercase">
-                <span>SIGNAL: {session?.current_step || 1} / {session?.total_budget || "--"}</span>
+                <span>Progress: {session?.current_step || 1} / {session?.total_budget || "--"}</span>
               </div>
               <div className="h-1 w-32 bg-white/5 rounded-full overflow-hidden">
                 <div 
@@ -484,7 +562,7 @@ export default function AssessmentExam() {
               <ShieldAlert size={20} />
             </div>
             <div className="flex-1">
-              <p className="text-xs font-black text-red-400 tracking-widest uppercase mb-0.5">Integrity Guard Alert</p>
+              <p className="text-xs font-black text-red-400 tracking-widest uppercase mb-0.5">Assessment Alert</p>
               <p className="text-sm font-bold text-red-200/70 leading-tight">{warning}</p>
             </div>
             <button 
@@ -536,7 +614,29 @@ export default function AssessmentExam() {
             
             {/* Unified Control Bar on Right (Matching Image) */}
             <div className="absolute right-6 bottom-6 flex items-center gap-4">
-              <Mic size={20} className="text-gray-700 hover:text-gray-500 transition-colors cursor-not-allowed hidden sm:block" />
+              {isRecording ? (
+                <div className="flex items-center gap-2 px-3 py-2 bg-red-500/20 rounded-xl boundary border-red-500/50">
+                  <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                  <span className="text-xs font-bold text-red-400">{recordingTime}s</span>
+                </div>
+              ) : null}
+              
+              <button
+                onClick={isRecording ? stopRecording : startRecording}
+                disabled={isLoading || !currentQuestion}
+                className={`p-2.5 rounded-xl transition-all ${
+                  isRecording
+                    ? "bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-600/20"
+                    : "text-gray-700 hover:text-white hover:bg-white/5"
+                }`}
+                title={isRecording ? "Stop recording" : "Start recording"}
+              >
+                {isRecording ? (
+                  <Square size={20} fill="currentColor" />
+                ) : (
+                  <Mic size={20} />
+                )}
+              </button>
               
               <button
                 onClick={() => handleNext(false)}
@@ -551,7 +651,7 @@ export default function AssessmentExam() {
                   <Loader2 className="animate-spin" size={16} />
                 ) : (
                   <>
-                    <span className="hidden sm:inline">TRANSMIT SIGNAL</span>
+                    <span className="hidden sm:inline">Submit</span>
                     <Send size={16} />
                   </>
                 )}
@@ -572,7 +672,7 @@ export default function AssessmentExam() {
                 </span>
              </div>
              <span className="text-[10px] font-bold text-gray-700 tracking-widest uppercase">
-                &copy; 2026 TALENTFLOW AI CORP
+                &copy; 2026 TECHSALES AXIS AI
              </span>
           </div>
         </div>

@@ -155,134 +155,126 @@ export default function TeamManagementPage() {
   };
 
   return (
-    <div className="min-h-screen">
-      <main className="p-12 overflow-y-auto">
-        <header className="mb-12 flex justify-between items-end">
+    <div className="min-h-screen bg-white">
+      <main className="max-w-7xl mx-auto px-4 py-12">
+        {/* Header */}
+        <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
           <div>
-            <div className="flex items-center gap-2 text-blue-600 font-semibold mb-2">
-              <Users className="h-5 w-5" />
-              <span>Organization</span>
-            </div>
-            <h1 className="text-4xl font-black text-slate-900 tracking-tight">
-              Team Management
+            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">
+              Team <span className="text-indigo-600">Management</span>
             </h1>
-            <p className="text-slate-500 mt-2 text-lg">
-              Manage recruiters and hiring permissions for{" "}
-              {profile?.companies?.name || "your company"}.
+            <p className="text-slate-500 text-sm mt-1">
+              Manage your team members and permissions
             </p>
           </div>
 
           {profile?.is_admin && (
             <button
               onClick={() => setIsInviteModalOpen(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all shadow-lg shadow-blue-100 active:scale-95"
+              className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium text-sm transition-all shadow-md shadow-indigo-200 active:scale-95 flex items-center gap-2 w-fit"
             >
-              <UserPlus className="h-5 w-5" />
-              Invite Recruiter
+              <UserPlus className="h-4 w-4" />
+              Invite Member
             </button>
           )}
         </header>
 
+        {/* Team Members Grid */}
         {loading ? (
-          <div className="flex items-center justify-center h-64">
-            <Loader2 className="h-12 w-12 text-blue-600 animate-spin" />
+          <div className="flex items-center justify-center py-20">
+            <div className="flex flex-col items-center gap-4">
+              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
+              <p className="text-slate-500 text-sm">Loading team...</p>
+            </div>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        ) : team.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {team.map((member) => (
               <div
                 key={member.user_id}
-                className="group relative bg-white rounded-[2.5rem] border border-slate-100 p-6 shadow-sm hover:shadow-2xl hover:shadow-blue-500/10 transition-all duration-500 hover:-translate-y-1"
+                className="group relative bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col"
               >
-                {/* Visual Accent */}
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 h-1 w-12 bg-blue-600/10 rounded-b-full group-hover:w-20 group-hover:bg-blue-600/30 transition-all duration-500" />
-
-                <div className="flex flex-col items-center text-center pt-4">
-                  {/* Avatar Section */}
+                <div className="flex flex-col items-center text-center">
+                  {/* Avatar */}
                   <div className="relative mb-4">
-                    <div className="h-20 w-20 rounded-[1.8rem] bg-slate-50 flex items-center justify-center text-2xl font-black text-slate-300 border-2 border-slate-100 shadow-inner group-hover:border-blue-100 group-hover:bg-blue-50/30 transition-all duration-500">
+                    <div className="h-16 w-16 rounded-full bg-indigo-100 flex items-center justify-center text-xl font-bold text-indigo-600 shadow-sm group-hover:bg-indigo-200 transition-all">
                       {member.full_name?.charAt(0) ||
                         member.users.email.charAt(0).toUpperCase()}
                     </div>
                     {member.is_admin && (
-                      <div className="absolute -top-1 -right-1 bg-white p-1.5 rounded-xl shadow-md border border-slate-50 group-hover:scale-110 transition-transform">
-                        <ShieldCheck className="h-4 w-4 text-blue-600" />
+                      <div className="absolute -bottom-1 -right-1 bg-indigo-600 p-1 rounded-full shadow-md">
+                        <ShieldCheck className="h-3 w-3 text-white" />
                       </div>
                     )}
                   </div>
 
-                  {/* Identity */}
-                  <div className="space-y-1 mb-6">
-                    <h3 className="font-black text-slate-900 tracking-tight text-lg group-hover:text-blue-600 transition-colors">
-                      {member.full_name || "Nexus Recruiter"}
+                  {/* Name & Email */}
+                  <div className="mb-4">
+                    <h3 className="text-sm font-bold text-slate-900">
+                      {member.full_name || "Team Member"}
                     </h3>
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-                      {member.job_title || "Strategic Talent Partner"}
-                    </p>
-                    <div className="flex items-center justify-center gap-1.5 text-[11px] font-bold text-slate-400 pt-1">
-                      <Mail size={12} className="opacity-50" />
+                    <p className="text-xs text-slate-500 mt-0.5">
                       {member.users.email}
-                    </div>
+                    </p>
                   </div>
 
-                  {/* Status Badges */}
-                  <div className="flex flex-wrap justify-center gap-2 mb-8">
-                    <span
-                      className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border ${
-                        member.is_admin
-                          ? "bg-blue-50 text-blue-600 border-blue-100"
-                          : "bg-slate-50 text-slate-500 border-slate-100"
-                      }`}
-                    >
-                      {member.is_admin ? "Admin" : "Recruiter"}
-                    </span>
-                    <span
-                      className={`flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border ${
-                        member.assessment_status === "completed"
-                          ? "bg-emerald-50 text-emerald-600 border-emerald-100"
-                          : "bg-amber-50 text-amber-600 border-amber-100"
-                      }`}
-                    >
-                      <BadgeCheck size={10} />
-                      {member.assessment_status?.split("_")[0] || "Pending"}
+                  {/* Badges */}
+                  <div className="flex gap-2 justify-center mb-4 flex-wrap">
+                    {member.is_admin && (
+                      <span className="px-2 py-1 bg-indigo-100 text-indigo-700 text-xs font-medium rounded-md">
+                        Admin
+                      </span>
+                    )}
+                    <span className={`px-2 py-1 text-xs font-medium rounded-md ${
+                      member.assessment_status === "completed"
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "bg-amber-100 text-amber-700"
+                    }`}>
+                      {member.assessment_status === "completed" ? "Verified" : "Pending"}
                     </span>
                   </div>
 
-                  {/* Action Bar */}
-                  {profile?.is_admin && member.user_id !== profile.user_id && (
-                    <div className="w-full flex items-center justify-center gap-2 pt-6 border-t border-slate-50">
-                      <button
-                        onClick={() => handlePromote(member)}
-                        disabled={actioningId === member.user_id}
-                        className="flex-1 py-3 px-4 bg-slate-50 hover:bg-blue-600 hover:text-white rounded-[1.2rem] text-[9px] font-black uppercase tracking-widest text-slate-500 transition-all border border-slate-100 flex items-center justify-center gap-2 group/btn"
-                      >
-                        <ShieldCheck
-                          size={14}
-                          className="group-hover/btn:scale-110 transition-transform"
-                        />
-                        {member.is_admin ? "Demote" : "Promote"}
-                      </button>
-                      <button
-                        onClick={() => handleRemove(member.user_id)}
-                        disabled={actioningId === member.user_id}
-                        className="p-3 bg-slate-50 hover:bg-rose-500 hover:text-white rounded-[1.2rem] text-slate-400 transition-all border border-slate-100"
-                      >
-                        {actioningId === member.user_id ? (
-                          <Loader2 className="h-5 w-5 animate-spin" />
-                        ) : (
-                          <UserMinus size={18} />
-                        )}
-                      </button>
-                    </div>
-                  )}
                 </div>
 
-                {/* Decorative Elements */}
-                <div className="absolute bottom-4 right-6 text-[8px] font-black text-slate-200 uppercase tracking-tighter opacity-0 group-hover:opacity-100 transition-opacity">
-                  ID: {member.user_id.split("-")[0]}
-                </div>
+                {/* Actions - shown if admin and not self */}
+                {profile?.is_admin && member.user_id !== profile.user_id && (
+                  <div className="mt-4 pt-4 border-t border-slate-100 flex gap-2 w-full">
+                    <button
+                      onClick={() => handlePromote(member)}
+                      disabled={actioningId === member.user_id}
+                      className="flex-1 px-3 py-2 bg-slate-100 hover:bg-indigo-600 hover:text-white rounded-lg text-xs font-medium transition-all disabled:opacity-50 flex items-center justify-center gap-1"
+                    >
+                      {actioningId === member.user_id ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <ShieldCheck size={12} />
+                      )}
+                      {member.is_admin ? "Demote" : "Promote"}
+                    </button>
+                    <button
+                      onClick={() => handleRemove(member.user_id)}
+                      disabled={actioningId === member.user_id}
+                      className="px-3 py-2 bg-red-50 hover:bg-red-600 hover:text-white text-red-600 rounded-lg text-xs font-medium transition-all disabled:opacity-50 flex items-center justify-center"
+                      title="Remove member"
+                    >
+                      {actioningId === member.user_id ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <UserMinus size={14} />
+                      )}
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
+          </div>
+        ) : (
+          <div className="flex items-center justify-center py-20 bg-slate-50 rounded-2xl">
+            <div className="text-center">
+              <Users className="h-12 w-12 text-slate-300 mx-auto mb-3" />
+              <p className="text-slate-600 font-medium">No team members yet</p>
+              <p className="text-slate-400 text-sm mt-1">Invite your first team member to get started</p>
+            </div>
           </div>
         )}
       </main>

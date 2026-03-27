@@ -28,19 +28,19 @@ def send_email_ses(recipient, subject, body_html, body_text):
 
 def send_otp_email(email, otp):
     """Send OTP for registration/login."""
-    subject = f"{otp} is your TalentFlow verification code"
+    subject = f"{otp} is your TechSales Axis verification code"
     body_text = f"Your verification code is {otp}. It will expire in 10 minutes."
     body_html = f"""
     <html>
         <body style="font-family: Arial, sans-serif; padding: 20px;">
             <h2 style="color: #2563eb;">Verify your email</h2>
-            <p>Use the following code to complete your sign-in to TalentFlow:</p>
+            <p>Use the following code to complete your sign-in to TechSales Axis:</p>
             <div style="background: #f3f4f6; padding: 15px; font-size: 24px; font-weight: bold; letter-spacing: 5px; text-align: center; border-radius: 8px;">
                 {otp}
             </div>
             <p>This code will expire in 10 minutes. If you didn't request this, please ignore this email.</p>
             <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
-            <p style="font-size: 12px; color: #6b7280;">&copy; 2024 TalentFlow. All rights reserved.</p>
+            <p style="font-size: 12px; color: #6b7280;">&copy; 2024 TechSales Axis. All rights reserved.</p>
         </body>
     </html>
     """
@@ -48,7 +48,7 @@ def send_otp_email(email, otp):
 
 def send_password_reset_email(email, reset_link):
     """Send password reset link."""
-    subject = "Reset your TalentFlow password"
+    subject = "Reset your TechSales Axis password"
     body_text = f"Click the link to reset your password: {reset_link}"
     body_html = f"""
     <html>

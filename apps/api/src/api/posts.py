@@ -100,6 +100,7 @@ def get_feed(
             comments_map[pid].append({
                 "id": c.id,
                 "user_id": c.user_id,
+                "post_id": c.post_id,
                 "content": c.content,
                 "created_at": c.created_at
             })
@@ -306,6 +307,36 @@ def add_comment(
             "created_at": new_comment.created_at,
             "author": author,
         }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/{post_id}/comments/{comment_id}")
+def delete_comment(
+    post_id: UUID,
+    comment_id: UUID,
+    user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    user_id = user["sub"]
+    try:
+        from src.core.models import PostComment
+        comment = db.query(PostComment).filter(
+            PostComment.id == comment_id,
+            PostComment.post_id == post_id
+        ).first()
+        
+        if not comment:
+            raise HTTPException(status_code=404, detail="Comment not found")
+        
+        if comment.user_id != user_id:
+            raise HTTPException(status_code=403, detail="Not authorized to delete this comment")
+        
+        db.delete(comment)
+        db.commit()
+        return {"status": "deleted"}
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))

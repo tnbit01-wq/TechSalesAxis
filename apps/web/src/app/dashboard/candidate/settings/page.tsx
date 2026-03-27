@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
+import CandidateHeader from "@/components/CandidateHeader";
 import { 
   Save, 
   User, 
@@ -193,90 +194,120 @@ export default function CandidateSettingsPage() {
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mb-4" />
-        <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.3em]">Synchronizing Protocol...</p>
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
+          <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Loading Settings...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-12 pb-20">
-      <header className="flex justify-between items-end">
+    <div className="min-h-screen bg-slate-50/50">
+      <CandidateHeader profile={profile} />
+      <div className="max-w-6xl mx-auto px-4 py-8 space-y-10 pb-20">
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h1 className="text-4xl font-black text-slate-900 tracking-tight uppercase italic mb-2">
-            Account <span className="text-indigo-600 font-black">Settings</span>
-          </h1>
-          <p className="text-slate-500 font-bold uppercase tracking-[0.2em] text-[10px] flex items-center gap-2">
-            <Settings className="h-3 w-3 text-indigo-500" />
-            Manage your personal profile, notifications, and privacy preferences.
-          </p>
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Settings</h1>
+          <p className="text-slate-500 text-sm mt-1">Manage your personal profile, notifications, and privacy preferences.</p>
         </div>
-        
-        {message && (
-          <div className={`px-6 py-2 rounded-full border text-[10px] font-black uppercase tracking-widest animate-in slide-in-from-right-4 ${
-            message.type === "success" ? "bg-emerald-50 border-emerald-100 text-emerald-600" : "bg-rose-50 border-rose-100 text-rose-600"
-          }`}>
-            {message.text}
-          </div>
-        )}
       </header>
 
-      <div className="flex flex-col lg:flex-row gap-12 items-start">
-        {/* Sidebar Tabs */}
-        <div className="w-full lg:w-72 shrink-0 space-y-2 bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
-          <TabButton active={activeTab === "profile"} onClick={() => setActiveTab("profile")} icon={<User size={16} />} label="My Profile" />
-          <TabButton active={activeTab === "security"} onClick={() => setActiveTab("security")} icon={<Shield size={16} />} label="Security" />
-          <TabButton active={activeTab === "notifications"} onClick={() => setActiveTab("notifications")} icon={<Bell size={16} />} label="Notifications" />
-          <TabButton active={activeTab === "privacy"} onClick={() => setActiveTab("privacy")} icon={<Eye size={16} />} label="Privacy Mode" />
-          
-          <div className="pt-4 mt-4 border-t border-slate-50">
-            <button className="w-full text-left px-4 py-3 rounded-xl text-rose-400 hover:bg-rose-50 transition-all flex items-center gap-3 group">
-              <LogOut size={16} className="group-hover:-translate-x-1 transition-transform" />
-              <span className="text-xs font-black uppercase tracking-widest">Sign Out</span>
-            </button>
-          </div>
+      {message && (
+        <div className={`p-4 rounded-2xl border shadow-sm transition-all animate-in fade-in slide-in-from-top-4 mt-6 flex items-center gap-3 ${
+          message.type === "success"
+            ? "bg-emerald-50 border-emerald-100 text-emerald-800"
+            : "bg-rose-50 border-rose-100 text-rose-800"
+        }`}>
+          {message.type === "success" ? <CheckCircle2 className="h-5 w-5 flex-shrink-0" /> : <AlertCircle className="h-5 w-5 flex-shrink-0" />}
+          <span className="text-sm font-medium">{message.text}</span>
         </div>
+      )}
 
-        {/* Content Area */}
-        <div className="flex-1 w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
-          {activeTab === "profile" && (
-            <div className="bg-white rounded-[2.5rem] p-10 border border-slate-100 shadow-xl shadow-slate-200/50 space-y-10">
-              <div className="flex items-center gap-8 mb-10">
-                <div className="h-24 w-24 rounded-3xl bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center relative overflow-hidden group">
-                  {profile?.profile_photo_url ? (
-                    <Image 
-                      src={profile.profile_photo_url} 
-                      alt="" 
-                      fill 
-                      sizes="96px"
-                      className="object-cover" 
-                    />
-                  ) : (
-                    <User className="text-slate-300" size={32} />
-                  )}
-                  <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer">
-                    <Upload className="text-white" size={20} />
-                  </div>
-                </div>
-                <div>
-                  <h3 className="text-lg font-black text-slate-900 uppercase italic">Profile Photo</h3>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">This helps recruiters identify you in the talent pool.</p>
-                </div>
+      <div className="mt-8">
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={() => setActiveTab("profile")}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all font-medium text-sm ${
+              activeTab === "profile"
+                ? "bg-indigo-600 text-white border-indigo-600"
+                : "bg-white text-slate-700 border-slate-200 hover:border-slate-300"
+            }`}
+          >
+            <User className="h-4 w-4" />
+            Profile
+          </button>
+          <button
+            onClick={() => setActiveTab("security")}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all font-medium text-sm ${
+              activeTab === "security"
+                ? "bg-indigo-600 text-white border-indigo-600"
+                : "bg-white text-slate-700 border-slate-200 hover:border-slate-300"
+            }`}
+          >
+            <Shield className="h-4 w-4" />
+            Security
+          </button>
+          <button
+            onClick={() => setActiveTab("notifications")}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all font-medium text-sm ${
+              activeTab === "notifications"
+                ? "bg-indigo-600 text-white border-indigo-600"
+                : "bg-white text-slate-700 border-slate-200 hover:border-slate-300"
+            }`}
+          >
+            <Bell className="h-4 w-4" />
+            Notifications
+          </button>
+          <button
+            onClick={() => setActiveTab("privacy")}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all font-medium text-sm ${
+              activeTab === "privacy"
+                ? "bg-indigo-600 text-white border-indigo-600"
+                : "bg-white text-slate-700 border-slate-200 hover:border-slate-300"
+            }`}
+          >
+            <Eye className="h-4 w-4" />
+            Privacy
+          </button>
+        </div>
+      </div>
+
+      {/* Content Area */}
+      <div className="mt-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        {activeTab === "profile" && (
+          <div className="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm space-y-8">
+            <div className="flex items-center gap-6 mb-8">
+              <div className="h-20 w-20 rounded-full bg-linear-to-br from-indigo-500 to-indigo-700 flex items-center justify-center relative overflow-hidden flex-shrink-0 border-2 border-slate-200">
+                {profile?.profile_photo_url ? (
+                  <Image 
+                    src={profile.profile_photo_url} 
+                    alt="Profile" 
+                    fill 
+                    sizes="80px"
+                    className="object-cover" 
+                  />
+                ) : (
+                  <User className="text-white" size={32} />
+                )}
               </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Profile Photo</h3>
+                <p className="text-sm text-slate-500 mt-1">This photo is displayed to recruiters viewing your profile.</p>
+              </div>
+            </div>
 
-              <form onSubmit={handleProfileSave} className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <form onSubmit={handleProfileSave} className="space-y-6">
                 <InputGroup label="Full Name" value={profile?.full_name} onChange={(val) => setProfile(p => p ? {...p, full_name: val} : null)} />
                 <InputGroup label="Phone Number" value={profile?.phone_number} onChange={(val) => setProfile(p => p ? {...p, phone_number: val} : null)} />
-                <div className="md:col-span-2">
-                  <InputGroup label="Professional Summary" isTextArea value={profile?.bio} onChange={(val) => setProfile(p => p ? {...p, bio: val} : null)} />
-                </div>
+                <InputGroup label="Professional Summary" isTextArea value={profile?.bio} onChange={(val) => setProfile(p => p ? {...p, bio: val} : null)} />
                 <InputGroup label="LinkedIn URL" value={profile?.linkedin_url} onChange={(val) => setProfile(p => p ? {...p, linkedin_url: val} : null)} />
                 <InputGroup label="Current City" value={profile?.location} onChange={(val) => setProfile(p => p ? {...p, location: val} : null)} />
                 
-                <div className="md:col-span-2 pt-6">
-                  <button type="submit" disabled={saving} className="bg-indigo-600 text-white px-10 py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-lg shadow-indigo-200 hover:bg-slate-900 transition-all flex items-center gap-3">
-                    {saving ? "Saving Changes..." : "Save Profile"}
-                    <Save size={14} />
+                <div className="pt-6">
+                  <button type="submit" disabled={saving} className="bg-indigo-600 text-white px-6 py-3 rounded-lg text-sm font-bold hover:bg-indigo-700 transition-all flex items-center gap-2 disabled:opacity-50">
+                    {saving ? "Saving..." : "Save Changes"}
+                    <Save size={16} />
                   </button>
                 </div>
               </form>
@@ -284,91 +315,43 @@ export default function CandidateSettingsPage() {
           )}
 
           {activeTab === "security" && (
-            <div className="space-y-8">
+            <div className="space-y-6">
               {/* Password Management */}
-              <div className="bg-white rounded-[2.5rem] p-10 border border-slate-100 shadow-sm space-y-8">
+              <div className="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm space-y-6">
                 <div>
-                  <h3 className="text-lg font-black text-slate-900 uppercase italic mb-2">Security Access</h3>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Update your credentials and manage account protection.</p>
+                  <h3 className="text-lg font-bold text-slate-900 mb-2">Change Password</h3>
+                  <p className="text-sm text-slate-500">Update your password to keep your account secure.</p>
                 </div>
 
-                <div className="space-y-6">
-                  {/* Password Section */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Current Password</label>
-                      <div className="relative">
-                        <Shield className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
-                        <input 
-                          type="password" 
-                          placeholder="Verify old password" 
-                          value={oldPassword}
-                          onChange={(e) => setOldPassword(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-14 pr-6 py-4 text-xs font-black text-slate-900 focus:outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all" 
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">New Password</label>
-                      <div className="relative">
-                        <Lock className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
-                        <input 
-                          type="password" 
-                          placeholder="Minimum 8 characters" 
-                          value={newPassword}
-                          onChange={(e) => setNewPassword(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-14 pr-6 py-4 text-xs font-black text-slate-900 focus:outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all" 
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col md:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-50">
-                    <button 
-                      className="text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:text-indigo-700 transition-all"
-                      onClick={() => {/* Forgot Password Logic Later */}}
-                    >
-                      Forgot Password?
-                    </button>
+                <div className="space-y-4">
+                  <InputGroup label="Current Password" value={oldPassword} onChange={setOldPassword} isPassword />
+                  <InputGroup label="New Password" value={newPassword} onChange={setNewPassword} isPassword />
+                  
+                  <div className="flex items-center gap-3 pt-4">
                     <button 
                       onClick={handleUpdatePassword}
                       disabled={saving || !newPassword || !oldPassword}
-                      className="bg-slate-900 text-white px-10 py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-indigo-600 transition-all disabled:opacity-50"
+                      className="bg-indigo-600 text-white px-6 py-3 rounded-lg text-sm font-bold hover:bg-indigo-700 transition-all disabled:opacity-50"
                     >
-                      {saving ? "Updating..." : "Update Access"}
+                      {saving ? "Updating..." : "Update Password"}
                     </button>
                   </div>
                 </div>
-
-                <div className="pt-8 border-t border-slate-50 flex flex-col md:flex-row items-center justify-between gap-6">
-                  <div className="flex items-center gap-4">
-                    <div className="h-10 w-10 rounded-xl bg-orange-50 flex items-center justify-center text-orange-500">
-                      <Shield size={20} />
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-black text-slate-900 uppercase">Two-Factor Authentication</h4>
-                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Add an extra layer of security to your account.</p>
-                    </div>
-                  </div>
-                  <button className="px-6 py-2 rounded-xl border border-slate-200 text-[9px] font-black uppercase tracking-widest hover:border-indigo-600 transition-all">
-                    Enable 2FA
-                  </button>
-                </div>
               </div>
 
-              {/* ID Verification */}
-              <div className="bg-white rounded-[2.5rem] p-10 border border-slate-100 shadow-sm">
-                <h3 className="text-lg font-black text-slate-900 uppercase italic mb-6">Identity Verification</h3>
-                <div className="p-8 rounded-3xl bg-slate-50 border border-slate-100 flex flex-col md:flex-row items-center gap-8">
-                  <div className="h-16 w-16 rounded-2xl bg-indigo-100 flex items-center justify-center shrink-0">
+              {/* Identity Verification */}
+              <div className="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm">
+                <h3 className="text-lg font-bold text-slate-900 mb-4">Identity Verification</h3>
+                <div className="bg-slate-50 p-6 rounded-lg border border-slate-200 flex flex-col md:flex-row items-center gap-6">
+                  <div className="h-16 w-16 rounded-lg bg-indigo-100 flex items-center justify-center flex-shrink-0">
                     <Shield className="text-indigo-600" size={32} />
                   </div>
-                  <div className="flex-1 text-center md:text-left">
-                    <h4 className="font-black text-slate-900 text-sm uppercase">Verified Profile Badge</h4>
-                    <p className="text-xs text-slate-500 font-medium mt-1">Verified profiles get 3x more recruiter views. Upload your government ID to get started.</p>
+                  <div className="flex-1">
+                    <h4 className="font-bold text-slate-900 mb-1">Verify Your Identity</h4>
+                    <p className="text-sm text-slate-500">Upload your government ID to get a verified badge. Verified profiles get 3x more recruiter views.</p>
                   </div>
-                  <label className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer ${profile?.identity_verified ? "bg-emerald-50 text-emerald-600 border border-emerald-100 pointer-events-none" : "bg-white text-slate-900 border border-slate-200 hover:border-indigo-600 shadow-sm"}`}>
-                    {profile?.identity_verified ? "Verified" : "Verify Now"}
+                  <label className={`px-6 py-2.5 rounded-lg text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${profile?.identity_verified ? "bg-emerald-50 text-emerald-600 border border-emerald-100 pointer-events-none" : "bg-indigo-600 text-white hover:bg-indigo-700 border border-indigo-600"}`}>
+                    {profile?.identity_verified ? "✓ Verified" : "Upload ID"}
                     {!profile?.identity_verified && (
                       <input 
                         type="file" 
@@ -382,81 +365,74 @@ export default function CandidateSettingsPage() {
                 </div>
               </div>
 
-              {/* Danger Zone */}
-              <div className="bg-rose-50/30 rounded-[2.5rem] p-10 border border-rose-100 shadow-sm space-y-6">
-                <div>
-                  <h3 className="text-lg font-black text-rose-600 uppercase italic mb-1 tracking-tight">Danger Zone</h3>
-                  <p className="text-[10px] font-bold text-rose-400 uppercase tracking-widest">Irreversible actions for your candidate protocol.</p>
-                </div>
-                
-                <div className="flex flex-col md:flex-row items-center justify-between p-8 bg-white/50 rounded-3xl border border-rose-100 gap-6">
-                  <div>
-                    <h4 className="text-xs font-black text-slate-900 uppercase">Terminate Account</h4>
-                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Permanently erase your data, resume, and application history.</p>
-                  </div>
-                  <button 
-                    onClick={handleDeleteAccount}
-                    disabled={saving}
-                    className="bg-rose-600 text-white px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-lg shadow-rose-200 hover:bg-rose-700 transition-all disabled:opacity-50"
-                  >
-                    {saving ? "Deleting..." : "Delete Account"}
-                  </button>
-                </div>
+              {/* Delete Account */}
+              <div className="bg-rose-50/50 rounded-2xl p-8 border border-rose-200 shadow-sm">
+                <h3 className="text-lg font-bold text-rose-600 mb-2">Danger Zone</h3>
+                <p className="text-sm text-rose-500 mb-6">This action cannot be undone.</p>
+                <button 
+                  onClick={handleDeleteAccount}
+                  disabled={saving}
+                  className="bg-rose-600 text-white px-6 py-3 rounded-lg text-sm font-bold hover:bg-rose-700 transition-all disabled:opacity-50"
+                >
+                  {saving ? "Deleting..." : "Delete Account"}
+                </button>
               </div>
             </div>
           )}
 
           {activeTab === "notifications" && (
-            <div className="bg-white rounded-[2.5rem] p-10 border border-slate-100 shadow-sm space-y-10">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                <ToggleCard title="Email Alerts" desc="Get notified about new job matches" icon={<Mail />} active={settings?.email_notifications || false} onToggle={(val) => handleSettingsSave({ email_notifications: val })} />
-                <ToggleCard title="Browser notifications" desc="Real-time alerts for interview invites" icon={<Globe />} active={settings?.web_notifications || false} onToggle={(val) => handleSettingsSave({ web_notifications: val })} />
-                <ToggleCard title="Mobile Phone" desc="Push notifications on your device" icon={<Smartphone />} active={settings?.mobile_notifications || false} onToggle={(val) => handleSettingsSave({ mobile_notifications: val })} />
+            <div className="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm space-y-8">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 mb-2">Notification Preferences</h3>
+                <p className="text-sm text-slate-500">Choose how you'd like to be notified.</p>
               </div>
 
-              <div className="pt-8 border-t border-slate-50 grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 py-6 border-y border-slate-200">
+                <ToggleCard title="Email Notifications" desc="Job matches and updates" icon={<Mail />} active={settings?.email_notifications || false} onToggle={(val) => handleSettingsSave({ email_notifications: val })} />
+                <ToggleCard title="Browser Alerts" desc="Real-time interview invites" icon={<Globe />} active={settings?.web_notifications || false} onToggle={(val) => handleSettingsSave({ web_notifications: val })} />
+                <ToggleCard title="Mobile Push" desc="Push notifications" icon={<Smartphone />} active={settings?.mobile_notifications || false} onToggle={(val) => handleSettingsSave({ mobile_notifications: val })} />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3 block">Job Alert Frequency</label>
-                  <select value={settings?.job_alert_frequency} onChange={(e) => handleSettingsSave({ job_alert_frequency: e.target.value })} className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 text-xs font-black text-slate-900 focus:outline-none focus:ring-4 focus:ring-indigo-500/5 appearance-none">
+                  <label className="text-sm font-bold text-slate-900 mb-2 block">Job Alert Frequency</label>
+                  <select value={settings?.job_alert_frequency} onChange={(e) => handleSettingsSave({ job_alert_frequency: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20">
                     <option value="instant">Instant Alerts</option>
                     <option value="daily">Daily Summary</option>
                     <option value="weekly">Weekly Summary</option>
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3 block">My Timezone</label>
-                  <div className="relative">
-                    <Clock className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
-                    <select value={settings?.timezone} onChange={(e) => handleSettingsSave({ timezone: e.target.value })} className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-14 pr-6 py-4 text-xs font-black text-slate-900 focus:outline-none focus:ring-4 focus:ring-indigo-500/5 appearance-none uppercase">
-                      <option value="UTC">Universal (UTC)</option>
-                      <option value="IST">India (IST)</option>
-                      <option value="PST">Pacific (PST)</option>
-                      <option value="EST">Eastern (EST)</option>
-                    </select>
-                  </div>
+                  <label className="text-sm font-bold text-slate-900 mb-2 block">Timezone</label>
+                  <select value={settings?.timezone} onChange={(e) => handleSettingsSave({ timezone: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20">
+                    <option value="UTC">UTC</option>
+                    <option value="IST">IST (India)</option>
+                    <option value="PST">PST (Pacific)</option>
+                    <option value="EST">EST (Eastern)</option>
+                  </select>
                 </div>
               </div>
             </div>
           )}
 
           {activeTab === "privacy" && (
-            <div className="bg-white rounded-[2.5rem] p-10 border border-slate-100 shadow-sm">
-               <div className="flex flex-col md:flex-row items-center gap-10">
-                  <div className={`h-32 w-32 rounded-[2.5rem] flex items-center justify-center transition-all shadow-xl ${settings?.is_public ? "bg-indigo-600 shadow-indigo-200" : "bg-slate-900 shadow-slate-200"}`}>
-                    {settings?.is_public ? <Eye className="text-white" size={48} /> : <EyeOff className="text-white" size={48} />}
-                  </div>
-                  <div className="flex-1 text-center md:text-left">
-                    <h3 className="text-2xl font-black text-slate-900 uppercase italic">{settings?.is_public ? "Public Profile Active" : "Private (Stealth) Mode"}</h3>
-                    <p className="text-sm font-medium text-slate-500 mt-2 max-w-lg">
-                      {settings?.is_public 
-                        ? "Recruiters can find you and view your profile in the talent pool." 
-                        : "Your profile is hidden. Only recruiters you apply to directly can see your platform details."}
-                    </p>
-                    <button onClick={() => handleSettingsSave({ is_public: !settings?.is_public })} className={`mt-6 px-10 py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all shadow-lg ${settings?.is_public ? "bg-slate-900 text-white" : "bg-indigo-600 text-white"}`}>
-                      {settings?.is_public ? "ENABLE PRIVATE MODE" : "ENABLE PUBLIC PROFILE"}
-                    </button>
-                  </div>
-               </div>
+            <div className="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm">
+              <div className="flex flex-col md:flex-row items-center gap-8">
+                <div className={`h-24 w-24 rounded-full flex items-center justify-center flex-shrink-0 shadow-lg ${settings?.is_public ? "bg-indigo-600" : "bg-slate-900"}`}>
+                  {settings?.is_public ? <Eye className="text-white" size={40} /> : <EyeOff className="text-white" size={40} />}
+                </div>
+                <div className="flex-1 text-center md:text-left">
+                  <h3 className="text-xl font-bold text-slate-900 mb-2">{settings?.is_public ? "Public Profile" : "Private Mode"}</h3>
+                  <p className="text-slate-600 mb-4">
+                    {settings?.is_public 
+                      ? "Your profile is visible to recruiters. They can find you in the talent pool and view your details." 
+                      : "Your profile is hidden from search. Recruiters can only see you if you apply directly to them."}
+                  </p>
+                  <button onClick={() => handleSettingsSave({ is_public: !settings?.is_public })} className="bg-indigo-600 text-white px-6 py-2.5 rounded-lg text-sm font-bold hover:bg-indigo-700 transition-all">
+                    {settings?.is_public ? "Enable Private Mode" : "Enable Public Profile"}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -465,23 +441,14 @@ export default function CandidateSettingsPage() {
   );
 }
 
-function TabButton({ active, onClick, icon, label, disabled = false }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string, disabled?: boolean }) {
-  return (
-    <button onClick={onClick} disabled={disabled} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-black text-xs uppercase tracking-widest ${active ? "bg-indigo-600 text-white shadow-lg shadow-indigo-100" : "text-slate-400 hover:text-slate-900 hover:bg-slate-50 disabled:opacity-30"}`}>
-      <div className={active ? "text-white" : "text-slate-300"}>{icon}</div>
-      {label}
-    </button>
-  );
-}
-
-function InputGroup({ label, value, onChange, isTextArea = false }: { label: string, value?: string, onChange: (v: string) => void, isTextArea?: boolean }) {
+function InputGroup({ label, value, onChange, isTextArea = false, isPassword = false }: { label: string, value?: string, onChange: (v: string) => void, isTextArea?: boolean, isPassword?: boolean }) {
   return (
     <div className="space-y-2">
-      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">{label}</label>
+      <label className="text-sm font-bold text-slate-900">{label}</label>
       {isTextArea ? (
-        <textarea value={value || ""} onChange={(e) => onChange(e.target.value)} className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 text-xs font-black text-slate-900 focus:outline-none focus:ring-4 focus:ring-indigo-500/5 min-h-32 transition-all focus:bg-white" />
+        <textarea value={value || ""} onChange={(e) => onChange(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 min-h-28 transition-all focus:bg-white" />
       ) : (
-        <input type="text" value={value || ""} onChange={(e) => onChange(e.target.value)} className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 text-xs font-black text-slate-900 focus:outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all focus:bg-white" />
+        <input type={isPassword ? "password" : "text"} value={value || ""} onChange={(e) => onChange(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all focus:bg-white" />
       )}
     </div>
   );
@@ -489,15 +456,15 @@ function InputGroup({ label, value, onChange, isTextArea = false }: { label: str
 
 function ToggleCard({ title, desc, icon, active, onToggle }: { title: string, desc: string, icon: React.ReactNode, active: boolean, onToggle: (v: boolean) => void }) {
   return (
-    <div onClick={() => onToggle(!active)} className={`p-8 rounded-[2rem] border-2 transition-all cursor-pointer group hover:scale-[1.02] ${active ? "bg-white border-indigo-500 shadow-xl shadow-indigo-100" : "bg-slate-50 border-slate-100 grayscale hover:grayscale-0"}`}>
-      <div className={`h-12 w-12 rounded-2xl mb-6 flex items-center justify-center transition-all ${active ? "bg-indigo-600 text-white" : "bg-white text-slate-300 border border-slate-100"}`}>
+    <div onClick={() => onToggle(!active)} className={`p-6 rounded-lg border-2 transition-all cursor-pointer hover:shadow-md ${active ? "bg-white border-indigo-500 shadow-lg" : "bg-slate-50 border-slate-200"}`}>
+      <div className={`h-10 w-10 rounded-lg mb-4 flex items-center justify-center transition-all ${active ? "bg-indigo-600 text-white" : "bg-slate-200 text-slate-400"}`}>
         {icon}
       </div>
-      <h4 className="font-black text-slate-900 text-xs uppercase mb-1">{title}</h4>
-      <p className="text-[10px] font-bold text-slate-400 uppercase leading-relaxed">{desc}</p>
-      <div className="mt-6 flex items-center gap-2">
-        <div className={`h-1.5 w-1.5 rounded-full ${active ? "bg-emerald-500" : "bg-slate-300"}`} />
-        <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">{active ? "Active Link" : "Disconnected"}</span>
+      <h4 className="font-bold text-slate-900 text-sm mb-1">{title}</h4>
+      <p className="text-xs text-slate-500 leading-relaxed">{desc}</p>
+      <div className="mt-4 flex items-center gap-2">
+        <div className={`h-2 w-2 rounded-full ${active ? "bg-emerald-500" : "bg-slate-300"}`} />
+        <span className="text-xs font-medium text-slate-500">{active ? "Enabled" : "Disabled"}</span>
       </div>
     </div>
   );

@@ -5,14 +5,13 @@ import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import { useRouter } from "next/navigation";
 import {
-  Activity,
   ChevronRight,
   FileText,
-  CheckCircle2,
   Clock,
   AlertCircle,
   Calendar,
   Video,
+  Search,
 } from "lucide-react";
 import CandidateInterviewConfirmModal from "@/components/CandidateInterviewConfirmModal";
 
@@ -50,6 +49,8 @@ export default function CandidateApplicationsPage() {
     null,
   );
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
 
   const loadData = async () => {
     try {
@@ -63,7 +64,6 @@ export default function CandidateApplicationsPage() {
         "/candidate/applications",
         token,
       );
-      console.log("DEBUG: Refreshing Candidate Applications Data", appsData);
       setApplications(appsData);
     } catch (err) {
       console.error("Failed to load applications:", err);
@@ -74,208 +74,222 @@ export default function CandidateApplicationsPage() {
 
   useEffect(() => {
     loadData();
-    // Refresh every 30 seconds to catch schedule changes
     const interval = setInterval(loadData, 30000);
     return () => clearInterval(interval);
   }, [router]);
 
+  // Filter applications based on search and status
+  const filteredApplications = applications.filter((app) => {
+    const matchesSearch =
+      app.job_title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      app.company_name.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = filterStatus === "all" || app.status === filterStatus;
+    return matchesSearch && matchesStatus;
+  });
+
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
+          <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Loading Applications...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-10 animate-in fade-in duration-700 max-w-5xl mx-auto">
-      <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div className="space-y-1">
+    <div className="max-w-6xl mx-auto px-4 py-8 space-y-10 pb-20">
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Applications</h1>
+          <p className="text-slate-500 text-sm mt-1">Track your applied positions and upcoming interviews.</p>
+        </div>
+
+        <div className="flex flex-col gap-3">
           <div className="flex items-center gap-3">
-            <h1 className="text-4xl font-black text-slate-900 tracking-tighter uppercase italic">
-              Active{" "}
-              <span className="text-indigo-600 font-black">Transmissions</span>
-            </h1>
-            <div className="px-2 py-1 bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-widest rounded-md border border-indigo-200">
-              Applications
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search by job title, company..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm"
+              />
             </div>
           </div>
-          <p className="text-slate-500 font-bold uppercase tracking-[0.2em] text-[10px] flex items-center gap-2">
-            <Activity className="h-3 w-3 text-emerald-500" />
-            Real-time tracking of your position within the hiring funnel.
-          </p>
+          <div className="flex flex-col md:flex-row items-start md:items-end gap-4">
+            <div className="flex flex-col">
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Application Status</label>
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm cursor-pointer font-medium text-slate-900"
+            >
+              <option value="all">All Statuses</option>
+              <option value="applied">Applied</option>
+              <option value="shortlisted">Shortlisted</option>
+              <option value="interview_scheduled">Interview</option>
+              <option value="offered">Offered</option>
+              <option value="rejected">Rejected</option>
+            </select>
+            </div>
+          </div>
         </div>
       </header>
 
-      {applications.length === 0 ? (
-        <div className="bg-white rounded-[2.5rem] p-20 border border-slate-200 border-dashed text-center">
-          <div className="h-20 w-20 bg-slate-50 rounded-3xl flex items-center justify-center mx-auto mb-6">
-            <FileText className="h-10 w-10 text-slate-300" />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredApplications.length === 0 && applications.length > 0 ? (
+          <div className="col-span-full py-20 text-center bg-white border border-dashed border-slate-200 rounded-3xl">
+            <Search className="h-10 w-10 text-slate-200 mx-auto mb-4" />
+            <h3 className="text-lg font-bold text-slate-900">No matching applications found</h3>
+            <p className="text-slate-500 text-sm">Try adjusting your search or filters.</p>
           </div>
-          <h3 className="text-xl font-bold text-slate-400 mb-2">
-            No Active Applications
-          </h3>
-          <p className="text-slate-400 text-sm max-w-xs mx-auto mb-8">
-            You haven&apos;t initiated any application signals yet.
-          </p>
-          <button
-            onClick={() => router.push("/dashboard/candidate/feed")}
-            className="px-8 py-3 bg-indigo-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest hover:bg-indigo-700 transition shadow-xl shadow-indigo-600/20 active:scale-95"
-          >
-            Explore Role Feed
-          </button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-6">
-          {applications.map((app) => (
+        ) : applications.length === 0 ? (
+          <div className="col-span-full py-20 text-center bg-white border border-dashed border-slate-200 rounded-3xl">
+            <FileText className="h-10 w-10 text-slate-200 mx-auto mb-4" />
+            <h3 className="text-lg font-bold text-slate-900">No applications yet</h3>
+            <p className="text-slate-500 text-sm">Start applying to jobs to see them here.</p>
+          </div>
+        ) : (
+          filteredApplications.map((app) => (
             <div
               key={app.id}
-              className="bg-white rounded-4xl p-8 border border-slate-200 shadow-sm hover:shadow-xl hover:border-indigo-100 transition-all group relative overflow-hidden"
+              className="group bg-white rounded-3xl border border-slate-200 hover:shadow-md transition-all flex flex-col h-full relative cursor-pointer p-5"
+              onClick={() =>
+                router.push(`/dashboard/candidate/applications/${app.id}`)
+              }
             >
-              <div className="flex flex-col md:flex-row items-center gap-8">
-                <div className="h-16 w-16 bg-slate-50 rounded-2xl flex items-center justify-center text-2xl shrink-0 group-hover:scale-110 transition-transform"></div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-1">
-                    <h3 className="text-xl font-black text-slate-900 tracking-tight">
-                      {app.job_title}
-                    </h3>
-                  </div>
-                  <p className="text-slate-500 font-bold text-sm mb-4">
-                    {app.company_name}
-                  </p>
-
-                  <div className="flex flex-wrap gap-4 items-center">
-                    <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-50 rounded-lg border border-slate-100">
-                      <Clock className="h-3 w-3 text-slate-400" />
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                        {new Date(app.applied_at).toLocaleDateString()}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg border">
-                      <CheckCircle2 className="h-3 w-3" />
-                      <span className="text-[10px] font-black uppercase tracking-widest">
-                        {app.status.replace("_", " ")}
-                      </span>
-                    </div>
-                  </div>
+              {/* Company Icon & Status Badge */}
+              <div className="flex justify-between items-start gap-2 mb-2">
+                <div className="h-10 w-10 bg-slate-50 rounded-xl flex items-center justify-center border border-slate-100 group-hover:bg-indigo-50 transition-colors flex-shrink-0">
+                  <FileText className="h-5 w-5 text-slate-400 group-hover:text-indigo-600" />
                 </div>
-
-                <div className="flex items-center gap-4">
-                  {/* If an interview is scheduled, show the protocol button */}
-                  {app.active_interview?.status === "scheduled" &&
-                    app.active_interview?.meeting_link && (
-                      <div className="flex flex-col items-end gap-2">
-                        <div className="flex items-center gap-1.5 px-3 py-1 bg-indigo-50 text-indigo-700 rounded-lg text-[10px] font-black uppercase tracking-widest border border-indigo-100 animate-in fade-in zoom-in duration-500">
-                          <Clock className="h-3 w-3" />
-                          {(() => {
-                            const slot =
-                              app.active_interview?.interview_slots?.find(
-                                (s: any) => s.is_selected,
-                              );
-                            if (!slot) return "Pending Coord...";
-                            return new Date(slot.start_time).toLocaleString("en-IN", {
-                              day: "2-digit",
-                              month: "2-digit",
-                              year: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                              hour12: true,
-                              timeZone: "Asia/Kolkata"
-                            });
-                          })()}
-                        </div>
-                        {(() => {
-                          const slot = app.active_interview?.interview_slots?.find((s: any) => s.is_selected);
-                          const now = new Date();
-                          
-                          // Handle cases where no slot is selected for display but UI expects it
-                          if (!slot) return null;
-
-                          const start = new Date(slot.start_time);
-                          
-                          // Window Strategy: Join opens 15m before START until 10m AFTER start
-                          const allowedStart = new Date(start.getTime() - 15 * 60000);
-                          const allowedEnd = new Date(start.getTime() + 10 * 60000);
-                          const nowInBrowser = new Date();
-                          const isActive = nowInBrowser >= allowedStart && nowInBrowser <= allowedEnd;
-
-                          if (isActive) {
-                            return (
-                              <button
-                                onClick={async () => {
-                                  try {
-                                    const token = awsAuth.getToken();
-                                    if (token) {
-                                      apiClient.post(`/interviews/${app.active_interview?.id}/join-event`, { role: "candidate" }, token);
-                                    }
-                                  } catch (err) {
-                                    console.error("Failed to signal join:", err);
-                                  }
-                                  app.active_interview?.meeting_link && window.open(
-                                    app.active_interview.meeting_link,
-                                    "_blank",
-                                  );
-                                }}
-                                className={`px-6 py-2.5 ${app.active_interview?.status === "in_progress" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-indigo-600 hover:bg-indigo-700"} text-white rounded-xl font-black text-[10px] uppercase tracking-widest transition flex items-center gap-2 shadow-lg active:scale-95`}
-                              >
-                                <Video className="h-3.5 w-3.5" />
-                                {app.active_interview?.status === "in_progress" ? "Live Stream Active" : "Initiate Meeting Protocol"}
-                              </button>
-                            );
-                          }
-                          return (
-                            <div className="px-4 py-2 bg-slate-50 text-slate-400 rounded-xl font-black text-[10px] uppercase tracking-widest border border-slate-100 italic">
-                              {nowInBrowser < allowedStart 
-                                ? "Secure: Locked Until Start (15m before)" 
-                                : "Window Closed (10m Late)"}
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    )}
-
-                  {/* If an interview is pending confirmation from the candidate */}
-                  {app.active_interview?.status === "pending_confirmation" && (
-                    <div className="flex flex-col items-end gap-2 px-6">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 px-3 py-1 rounded-full border border-slate-100">
-                        Round {app.active_interview.round_number}: {app.active_interview.round_name}
-                      </span>
-                      <button
-                        onClick={() => {
-                          setSelectedInterviewId(app.active_interview?.id || "");
-                          setIsModalOpen(true);
-                        }}
-                        className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-indigo-700 transition flex items-center gap-2 animate-pulse shadow-lg shadow-indigo-100"
-                      >
-                        <Calendar className="h-3.5 w-3.5" />
-                        Pick Slot
-                      </button>
-                    </div>
-                  )}
-                  <button
-                    onClick={() =>
-                      router.push(`/dashboard/candidate/applications/${app.id}`)
-                    }
-                    className="p-3 bg-slate-50 text-slate-400 rounded-xl hover:bg-slate-100 hover:text-slate-900 transition-all active:scale-95"
-                  >
-                    <ChevronRight className="h-5 w-5" />
-                  </button>
+                <div>
+                <span
+                  className={`text-[7px] font-bold uppercase tracking-[0.2em] px-1.5 py-0.5 rounded-md ${
+                    app.status === "applied"
+                      ? "bg-blue-100 text-blue-700"
+                      : app.status === "shortlisted"
+                        ? "bg-emerald-100 text-emerald-700"
+                        : app.status === "interview_scheduled"
+                          ? "bg-purple-100 text-purple-700"
+                          : app.status === "offered"
+                            ? "bg-amber-100 text-amber-700"
+                            : app.status === "rejected"
+                              ? "bg-red-100 text-red-700"
+                              : "bg-slate-100 text-slate-400"
+                  }`}
+                >
+                  {app.status.replace(/_/g, " ")}
+                </span>
                 </div>
               </div>
 
+              {/* Job Title & Company */}
+              <div className="flex-1">
+                <h3 className="text-sm font-bold text-slate-900 tracking-tight group-hover:text-indigo-600 transition-colors line-clamp-2 mb-1">
+                  {app.job_title}
+                </h3>
+                <div className="flex items-center gap-2 text-[11px]">
+                  <span className="font-bold text-indigo-600 uppercase tracking-wider">{app.company_name}</span>
+                </div>
+                
+                {/* Status Progress Indicator */}
+                <div className="mt-2 pt-2 border-t border-slate-50/50">
+                  <div className="text-[7px] text-slate-400 font-bold uppercase tracking-widest mb-1">Progress</div>
+                  <div className="flex items-center gap-1">
+                    {["applied", "shortlisted", "interview_scheduled", "offered"].map((stage) => (
+                      <div 
+                        key={stage}
+                        className={`h-1 flex-1 rounded-full ${
+                          ["applied", "shortlisted", "interview_scheduled", "offered"].indexOf(app.status) >= ["applied", "shortlisted", "interview_scheduled", "offered"].indexOf(stage)
+                            ? "bg-indigo-600"
+                            : "bg-slate-100"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Interview Section */}
+              {app.active_interview?.status === "pending_confirmation" && (
+                <div className="mt-2 pt-2 border-t border-slate-50/50">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedInterviewId(app.active_interview?.id || "");
+                      setIsModalOpen(true);
+                    }}
+                    className="w-full px-2 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg font-bold text-[8px] uppercase tracking-wider hover:bg-indigo-100 transition flex items-center justify-center gap-2"
+                  >
+                    <Calendar className="h-3 w-3" />
+                    Pick Interview Slot
+                  </button>
+                </div>
+              )}
+
+              {app.active_interview?.status === "scheduled" && app.active_interview?.meeting_link && (
+                <div className="mt-2 pt-2 border-t border-slate-50/50">
+                  <button
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      const token = awsAuth.getToken();
+                      if (token) {
+                        try {
+                          await apiClient.post(`/interviews/${app.active_interview?.id}/join-event`, { role: "candidate" }, token);
+                        } catch (err) {
+                          console.error("Failed to signal join:", err);
+                        }
+                      }
+                      if (app.active_interview?.meeting_link) {
+                        window.open(app.active_interview.meeting_link, "_blank");
+                      }
+                    }}
+                    className={`w-full px-2 py-1.5 rounded-lg font-bold text-[8px] uppercase tracking-wider transition flex items-center justify-center gap-2 ${
+                      app.active_interview?.status === "in_progress"
+                        ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                        : "bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
+                    }`}
+                  >
+                    <Video className="h-3 w-3" />
+                    {app.active_interview?.status === "in_progress" ? "Join Meeting" : "Join Interview"}
+                  </button>
+                </div>
+              )}
+
+              {/* Applied Date & Actions */}
+              <div className="mt-2 pt-2 border-t border-slate-50/50 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1 text-[7px] font-bold text-slate-400 uppercase tracking-widest">
+                  <Clock className="w-2 h-2" />
+                  {new Date(app.applied_at).toLocaleDateString()}
+                </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    router.push(`/dashboard/candidate/applications/${app.id}`)
+                  }}
+                  className="p-1 text-slate-400 hover:bg-slate-50 rounded-lg transition-colors"
+                >
+                  <ChevronRight className="w-3 h-3" />
+                </button>
+              </div>
+
+              {/* Feedback */}
               {app.feedback && (
-                <div className="mt-6 p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100 flex items-start gap-3">
-                  <AlertCircle className="h-4 w-4 text-indigo-500 mt-0.5" />
-                  <p className="text-[11px] text-indigo-700 font-medium leading-relaxed italic">
-                    &quot;{app.feedback}&quot;
+                <div className="mt-2 p-2 bg-indigo-50/50 rounded-lg border border-indigo-100/50 flex items-start gap-2">
+                  <AlertCircle className="h-2.5 w-2.5 text-indigo-600 mt-0.5 flex-shrink-0" />
+                  <p className="text-[8px] text-indigo-700 font-medium line-clamp-2">
+                    {app.feedback}
                   </p>
                 </div>
               )}
             </div>
-          ))}
-        </div>
-      )}
+          ))
+        )}
+      </div>
 
       <CandidateInterviewConfirmModal
         isOpen={isModalOpen}

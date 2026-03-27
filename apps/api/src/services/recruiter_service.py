@@ -100,7 +100,7 @@ class RecruiterService:
                         headers={
                             "Authorization": f"Bearer {OPENROUTER_API_KEY}",
                             "Content-Type": "application/json",
-                            "X-Title": "TalentFlow"
+                            "X-Title": "TechSales Axis"
                         },
                         json={
                             "model": "openai/gpt-4o-mini",
@@ -724,6 +724,69 @@ class RecruiterService:
                     "current_role": c.current_role
                 })
             return results
+        finally:
+            db.close()
+
+    def persist_profile_matches(self, recruiter_id: str, matches: List[Dict]) -> int:
+        """
+        Persist profile matches to database for caching and analytics.
+        This is called after recommendations are generated to cache the results.
+        
+        Args:
+            recruiter_id: UUID of the recruiter
+            matches: List of candidate matches with scores and reasoning
+        
+        Returns:
+            Number of matches successfully persisted
+        """
+        db = SessionLocal()
+        try:
+            count = 0
+            for match in matches:
+                try:
+                    candidate_id = match.get("user_id") or match.get("candidate_id")
+                    if not candidate_id:
+                        continue
+                    
+                    # Check if match already exists
+                    existing = db.query(ProfileMatch).filter(
+                        ProfileMatch.candidate_id == candidate_id,
+                        ProfileMatch.recruiter_id == recruiter_id,
+                        ProfileMatch.match_type == "culture_fit"
+                    ).first()
+                    
+                    match_score = int(match.get("culture_match_score", 0))
+                    reasoning = match.get("match_reasoning", "")
+                    
+                    if existing:
+                        # Update existing match
+                        existing.match_score = match_score
+                        existing.reasoning_text = reasoning
+                        existing.updated_at = datetime.utcnow()
+                    else:
+                        # Create new match record
+                        new_match = ProfileMatch(
+                            candidate_id=candidate_id,
+                            recruiter_id=recruiter_id,
+                            match_score=match_score,
+                            reasoning_text=reasoning,
+                            match_type="culture_fit",
+                            candidate_token=None,
+                            recruiter_token=None
+                        )
+                        db.add(new_match)
+                    
+                    count += 1
+                except Exception as e:
+                    print(f"Error persisting match for candidate {candidate_id}: {str(e)}")
+                    continue
+            
+            db.commit()
+            return count
+        except Exception as e:
+            db.rollback()
+            print(f"Error persisting profile matches: {str(e)}")
+            return 0
         finally:
             db.close()
 

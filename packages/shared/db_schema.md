@@ -1,6 +1,6 @@
 # Database Schema Reference (Authoritative)
 
-Updated: February 14, 2026 (Verified against Supabase live database)
+Updated: March 25, 2026 (Verified against AWS RDS live database)
 
 ## Enums
 

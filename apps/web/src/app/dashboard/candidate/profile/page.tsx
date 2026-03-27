@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import Image from "next/image";
+import CandidateHeader from "@/components/CandidateHeader";
 import { 
   ShieldCheck, 
   User, 
@@ -20,7 +21,9 @@ import {
   ArrowLeft,
   Trash2,
   PlusCircle,
-  Target
+  Target,
+  Users,
+  Share2
 } from "lucide-react";
 
 interface EducationEntry {
@@ -88,11 +91,6 @@ export default function CandidateProfilePage() {
     type: "success" | "error";
     text: string;
   } | null>(null);
-
-  const handleLogout = async () => {
-    awsAuth.logout();
-    router.replace("/login");
-  };
 
   useEffect(() => {
     async function fetchProfile() {
@@ -290,11 +288,8 @@ export default function CandidateProfilePage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white font-sans">
         <div className="flex flex-col items-center gap-4">
-          <div className="relative h-16 w-16">
-            <div className="absolute inset-0 border-4 border-indigo-100 rounded-full" />
-            <div className="absolute inset-0 border-4 border-indigo-600 rounded-full border-t-transparent animate-spin" />
-          </div>
-          <p className="text-slate-400 text-xs font-bold uppercase tracking-[0.2em] animate-pulse">
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
+          <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">
             Loading Profile...
           </p>
         </div>
@@ -304,51 +299,9 @@ export default function CandidateProfilePage() {
 
   return (
     <div className="min-h-screen bg-slate-50/50">
+      <CandidateHeader profile={profile} />
       <main className="flex flex-col">
-        {/* Mirror Header */}
-        <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 h-16 flex items-center justify-between px-8 sticky top-0 z-20 w-full font-sans">
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2 bg-slate-900 px-3 py-1.5 rounded-full shadow-sm">
-              <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
-              <span className="text-[10px] font-bold text-white uppercase tracking-widest">
-                Talent Hub Status: Active
-              </span>
-            </div>
-          </div>
-          <div className="flex items-center space-x-6">
-            <div className="flex items-center gap-3">
-              <div className="flex flex-col items-end">
-                <span className="text-xs font-bold text-slate-900 leading-none">
-                  {profile?.full_name || "Candidate"}
-                </span>
-                <span className="text-[10px] text-slate-500 font-medium uppercase tracking-tighter">
-                  {profile?.current_role || "Professional"}
-                </span>
-              </div>
-              <div className="w-9 h-9 bg-linear-to-br from-indigo-500 to-indigo-700 rounded-xl flex items-center justify-center text-white font-bold shadow-lg shadow-indigo-200 overflow-hidden relative">
-                {profile?.profile_photo_url ? (
-                  <Image 
-                    src={profile.profile_photo_url} 
-                    alt="Profile" 
-                    fill 
-                    sizes="36px"
-                    className="object-cover" 
-                  />
-                ) : (
-                  profile?.full_name?.[0] || <User className="w-4 h-4" />
-                )}
-              </div>
-            </div>
-            <button
-              onClick={handleLogout}
-              className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-red-500 hover:bg-red-50 hover:border-red-100 transition-all active:scale-95"
-            >
-              Logout
-            </button>
-          </div>
-        </header>
-
-        <div className="p-8 max-w-5xl mx-auto w-full font-sans">
+        <div className="p-8 max-w-6xl mx-auto w-full font-sans">
           {/* Mirror Banner Card */}
           <div className="relative mb-10 overflow-hidden bg-slate-900 rounded-4xl p-10 shadow-2xl">
             <div className="absolute top-0 right-0 w-1/2 h-full bg-linear-to-l from-indigo-500/20 to-transparent pointer-none" />
@@ -473,6 +426,43 @@ export default function CandidateProfilePage() {
                       className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none"
                     />
                   </Field>
+                  <Field label="Gender" icon={Users}>
+                    <select
+                      name="gender"
+                      value={profile?.gender || ""}
+                      onChange={handleInputChange}
+                      className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none appearance-none"
+                    >
+                      <option value="">Select Gender</option>
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                      <option value="other">Other</option>
+                      <option value="prefer_not_to_say">Prefer Not to Say</option>
+                    </select>
+                  </Field>
+                  <Field label="Employment Status" icon={Briefcase}>
+                    <select
+                      name="current_employment_status"
+                      value={profile?.current_employment_status || ""}
+                      onChange={handleInputChange}
+                      className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none appearance-none"
+                    >
+                      <option value="">Select Status</option>
+                      <option value="Employed">Currently Employed</option>
+                      <option value="Unemployed">Unemployed</option>
+                      <option value="Student">Student</option>
+                    </select>
+                  </Field>
+                  <Field label="Referral Source" icon={Share2}>
+                    <input
+                      type="text"
+                      name="referral"
+                      value={profile?.referral || ""}
+                      onChange={handleInputChange}
+                      placeholder="e.g. LinkedIn, Friend, LinkedIn"
+                      className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none"
+                    />
+                  </Field>
                 </div>
               </div>
               <div className="mt-8">
@@ -492,6 +482,26 @@ export default function CandidateProfilePage() {
             {/* Career Details Section */}
             <Section title="Career & Preferences" description="Your professional positioning and goals" icon={Briefcase}>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <Field label="Target Role" icon={Target}>
+                  <input
+                    type="text"
+                    name="target_role"
+                    value={profile?.target_role || ""}
+                    onChange={handleInputChange}
+                    placeholder="e.g. Senior Product Manager"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none"
+                  />
+                </Field>
+                <Field label="Long-term Goal" icon={Target}>
+                  <textarea
+                    name="long_term_goal"
+                    rows={1}
+                    value={profile?.long_term_goal || ""}
+                    onChange={handleInputChange}
+                    placeholder="e.g. Lead a global team at a Fortune 500 company"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none resize-none"
+                  />
+                </Field>
                 <Field label="Current Role" icon={Briefcase}>
                   <input
                     type="text"
@@ -830,14 +840,14 @@ export default function CandidateProfilePage() {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="relative group overflow-hidden px-12 py-3 bg-indigo-600 text-white rounded-xl font-black text-xs uppercase tracking-[0.2em] hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 active:scale-95 disabled:opacity-70 flex items-center gap-3"
+                  className="relative group overflow-hidden px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase tracking-[0.15em] hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100/50 active:scale-95 disabled:opacity-70 flex items-center gap-2"
                 >
                    {saving ? (
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   ) : (
-                    <CheckCircle2 className="w-4 h-4" />
+                    <CheckCircle2 className="w-3.5 h-3.5" />
                   )}
-                  {saving ? "SAVING..." : "SAVE CHANGES"}
+                  {saving ? "SAVING..." : "SAVE"}
                 </button>
               </div>
             </div>

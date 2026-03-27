@@ -106,7 +106,7 @@ export default function RecruiterDashboard() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="flex flex-col items-center gap-4">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
           <p className="text-slate-500 font-bold text-xs uppercase tracking-widest">
             Loading Dashboard...
           </p>
@@ -186,7 +186,7 @@ export default function RecruiterDashboard() {
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-1">
             <div className="flex items-center gap-3">
-              <h1 className="text-4xl font-bold text-slate-900 tracking-tight">
+              <h1 className="text-3xl font-bold text-slate-900 tracking-tight">
                 Recruiter <span className="text-indigo-600">Overview</span>
               </h1>
               <div className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-widest rounded-md border border-indigo-200">
@@ -195,7 +195,7 @@ export default function RecruiterDashboard() {
             </div>
             <p className="text-slate-500 font-medium flex items-center gap-2">
               <Building2 className="h-4 w-4 text-slate-400" />
-              {profile?.companies?.name || "TalentFlow Partner"} &bull; Real-time
+              {profile?.companies?.name || "TechSales Axis Partner"} &bull; Real-time
               updates
             </p>
           </div>

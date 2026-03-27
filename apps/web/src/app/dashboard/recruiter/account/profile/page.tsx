@@ -195,13 +195,10 @@ export default function RecruiterProfilePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
         <div className="flex flex-col items-center gap-4">
-          <div className="relative h-16 w-16">
-            <div className="absolute inset-0 border-4 border-indigo-100 rounded-full" />
-            <div className="absolute inset-0 border-4 border-indigo-600 rounded-full border-t-transparent animate-spin" />
-          </div>
-          <p className="text-slate-400 text-xs font-bold uppercase tracking-[0.2em] animate-pulse">
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
+          <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">
             Loading Profile...
           </p>
         </div>
@@ -212,82 +209,10 @@ export default function RecruiterProfilePage() {
   return (
     <div className="min-h-screen bg-slate-50/50">
       <main className="flex flex-col">
-        {/* Premium Header */}
-        <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 h-16 flex items-center justify-between px-8 sticky top-0 z-20 w-full">
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2 bg-slate-900 px-3 py-1.5 rounded-full shadow-sm">
-              <div
-                className={`w-1.5 h-1.5 rounded-full ${
-                  profile?.is_verified ? "bg-emerald-400" : "bg-amber-400"
-                } animate-pulse`}
-              />
-              <span className="text-[10px] font-bold text-white uppercase tracking-widest">
-                Hub Status: {profile?.is_verified ? "Verified" : "Syncing"}
-              </span>
-            </div>
-          </div>
-          <div className="flex items-center space-x-6">
-            <div className="flex items-center gap-3">
-              <div className="flex flex-col items-end">
-                <span className="text-xs font-bold text-slate-900 leading-none">
-                  {profile?.full_name}
-                </span>
-                <span className="text-[10px] text-slate-500 font-medium">
-                  {profile?.team_role?.toUpperCase()}
-                </span>
-              </div>
-              <div className="w-9 h-9 bg-linear-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center text-white font-bold shadow-lg shadow-indigo-200">
-                {profile?.full_name?.[0] || "R"}
-              </div>
-            </div>
-            <button
-              onClick={handleLogout}
-              className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-red-500 hover:bg-red-50 hover:border-red-100 transition-all active:scale-95"
-            >
-              Logout
-            </button>
-          </div>
-        </header>
-
         <div className="p-8 max-w-5xl mx-auto w-full">
-          {/* Banner Card */}
-          <div className="relative mb-10 overflow-hidden bg-slate-900 rounded-4xl p-10 shadow-2xl">
-            <div className="absolute top-0 right-0 w-1/2 h-full bg-linear-to-l from-indigo-500/20 to-transparent pointer-none" />
-            <div className="absolute -bottom-24 -right-24 w-64 h-64 bg-indigo-600/30 rounded-full blur-[80px]" />
-            <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
-              <div>
-                <h1 className="text-4xl font-black text-white tracking-tight mb-2">
-                  Profile Settings
-                </h1>
-                <p className="text-slate-400 font-medium text-lg max-w-md">
-                  Calibrate your professional visual signals and organizational
-                  intelligence.
-                </p>
-              </div>
-              <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/10">
-                <div className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest mb-3">
-                  Profile Strength
-                </div>
-                <div className="flex items-end gap-3 mb-2">
-                  <div className="text-3xl font-black text-white">
-                    {profile?.completion_score || 0}%
-                  </div>
-                  <div className="text-indigo-400 text-xs font-bold mb-1 uppercase">
-                    {(profile?.completion_score || 0) >= 80
-                      ? "Optimized"
-                      : (profile?.completion_score || 0) >= 50
-                        ? "Getting There"
-                        : "Incomplete"}
-                  </div>
-                </div>
-                <div className="w-48 h-1.5 bg-white/10 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)] transition-all duration-500"
-                    style={{ width: `${profile?.completion_score || 0}%` }}
-                  />
-                </div>
-              </div>
-            </div>
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Profile Settings</h1>
+            <p className="text-slate-500 text-sm mt-1">Manage your professional profile and visibility settings.</p>
           </div>
 
           <form onSubmit={handleUpdateProfile} className="space-y-8 pb-32">

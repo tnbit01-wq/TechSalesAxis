@@ -3,7 +3,7 @@
 
 -- 1. Create candidate_settings table (Mirroring recruiter structure)
 CREATE TABLE IF NOT EXISTS public.candidate_settings (
-    user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     email_notifications BOOLEAN DEFAULT true,
     web_notifications BOOLEAN DEFAULT true,
     mobile_notifications BOOLEAN DEFAULT false,

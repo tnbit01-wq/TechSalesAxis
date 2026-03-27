@@ -96,7 +96,7 @@ export default function CandidatePoolPage() {
       setError(null);
     } catch (err: unknown) {
       console.error("Failed to fetch candidate pool:", err);
-      setError("Failed to sync with TalentFlow servers");
+      setError("Failed to sync with TechSales Axis servers");
     } finally {
       setLoading(false);
     }
@@ -237,155 +237,150 @@ export default function CandidatePoolPage() {
   const isLocked = (recruiterProfile?.companies?.profile_score ?? 0) === 0;
 
   return (
-    <div className="max-w-7xl mx-auto">
-      {isLocked ? (
-        <LockedView featureName="Candidate Pool" />
-      ) : (
-        <>
-          <header className="mb-12 flex justify-between items-end">
-            <div>
-              <h1 className="text-4xl font-black text-slate-900 tracking-tight uppercase italic flex items-center gap-4">
-                Candidate Pool
-                <div className="h-3 w-3 rounded-full bg-emerald-500 animate-pulse" />
-              </h1>
-              <p className="text-slate-400 text-[11px] font-black uppercase tracking-[0.4em] mt-3">
-                Verified High-Signal Talent Ecosystem
-              </p>
-            </div>
-
-            <div className="flex items-center gap-4">
-              <div className="relative group">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
-                <input
-                  type="text"
-                  placeholder="Search name, role, skills..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="bg-white border border-slate-200 pl-12 pr-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-900 placeholder:text-slate-300 outline-none focus:border-indigo-500 shadow-sm transition-all w-64"
-                />
+    <div className="min-h-screen bg-white">
+      <main className="max-w-7xl mx-auto px-4 py-12">
+        {isLocked ? (
+          <LockedView featureName="Candidate Pool" />
+        ) : (
+          <>
+            {/* Header */}
+            <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+              <div>
+                <h1 className="text-3xl font-bold text-slate-900 tracking-tight">
+                  Talent <span className="text-indigo-600">Pool</span>
+                </h1>
+                <p className="text-slate-500 text-sm mt-1">
+                  Browse and manage all candidates in your database
+                </p>
               </div>
-
-              <div className="relative group">
-                <button className="flex items-center gap-3 px-5 py-3 bg-white border border-slate-200 rounded-2xl shadow-sm text-[10px] font-black uppercase tracking-widest text-slate-600 hover:bg-slate-50 transition-all">
-                  <Filter className="w-4 h-4" />
-                  {filterExperience === "all" ? "Experience" : filterExperience}
-                </button>
-                <div className="absolute right-0 top-full mt-2 w-48 bg-white border border-slate-100 rounded-2xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-30 p-2">
-                  {["all", "fresher", "mid", "senior", "leadership"].map(
-                    (band) => (
-                      <button
-                        key={band}
-                        onClick={() => setFilterExperience(band)}
-                        className={`w-full text-left px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors ${
-                          filterExperience === band
-                            ? "bg-indigo-50 text-indigo-600"
-                            : "text-slate-500 hover:bg-slate-50"
-                        }`}
-                      >
-                        {band}
-                      </button>
-                    ),
-                  )}
-                </div>
-              </div>
-
               <button
                 onClick={handleLogout}
-                className="p-3 bg-white border border-slate-200 rounded-2xl text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all shadow-sm active:scale-95"
-                title="Logout"
+                className="px-4 py-2.5 bg-slate-100 text-slate-600 rounded-lg hover:bg-red-50 hover:text-red-600 transition-all text-sm font-medium flex items-center gap-2 w-fit"
               >
-                <LogOut className="w-5 h-5" />
+                <LogOut className="w-4 h-4" />
+                Logout
               </button>
-            </div>
-          </header>
+            </header>
 
-          <div className="space-y-16">
-            {Object.entries(bands).map(
-              ([key, list]) =>
-                list.length > 0 && (
-                  <div key={key} className="space-y-8">
-                    <div className="flex items-center gap-6">
-                      <h2 className="text-2xl font-black uppercase italic tracking-tighter text-indigo-600">
-                        {key === "fresher"
-                          ? "Freshers"
-                          : key === "mid"
-                            ? "Mid-Level"
-                            : key === "senior"
-                              ? "Senior Talent"
-                              : "Executive Leadership"}
-                      </h2>
-                      <div className="h-px flex-1 bg-linear-to-r from-slate-200 to-transparent" />
-                      <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">
-                        {list.length} Records found
-                      </span>
-                    </div>
+            {/* Search & Filters */}
+            <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm mb-8">
+              <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center">
+                <div className="flex-1 relative">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search name, role, skills..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 pl-11 pr-4 py-2.5 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
+                  />
+                </div>
+                <div className="flex gap-3 flex-wrap">
+                  {["all", "fresher", "mid", "senior", "leadership"].map((band) => (
+                    <button
+                      key={band}
+                      onClick={() => setFilterExperience(band)}
+                      className={`px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                        filterExperience === band
+                          ? "bg-indigo-600 text-white shadow-md shadow-indigo-200"
+                          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      }`}
+                    >
+                      {band === "all" ? "All Levels" : band.charAt(0).toUpperCase() + band.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </section>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                      {list.map((candidate) => (
-                        <CandidateCard
-                          key={candidate.user_id}
-                          candidate={candidate}
-                          onViewProfile={() =>
-                            handleViewProfile(candidate, "resume")
-                          }
-                          onViewResume={() =>
-                            handleViewProfile(
-                              candidate,
-                              candidate.resume_path
-                                ? "original_resume"
-                                : "resume",
-                            )
-                          }
-                          onInvite={() =>
-                            setInviteModal({ isOpen: true, candidate })
-                          }
-                          onMessage={() => handleStartChat(candidate)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                ),
+            {/* Results */}
+            {loading ? (
+              <div className="flex items-center justify-center py-20">
+                <div className="flex flex-col items-center gap-4">
+                  <div className="h-8 w-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                  <p className="text-slate-500 text-sm">Loading candidates...</p>
+                </div>
+              </div>
+            ) : filteredCandidates.length > 0 ? (
+              <>
+                <div className="mb-4 flex items-center justify-between">
+                  <p className="text-sm text-slate-600">
+                    Showing <span className="font-semibold text-slate-900">{filteredCandidates.length}</span> candidate{filteredCandidates.length !== 1 ? 's' : ''}
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {filteredCandidates.map((candidate) => (
+                    <CandidateCard
+                      key={candidate.user_id}
+                      candidate={candidate}
+                      onViewProfile={() =>
+                        handleViewProfile(candidate, "resume")
+                      }
+                      onViewResume={() =>
+                        handleViewProfile(
+                          candidate,
+                          candidate.resume_path
+                            ? "original_resume"
+                            : "resume",
+                        )
+                      }
+                      onInvite={() =>
+                        setInviteModal({ isOpen: true, candidate })
+                      }
+                      onMessage={() => handleStartChat(candidate)}
+                    />
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center justify-center py-20 bg-slate-50 rounded-3xl">
+                <div className="text-center">
+                  <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                  <p className="text-slate-600 font-medium">No candidates found</p>
+                  <p className="text-slate-400 text-sm mt-1">Try adjusting your search or filters</p>
+                </div>
+              </div>
             )}
-          </div>
-        </>
-      )}
+          </>
+        )}
 
-      {profileModal.isOpen && profileModal.candidate && (
-        <CandidateProfileModal
-          isOpen={profileModal.isOpen}
-          onClose={() => setProfileModal({ ...profileModal, isOpen: false })}
-          candidate={profileModal.candidate as any}
-          resumeData={(profileModal.candidate as any).resume_data}
-          jobTitle="TalentFlow Ecosystem Discovery"
-          appliedDate={new Date().toISOString()}
-          score={profileModal.candidate.trust_score}
-          status="Talent Pool"
-          initialTab={profileModal.initialTab}
-          isDiscovery={true}
-        />
-      )}
+        {profileModal.isOpen && profileModal.candidate && (
+          <CandidateProfileModal
+            isOpen={profileModal.isOpen}
+            onClose={() => setProfileModal({ ...profileModal, isOpen: false })}
+            candidate={profileModal.candidate as any}
+            resumeData={(profileModal.candidate as any).resume_data}
+            jobTitle="TechSales Axis Ecosystem Discovery"
+            appliedDate={new Date().toISOString()}
+            score={profileModal.candidate.trust_score}
+            status="Talent Pool"
+            initialTab={profileModal.initialTab}
+            isDiscovery={true}
+          />
+        )}
 
-      {isFetchingProfile && (
-        <div className="fixed inset-0 z-100 bg-slate-900/10 backdrop-blur-[2px] flex items-center justify-center animate-in fade-in duration-300">
-          <div className="bg-white/80 p-6 rounded-4xl shadow-2xl border border-white flex flex-col items-center gap-4">
-            <div className="h-12 w-12 rounded-2xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-200">
-              <div className="h-6 w-6 border-4 border-white border-t-transparent rounded-full animate-spin" />
+        {isFetchingProfile && (
+          <div className="fixed inset-0 z-100 bg-slate-900/10 backdrop-blur-[2px] flex items-center justify-center animate-in fade-in duration-300">
+            <div className="bg-white/80 p-6 rounded-4xl shadow-2xl border border-white flex flex-col items-center gap-4">
+              <div className="h-12 w-12 rounded-2xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-200">
+                <div className="h-6 w-6 border-4 border-white border-t-transparent rounded-full animate-spin" />
+              </div>
+              <p className="text-[10px] font-black text-slate-900 uppercase tracking-[0.3em] animate-pulse">
+                Hydrating Profile...
+              </p>
             </div>
-            <p className="text-[10px] font-black text-slate-900 uppercase tracking-[0.3em] animate-pulse">
-              Hydrating Profile...
-            </p>
           </div>
-        </div>
-      )}
+        )}
 
-      {inviteModal.isOpen && inviteModal.candidate && (
-        <JobInviteModal
-          onClose={() => setInviteModal({ isOpen: false, candidate: null })}
-          candidateName={inviteModal.candidate.full_name}
-          jobs={jobs}
-          onInvite={handleInviteCandidate}
-        />
-      )}
+        {inviteModal.isOpen && inviteModal.candidate && (
+          <JobInviteModal
+            onClose={() => setInviteModal({ isOpen: false, candidate: null })}
+            candidateName={inviteModal.candidate.full_name}
+            jobs={jobs}
+            onInvite={handleInviteCandidate}
+          />
+        )}
+      </main>
     </div>
   );
 }

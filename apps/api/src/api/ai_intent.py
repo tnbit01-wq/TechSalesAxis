@@ -43,60 +43,33 @@ TOOLS = [
 
 @router.post("/process")
 async def process_intent(
-    data: Dict[str, Any] = Body(...),
+    prompt: str = Body(..., embed=True),
     current_user: dict = Depends(get_current_user)
 ):
     """
     The Brain: Specializing in IT Tech Sales & High-Trust Psychometrics.
-    Uses GPT-4o for real-time strategic intent processing.
     """
-    from src.services.recruiter_service import recruiter_service
-    
     user_role = current_user.get("role")
-    prompt_text = data.get("prompt", "")
     
     # 1. SPECIALIZED SYSTEM PROMPT for IT SALES & PSYCHOMETRICS
     system_prompt = f"""
     You are the IT Tech Sales Intelligence Core. 
     Focus: SaaS, Cloud, Cybersecurity, Fintech Sales roles.
     Metric pillars: 
-    1. Psychometrics (Resilience, Hunter DNA, Hunter vs Farmer)
+    1. Psychometrics (Resilience, Hunter DNA from 810-question bank)
     2. Market Standards (Location-based salary prediction)
     3. Interview Automation (Reducing friction)
     4. Nuclear Ban Integrity (High-Trust factor)
-
-    CONTEXT: User role is {user_role}.
-    
-    Respond in a JSON format:
-    {{
-        "text": "Strategic insight message",
-        "data_type": "behavioral_report" | "market_data" | "candidate_match" | "none",
-        "data_results": [],
-        "intelligence_metrics": {{
-            "resilience": 80,
-            "sales_dna": 90,
-            "adaptability": 75,
-            "trust_index": 95
-        }}
-    }}
     """
 
-    try:
-        ai_response = await recruiter_service._call_ai_json(prompt_text, system_prompt)
-        if ai_response and ai_response.get("text"):
-            return ai_response
-    except Exception as e:
-        print(f"DEBUG: Strategic Intent AI Failed: {e}")
-
-    # Fallback to deterministic logic if AI fails
     response_payload = {
-        "text": "Accessing strategic sales intent...",
+        "text": "",
         "data_type": "none",
         "data_results": [],
-        "intelligence_metrics": {} 
+        "intelligence_metrics": {} # Added for psychometric visualization
     }
 
-    prompt_low = prompt_text.lower()
+    prompt_low = prompt.lower()
 
     # SCENARIO: Psychometric / Behavior Analysis
     if any(word in prompt_low for word in ["behavior", "personality", "sales dna", "resilience"]):

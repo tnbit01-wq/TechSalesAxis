@@ -12,6 +12,7 @@ import os
 import re
 from google import genai
 from src.core.config import OPENAI_API_KEY, GOOGLE_API_KEY, OPENROUTER_API_KEY
+from src.services.comprehensive_extractor import ComprehensiveResumeExtractor
 
 class ResumeService:
     @staticmethod
@@ -156,7 +157,11 @@ class ResumeService:
                 except:
                     pass
 
-        return {"error": "All parsing paths failed"}
+        # 6. Final Fallback: Comprehensive NLP-based extraction when all AI APIs fail
+        print("All AI APIs failed. Using comprehensive NLP-based extraction...")
+        parsed_data = ComprehensiveResumeExtractor.extract_all(text)
+        await ResumeService._store_data(user_id, text, parsed_data)
+        return parsed_data
 
     @staticmethod
     async def _store_initial_text(user_id: str, text: str):
@@ -179,109 +184,147 @@ class ResumeService:
     async def _store_data(user_id: str, text: str, parsed_data: dict):
         db = SessionLocal()
         try:
+            extracted_skills = []
+            
             # 1. Update Candidate Profile
             profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == user_id).first()
             if profile:
                 profile.full_name = parsed_data.get("full_name") or parsed_data.get("name")
-                profile.phone_number = parsed_data.get("phone") or parsed_data.get("phone_number")
+                profile.phone_number = str(parsed_data.get("phone_number") or parsed_data.get("phone") or "").strip()
                 profile.location = parsed_data.get("location")
-                profile.experience = parsed_data.get("experience_band") or "mid"
                 profile.bio = parsed_data.get("bio")
-                profile.linkedin_url = parsed_data.get("links", {}).get("linkedin") if isinstance(parsed_data.get("links"), dict) else None
-                profile.portfolio_url = parsed_data.get("links", {}).get("portfolio") if isinstance(parsed_data.get("links"), dict) else None
+                profile.current_role = parsed_data.get("current_role")
+                profile.years_of_experience = parsed_data.get("years_of_experience")
+                profile.last_resume_parse_at = func.now()
                 
-                # --- NEW EXTRACTIONS ---
-                profile.education_history = parsed_data.get("education")
-                profile.experience_history = parsed_data.get("timeline")
-                profile.projects = parsed_data.get("projects")
-                profile.career_gap_report = parsed_data.get("career_gap_report")
-                profile.major_achievements = str(parsed_data.get("major_achievements")) if parsed_data.get("major_achievements") else None
+                # Normalize experience_band to lowercase enum values
+                raw_exp = str(parsed_data.get("experience_band") or "mid").lower()
+                if "leader" in raw_exp or "leadership" in raw_exp:
+                    profile.experience = "leadership"
+                elif "senior" in raw_exp:
+                    profile.experience = "senior"
+                elif "fresher" in raw_exp or "entry" in raw_exp:
+                    profile.experience = "fresher"
+                else:
+                    profile.experience = "mid"
                 
-                # Current/Target Roles
-                timeline = parsed_data.get("timeline") or []
-                if timeline and isinstance(timeline, list) and len(timeline) > 0:
-                    current = timeline[0]
-                    if isinstance(current, dict):
-                        profile.current_role = current.get("role")
+                # Links extraction
+                links = parsed_data.get("links") or {}
+                if isinstance(links, dict):
+                    profile.linkedin_url = links.get("linkedin")
+                    profile.portfolio_url = links.get("portfolio")
                 
-                exp_val = parsed_data.get("relevant_years_experience", 0)
-                if exp_val:
-                    match = re.search(r"\d+", str(exp_val))
-                    profile.years_of_experience = int(match.group()) if match else 0
+                # Structured data fields (JSONB columns)
+                education_history = parsed_data.get("education_history") or parsed_data.get("education") or []
+                experience_history = parsed_data.get("experience_history") or parsed_data.get("timeline") or []
+                
+                profile.education_history = education_history
+                profile.experience_history = experience_history
+                profile.projects = parsed_data.get("projects") or []
+                profile.career_gap_report = parsed_data.get("career_gap_report") or {}
+                
+                # Major achievements
+                achievements_data = parsed_data.get("major_achievements")
+                if achievements_data:
+                    if isinstance(achievements_data, (list, dict)):
+                        profile.major_achievements = json.dumps(achievements_data)
+                    else:
+                        profile.major_achievements = str(achievements_data)
+                
+                # Extract skills for profile and catalog
+                skills_data = parsed_data.get("skills") or []
+                if isinstance(skills_data, list):
+                    extracted_skills = skills_data
+                elif isinstance(skills_data, dict):
+                    # Handle nested skills structure
+                    for k in ["technical", "soft", "tools"]:
+                        val = skills_data.get(k)
+                        if isinstance(val, list): 
+                            extracted_skills.extend(val)
+                
+                # Clean and deduplicate skills
+                extracted_skills = list(set([str(s).strip() for s in extracted_skills if s]))
+                profile.skills = extracted_skills
 
-                # achievements = parsed_data.get("major_achievements") or []
-                # profile.major_achievements = achievements if isinstance(achievements, list) else [str(achievements)]
-            
             # 2. Update/Upsert Resume Data
             resume = db.query(ResumeData).filter(ResumeData.user_id == user_id).first()
-            exp_history = parsed_data.get("timeline") or []
-            edu_history = parsed_data.get("education") or []
-            achievements = parsed_data.get("major_achievements") or []
-            if not isinstance(achievements, list): achievements = [str(achievements)]
+            
+            exp_history = parsed_data.get("experience_history") or parsed_data.get("timeline") or []
+            edu_history = parsed_data.get("education_history") or parsed_data.get("education") or []
+            
+            # Achievements handling
+            achievements_list_data = parsed_data.get("major_achievements") or []
+            achievements = []
+            if isinstance(achievements_list_data, list):
+                achievements = [str(a) for a in achievements_list_data if a]
+            elif achievements_list_data:
+                achievements = [str(achievements_list_data)]
 
             if resume:
-                resume.raw_text = text[:15000]
-                resume.raw_education = edu_history # Storing as JSON object direct
-                resume.raw_experience = exp_history
-                resume.raw_projects = parsed_data.get("projects")
+                resume.raw_text = text[:30000]
+                resume.raw_education = json.dumps(edu_history) if edu_history else "[]"
+                resume.raw_experience = json.dumps(exp_history) if exp_history else "[]"
+                resume.raw_projects = json.dumps(parsed_data.get("projects") or [])
                 resume.timeline = exp_history
                 resume.education = edu_history
                 resume.career_gaps = parsed_data.get("career_gap_report")
-                resume.skills = parsed_data.get("skills")
+                resume.skills = extracted_skills
                 resume.achievements = achievements
                 resume.parsed_at = func.now()
             else:
                 resume = ResumeData(
                     user_id=user_id,
-                    raw_text=text[:15000],
-                    raw_education=edu_history,
-                    raw_experience=exp_history,
-                    raw_projects=parsed_data.get("projects"),
+                    raw_text=text[:30000],
+                    raw_education=json.dumps(edu_history) if edu_history else "[]",
+                    raw_experience=json.dumps(exp_history) if exp_history else "[]",
+                    raw_projects=json.dumps(parsed_data.get("projects") or []),
                     timeline=exp_history,
                     education=edu_history,
                     career_gaps=parsed_data.get("career_gap_report"),
-                    skills=parsed_data.get("skills"),
-                    achievements=achievements
+                    skills=extracted_skills,
+                    achievements=achievements,
+                    parsed_at=func.now()
                 )
                 db.add(resume)
             
-            # Sync to candidate_profiles.skills as well
-            if profile and skills:
-                # Handle dictionary input from AI (e.g. {'technical': [...], 'soft': [...]})
-                extracted_skills = []
-                if isinstance(skills, dict):
-                    for k in ["technical", "soft", "tools"]:
-                        if isinstance(skills.get(k), list): 
-                            extracted_skills.extend(skills[k])
-                elif isinstance(skills, list):
-                    extracted_skills = skills
-                
-                profile.skills = list(set(extracted_skills))
-                actual_skills_to_sync = extracted_skills
-            else:
-                actual_skills_to_sync = []
-
             db.commit()
 
-            await ResumeService._sync_to_skill_catalog(actual_skills_to_sync, profile.experience if profile else 'mid')
+            # Sync skills to catalog with proper case sensitivity and experience band
+            if extracted_skills and profile:
+                await ResumeService._sync_to_skill_catalog(extracted_skills, profile.experience)
+                
         except Exception as e:
             print(f"Error storing data: {e}")
+            import traceback
+            traceback.print_exc()
             db.rollback()
         finally:
             db.close()
 
     @staticmethod
-    async def _sync_to_skill_catalog(skills: list, band: str):
-        if not skills: return
+    async def _sync_to_skill_catalog(skills: list, band: str = "mid"):
+        """
+        Sync extracted skills to skill_catalog (case-sensitive).
+        Skills are stored with exact casing and experience band for discovery.
+        """
+        if not skills: 
+            return
         db = SessionLocal()
         try:
             from src.core.models import SkillCatalog
             from sqlalchemy import func
+            
+            # Normalize band
+            valid_bands = ["fresher", "mid", "senior", "leadership"]
+            band = band.lower() if band in valid_bands else "mid"
+            
+            skill_count = 0
             for skill_name in skills:
-                name = skill_name.strip()
-                if not name: continue
+                name = str(skill_name).strip()
+                if not name or len(name) < 2: 
+                    continue
                 
-                # Check if exists
+                # Check if exists for this band (case-sensitive)
                 existing = db.query(SkillCatalog).filter(
                     SkillCatalog.name == name,
                     SkillCatalog.experience_band == band
@@ -289,16 +332,20 @@ class ResumeService:
                 
                 if existing:
                     existing.last_seen_at = func.now()
+                    skill_count += 1
                 else:
                     new_skill = SkillCatalog(
-                        name=name,
+                        name=name,  # Preserves exact casing
                         experience_band=band,
                         last_seen_at=func.now()
                     )
                     db.add(new_skill)
+                    skill_count += 1
+            
             db.commit()
+            print(f"Synced {skill_count} skills to catalog for band: {band}")
         except Exception as e:
-            print(f"Skill Catalog Sync Error: {e}")
+            print(f"Error syncing skills to catalog: {e}")
             db.rollback()
         finally:
             db.close()

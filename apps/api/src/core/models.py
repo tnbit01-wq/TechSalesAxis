@@ -320,6 +320,33 @@ class AssessmentResponse(Base):
     time_taken_seconds = Column(Integer)
     created_at = Column(DateTime, default=func.now())
 
+class AssessmentRetakeEligibility(Base):
+    """Track when candidates are eligible to retake assessments (30-day cooldown)"""
+    __tablename__ = 'assessment_retake_eligibility'
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    candidate_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), unique=True)
+    last_completed_at = Column(DateTime, default=func.now())
+    eligible_after = Column(DateTime, nullable=False)  # 30 days from completion
+    retake_count = Column(Integer, default=0)  # How many times they've retaken
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+class AssessmentFeedback(Base):
+    """Store generated feedback for assessments"""
+    __tablename__ = 'assessment_feedback'
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    candidate_id = Column(UUID(as_uuid=True), ForeignKey('users.id'))
+    session_id = Column(UUID(as_uuid=True), ForeignKey('assessment_sessions.id'))
+    feedback_report = Column(JSONB, default={})  # Complete feedback JSON
+    strengths = Column(ARRAY(Text))
+    improvement_areas = Column(ARRAY(Text))
+    recommendations = Column(ARRAY(Text))
+    tier = Column(String)  # Top, Strong, Developing, Growing
+    final_score = Column(Integer)
+    generated_at = Column(DateTime, default=func.now())
+    viewed_at = Column(DateTime)  # When candidate viewed this feedback
+    created_at = Column(DateTime, default=func.now())
+
 class RecruiterAssessmentResponse(Base):
     __tablename__ = 'recruiter_assessment_responses'
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -438,3 +465,221 @@ class InterviewSlot(Base):
     created_at = Column(DateTime, default=func.now())
     status = Column(Text, default='pending')
     interview = relationship('Interview', back_populates='slots')
+
+# Analytics and Tracking Models
+
+class JobView(Base):
+    __tablename__ = 'job_views'
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    job_id = Column(UUID(as_uuid=True), ForeignKey('jobs.id'), nullable=False)
+    candidate_id = Column(UUID(as_uuid=True), ForeignKey('users.id'))
+    viewer_ip = Column(Text)
+    user_agent = Column(Text)
+    created_at = Column(DateTime, default=func.now())
+
+class ProfileAnalytics(Base):
+    __tablename__ = 'profile_analytics'
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    candidate_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
+    recruiter_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
+    event_type = Column(Text)  # 'profile_view', 'application_sent', etc.
+    job_id = Column(UUID(as_uuid=True), ForeignKey('jobs.id'))
+    event_metadata = Column(JSONB, name='metadata', default={})
+    created_at = Column(DateTime, default=func.now())
+
+class CandidateJobSync(Base):
+    __tablename__ = 'candidate_job_sync'
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    candidate_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
+    job_id = Column(UUID(as_uuid=True), ForeignKey('jobs.id'), nullable=False)
+    overall_match_score = Column(Numeric, default=0.0)
+    match_explanation = Column(Text)
+    missing_critical_skills = Column(ARRAY(Text), default=[])
+    created_at = Column(DateTime, default=func.now())
+
+# ============================================================================
+# BULK UPLOAD FEATURE - Database Models
+# ============================================================================
+
+class BulkUpload(Base):
+    __tablename__ = 'bulk_uploads'
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    admin_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
+    
+    # Batch metadata
+    batch_name = Column(Text, nullable=False)
+    batch_description = Column(Text)
+    source_system = Column(Text)  # 'internal_hr', 'recruitment_agency', 'headhunter'
+    
+    # Processing status
+    upload_status = Column(Text, nullable=False, default='uploaded')  # uploaded, processing, completed, failed, partially_failed
+    processing_started_at = Column(DateTime)
+    processing_completed_at = Column(DateTime)
+    
+    # File & parsing metrics
+    total_files_uploaded = Column(Integer, nullable=False, default=0)
+    successfully_parsed = Column(Integer, nullable=False, default=0)
+    parsing_failed = Column(Integer, nullable=False, default=0)
+    extraction_confidence_avg = Column(Numeric(5, 4))
+    
+    # Duplicate detection metrics
+    total_candidates_found = Column(Integer, nullable=False, default=0)
+    duplicate_candidates_detected = Column(Integer, nullable=False, default=0)
+    new_candidates_identified = Column(Integer, nullable=False, default=0)
+    duplicates_admin_reviewed = Column(Integer, nullable=False, default=0)
+    duplicates_auto_merged = Column(Integer, nullable=False, default=0)
+    
+    # Account creation metrics
+    shadow_profiles_created = Column(Integer, nullable=False, default=0)
+    verified_accounts_from_bulk = Column(Integer, nullable=False, default=0)
+    invitations_sent = Column(Integer, nullable=False, default=0)
+    invitations_opened = Column(Integer, nullable=False, default=0)
+    account_verifications_completed = Column(Integer, nullable=False, default=0)
+    
+    # Compliance & security
+    virus_scan_enabled = Column(Boolean, nullable=False, default=True)
+    virus_scan_status = Column(Text)  # pending, scanning, clean, infected_found
+    virus_scan_completed_at = Column(DateTime)
+    
+    # Data retention
+    data_retention_days = Column(Integer, nullable=False, default=90)
+    scheduled_deletion_date = Column(DateTime)
+    
+    # Audit trail
+    processing_notes = Column(JSONB, default='[]')
+    error_summary = Column(JSONB, default='[]')
+    admin_decisions = Column(JSONB, default='{}')
+    
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+class BulkUploadFile(Base):
+    __tablename__ = 'bulk_upload_files'
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    bulk_upload_id = Column(UUID(as_uuid=True), ForeignKey('bulk_uploads.id'), nullable=False)
+    
+    # File metadata
+    original_filename = Column(Text, nullable=False)
+    file_ext = Column(Text, nullable=False)  # pdf, doc, docx
+    file_size_bytes = Column(Integer, nullable=False)
+    file_hash = Column(Text, unique=True, nullable=False)  # SHA-256 hash
+    file_storage_path = Column(Text)  # s3://bucket/path or /uploads/path
+    
+    # Virus scan status
+    virus_scan_status = Column(Text, default='pending')  # pending, scanning, clean, infected
+    virus_scan_result = Column(JSONB)
+    virus_scan_timestamp = Column(DateTime)
+    
+    # Parsing status
+    parsing_status = Column(Text, default='pending')  # pending, processing, completed, failed
+    parsing_error = Column(Text)
+    parsing_error_details = Column(JSONB)
+    parsing_confidence = Column(Numeric(5, 4))
+    parsed_at = Column(DateTime)
+    
+    # Extracted candidate info
+    extracted_name = Column(Text)
+    extracted_email = Column(Text)
+    extracted_phone = Column(Text)
+    extracted_location = Column(Text)
+    extracted_current_role = Column(Text)
+    extracted_years_experience = Column(Integer)
+    
+    # Candidate matching result
+    matched_candidate_id = Column(UUID(as_uuid=True), ForeignKey('users.id'))
+    match_confidence = Column(Numeric(5, 4))
+    match_type = Column(Text)  # exact, strong, moderate, soft, no_match
+    
+    # Raw data
+    raw_text = Column(Text)
+    parsed_data = Column(JSONB)
+    
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+class BulkUploadCandidateMatch(Base):
+    __tablename__ = 'bulk_upload_candidate_matches'
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    bulk_upload_file_id = Column(UUID(as_uuid=True), ForeignKey('bulk_upload_files.id'), nullable=False)
+    
+    # Matched candidate info
+    matched_candidate_user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'))
+    candidate_full_name = Column(Text)
+    candidate_email = Column(Text)
+    candidate_phone = Column(Text)
+    
+    # Matching details
+    match_type = Column(Text, nullable=False)  # exact_match, strong_match, moderate_match, soft_match, no_match
+    match_confidence = Column(Numeric(5, 4), nullable=False)
+    match_reason = Column(Text)
+    match_details = Column(JSONB, nullable=False)
+    
+    # Admin decision
+    admin_decision = Column(Text)  # pending, approved_merge, rejected_duplicate, skip, create_new
+    admin_decision_made_by = Column(UUID(as_uuid=True), ForeignKey('users.id'))
+    admin_decision_reason = Column(Text)
+    admin_decision_at = Column(DateTime)
+    
+    # Merge action result
+    merge_status = Column(Text)  # pending, completed, failed
+    merge_completed_at = Column(DateTime)
+    merge_action_details = Column(JSONB)
+    
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+class BulkUploadProcessingQueue(Base):
+    __tablename__ = 'bulk_upload_processing_queue'
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    
+    # Job info
+    bulk_upload_id = Column(UUID(as_uuid=True), ForeignKey('bulk_uploads.id'), nullable=False)
+    bulk_upload_file_id = Column(UUID(as_uuid=True), ForeignKey('bulk_upload_files.id'))
+    
+    job_type = Column(Text, nullable=False)  # virus_scan, parse_resume, detect_duplicate, create_account, send_invite
+    job_status = Column(Text, nullable=False, default='queued')  # queued, processing, completed, failed, retry
+    retry_count = Column(Integer, default=0)
+    max_retries = Column(Integer, default=3)
+    
+    # Execution details
+    started_at = Column(DateTime)
+    completed_at = Column(DateTime)
+    execution_time_seconds = Column(Integer)
+    
+    # Error tracking
+    error_message = Column(Text)
+    error_details = Column(JSONB)
+    
+    # Result stored
+    job_result = Column(JSONB)
+    
+    # Priority & scheduling
+    priority = Column(Integer, default=50)  # 0-100, higher = more urgent
+    scheduled_for = Column(DateTime, default=func.now())
+    
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+class BulkUploadAuditLog(Base):
+    __tablename__ = 'bulk_upload_audit_log'
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    bulk_upload_id = Column(UUID(as_uuid=True), ForeignKey('bulk_uploads.id'), nullable=False)
+    
+    # Action info
+    action_type = Column(Text, nullable=False)  # upload_started, file_scanned, duplicate_reviewed, account_created, candidate_verified, merge_completed
+    actor_type = Column(Text, nullable=False)  # admin, system, candidate
+    actor_id = Column(UUID(as_uuid=True), ForeignKey('users.id'))
+    
+    # Changed data
+    affected_resource_type = Column(Text)  # bulk_upload, bulk_upload_file, candidate_profile
+    affected_resource_id = Column(UUID(as_uuid=True))
+    
+    changes_before = Column(JSONB)
+    changes_after = Column(JSONB)
+    
+    # Context
+    ip_address = Column(Text)
+    user_agent = Column(Text)
+    action_details = Column(Text)
+    
+    created_at = Column(DateTime, default=func.now())

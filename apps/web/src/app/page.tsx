@@ -44,7 +44,7 @@ export default function Home() {
               <div className="h-5 w-5 rounded bg-white rotate-45" />
             </div>
             <span className="text-xl font-black tracking-tighter text-slate-900 uppercase">
-              TalentFlow
+              TechSales Axis
             </span>
           </div>
 
@@ -141,7 +141,7 @@ export default function Home() {
           <div className="mx-auto max-w-7xl px-6 lg:px-12">
             <div className="mb-20">
               <h2 className="text-4xl font-black tracking-tighter text-slate-900 uppercase italic">
-                How TalentFlow Works
+                How TechSales Axis Works
               </h2>
               <div className="h-1.5 w-24 bg-blue-600 mt-4" />
             </div>
@@ -252,11 +252,11 @@ export default function Home() {
             <div className="flex items-center gap-3 grayscale opacity-50">
               <div className="h-6 w-6 rounded bg-slate-900" />
               <span className="text-sm font-black tracking-tighter uppercase italic">
-                TalentFlow
+                TechSales Axis
               </span>
             </div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-              © 2026 TalentFlow. All Rights Reserved.
+              © 2026 TechSales Axis. All Rights Reserved.
             </p>
             <div className="flex gap-6 text-[10px] font-black uppercase tracking-widest text-slate-500">
               <Link href="#" className="hover:text-slate-900 transition-colors">

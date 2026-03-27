@@ -4,8 +4,8 @@ import { Toaster } from "sonner";
 import GlobalChatInterface from "@/components/GlobalChatInterface";
 
 export const metadata = {
-  title: "TalentFlow",
-  description: "Chat-first recruitment platform",
+  title: "TechSales Axis",
+  description: "AI-Powered Intelligent Sales & Recruitment Platform",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

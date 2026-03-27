@@ -3,6 +3,7 @@ from src.core.dependencies import get_current_user
 from src.services.recruiter_service import recruiter_service
 from src.services.s3_service import S3Service
 from src.core.database import SessionLocal
+import uuid
 from src.core.models import RecruiterProfile, Company, User, RecruiterSetting, BlockedUser
 from src.models.invitation import TeamInvitation
 from src.schemas.recruiter import (
@@ -474,7 +475,7 @@ async def applications_pipeline(user: dict = Depends(get_current_user), db: Sess
 
         # Fetch Interviews & Slots for the Recruiter
         interviews_raw = db.execute(text("""
-            SELECT id, status, round_name, round_number, format, meeting_link, location, interviewer_names 
+            SELECT id, status, round_name, round_number, format, meeting_link, location, interviewer_names, candidate_joined_at, recruiter_joined_at
             FROM interviews 
             WHERE application_id = :aid
         """), {"aid": app.id}).fetchall()
@@ -811,4 +812,35 @@ async def market_insights(db: Session = Depends(get_db)):
             {"skill": "General", "active_openings": len(jobs)}
         ],
     }
+
+
+@router.post("/profile-matches/persist")
+async def persist_profile_matches(
+    matches: List[Dict[str, Any]],
+    user: dict = Depends(get_current_user)
+):
+    """
+    Persist profile match recommendations to database for caching.
+    Call this after fetching recommendations to cache the results.
+    
+    Args:
+        matches: List of candidate matches from recommendations
+    
+    Returns:
+        Number of matches persisted
+    """
+    recruiter_id = user.get("sub")
+    
+    try:
+        count = recruiter_service.persist_profile_matches(
+            recruiter_id=recruiter_id,
+            matches=matches
+        )
+        return {
+            "status": "success",
+            "message": f"Persisted {count} profile matches",
+            "count": count
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 

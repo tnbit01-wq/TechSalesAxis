@@ -16,7 +16,13 @@ interface Notification {
   created_at: string;
 }
 
-export default function CandidateHeader() {
+interface ProfileData {
+  full_name?: string;
+  current_role?: string;
+  profile_photo_url?: string;
+}
+
+export default function CandidateHeader({ profile }: { profile?: ProfileData | null }) {
   const router = useRouter();
   const { toggleChatMode } = useChatViewStore();
   const [notifications, setNotifications] = useState<Notification[]>([]);

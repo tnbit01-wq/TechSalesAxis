@@ -111,9 +111,9 @@ export default function TalentPoolPage() {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[70vh] gap-4">
-        <div className="h-10 w-10 border-[3px] border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
-        <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] animate-pulse">Initializing Talent Matrix...</p>
+      <div className="flex flex-col items-center justify-center min-h-screen gap-4">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
+        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Initializing Talent Matrix...</p>
       </div>
     );
   }
@@ -128,13 +128,13 @@ export default function TalentPoolPage() {
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <div className="h-2 w-2 bg-indigo-500 rounded-full shadow-[0_0_10px_#6366f1]" />
-              <span className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.3em]">Hiring Intelligence</span>
+              <span className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.3em]">Talent Overview</span>
             </div>
-            <h1 className="text-4xl font-black tracking-tighter text-white uppercase italic">
-              Talent <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-blue-500">Universe</span>
+            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">
+              Candidate <span className="text-indigo-600">Pool</span>
             </h1>
-            <p className="text-slate-400 text-sm max-w-xl font-medium">
-              A high-precision visual exploration of global talent density across experience bands, geographic tiers, and economic expectations.
+            <p className="text-slate-500 text-sm font-medium">
+              View available candidates across experience levels, regions, and salary expectations.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -169,7 +169,7 @@ export default function TalentPoolPage() {
               </div>
               <div>
                 <h3 className="text-lg font-black text-white uppercase tracking-tighter italic">Experience Cluster</h3>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Aggregate talent density by experience bands</p>
+                <p className="text-[10px] text-slate-500 font-bold">Candidates by experience level</p>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 bg-[#0a1122] p-1.5 rounded-2xl border border-white/10 shadow-xl">

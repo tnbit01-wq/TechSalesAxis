@@ -45,6 +45,9 @@ export default function CandidateJobsPage() {
   const [saving, setSaving] = useState<string | null>(null);
   const [assessmentStatus, setAssessmentStatus] = useState<string>("not_started");
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterJobType, setFilterJobType] = useState<string>("all");
+  const [filterExperience, setFilterExperience] = useState<string>("all");
 
   useEffect(() => {
     const loadData = async () => {
@@ -77,8 +80,29 @@ export default function CandidateJobsPage() {
       const token = awsAuth.getToken();
       if (!token) return;
 
-      await apiClient.post(`/candidate/jobs/${jobId}/apply`, {}, token);
+      const response = await apiClient.post(`/candidate/jobs/${jobId}/apply`, {}, token);
+      
+      // Check for limit_reached status
+      if (response?.status === "limit_reached") {
+        toast.error("Daily Limit Reached", {
+          description: response.message || "You have reached your daily application limit of 5 jobs. Try again tomorrow."
+        });
+        return;
+      }
+      
+      // Check for already_applied status
+      if (response?.status === "already_applied") {
+        toast.info("Already Applied", {
+          description: "You have already applied for this job."
+        });
+        return;
+      }
+      
+      // Success case
       setJobs(jobs.map((j) => (j.id === jobId ? { ...j, has_applied: true } : j)));
+      if (selectedJob?.id === jobId) {
+        setSelectedJob({ ...selectedJob, has_applied: true });
+      }
       toast.success("Application Sent", { description: "You have successfully applied for this job." });
     } catch (err) {
       toast.error("Application Failed", { description: err instanceof Error ? err.message : "Something went wrong" });
@@ -109,6 +133,20 @@ export default function CandidateJobsPage() {
     }
   };
 
+  // Filter jobs based on search term and selected filters
+  const filteredJobs = jobs.filter((job) => {
+    const matchesSearch =
+      job.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      job.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      job.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      job.company_name.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesJobType = filterJobType === "all" || job.job_type === filterJobType;
+    const matchesExperience = filterExperience === "all" || job.experience_band === filterExperience;
+    
+    return matchesSearch && matchesJobType && matchesExperience;
+  });
+
   if (loading) {
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center">
@@ -126,30 +164,66 @@ export default function CandidateJobsPage() {
           <p className="text-slate-500 text-sm mt-1">Discover roles that match your profile.</p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search jobs..."
-              className="pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 w-64 shadow-sm"
-            />
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search by title, location, company..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm"
+              />
+            </div>
           </div>
-          <button className="p-2.5 bg-white border border-slate-200 rounded-xl text-slate-500 hover:bg-slate-50 shadow-sm">
-            <Filter className="h-4 w-4" />
-          </button>
+          <div className="flex flex-col md:flex-row items-start md:items-end gap-4">
+            <div className="flex flex-col">
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Job Type</label>
+              <select
+                value={filterJobType}
+                onChange={(e) => setFilterJobType(e.target.value)}
+                className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm cursor-pointer font-medium text-slate-900"
+              >
+                <option value="all">All Types</option>
+                <option value="remote">Remote</option>
+                <option value="hybrid">Hybrid</option>
+                <option value="onsite">On-site</option>
+              </select>
+            </div>
+            <div className="flex flex-col">
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Experience Level</label>
+              <select
+                value={filterExperience}
+                onChange={(e) => setFilterExperience(e.target.value)}
+                className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm cursor-pointer font-medium text-slate-900"
+              >
+                <option value="all">All Levels</option>
+                <option value="fresher">Fresher (0-1y)</option>
+                <option value="mid">Mid-level (1-5y)</option>
+                <option value="senior">Senior (5-10y)</option>
+                <option value="leadership">Leadership (10y+)</option>
+              </select>
+            </div>
+          </div>
         </div>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {jobs.length === 0 ? (
+        {filteredJobs.length === 0 && jobs.length > 0 ? (
+          <div className="col-span-full py-20 text-center bg-white border border-dashed border-slate-200 rounded-3xl">
+            <Search className="h-10 w-10 text-slate-200 mx-auto mb-4" />
+            <h3 className="text-lg font-bold text-slate-900">No matching jobs found</h3>
+            <p className="text-slate-500 text-sm">Try adjusting your search terms or filters.</p>
+          </div>
+        ) : jobs.length === 0 ? (
           <div className="col-span-full py-20 text-center bg-white border border-dashed border-slate-200 rounded-3xl">
             <Briefcase className="h-10 w-10 text-slate-200 mx-auto mb-4" />
             <h3 className="text-lg font-bold text-slate-900">No jobs found</h3>
             <p className="text-slate-500 text-sm">Check back later for new opportunities.</p>
           </div>
         ) : (
-          jobs.map((job) => (
+          filteredJobs.map((job) => (
             <div
               key={job.id}
               className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition-all flex flex-col group cursor-pointer"
@@ -184,10 +258,6 @@ export default function CandidateJobsPage() {
                   <span className="h-1 w-1 rounded-full bg-slate-200" />
                   <span className="text-xs text-slate-500">{job.location || "Remote"}</span>
                 </div>
-                
-                <p className="text-slate-500 text-xs mt-4 line-clamp-2 min-h-[2.5rem]">
-                  {job.description}
-                </p>
               </div>
 
               <div className="mt-6 flex items-center justify-between gap-3">

@@ -25,7 +25,7 @@ export default function LockedView({ featureName }: LockedViewProps) {
         This high-impact transmission channel is currently disabled. To unlock{" "}
         <span className="text-slate-900 font-bold">{featureName}</span> and
         other advanced recruiter features, your company must complete the
-        TalentFlow DNA Assessment.
+        TechSales Axis DNA Assessment.
       </p>
 
       <div className="flex flex-col sm:flex-row gap-4 w-full justify-center">

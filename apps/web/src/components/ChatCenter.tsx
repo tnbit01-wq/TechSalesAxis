@@ -7,7 +7,8 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { apiClient } from "@/lib/apiClient";
 import CandidateProfileModal from "./CandidateProfileModal";
-import { Archive, MessageCircle, MoreVertical, Trash2, User, Paperclip, ClipboardList, RotateCcw } from "lucide-react";
+import { Archive, MessageCircle, MoreVertical, Trash2, User, Paperclip, ClipboardList, RotateCcw, Flag } from "lucide-react";
+import ReportMessageModal from "./ReportMessageModal";
 
 interface Message {
   id: string;
@@ -44,6 +45,11 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
     isOpen: boolean;
     candidate: any;
   }>({ isOpen: false, candidate: null });
+  const [reportModal, setReportModal] = useState<{
+    isOpen: boolean;
+    messageId: string;
+    senderName: string;
+  }>({ isOpen: false, messageId: "", senderName: "" });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -413,31 +419,52 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
             </div>
 
             <div className="flex-1 overflow-y-auto px-6 py-10 space-y-8 custom-scrollbar">
-              {messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={`flex ${msg.sender_id === userId ? "justify-end" : "justify-start"}`}
-                >
+              {messages.map((msg) => {
+                const otherPartyName = role === "recruiter" 
+                  ? threads.find(t => t.id === activeThreadId)?.candidate_profiles?.full_name || "Candidate"
+                  : "Recruiter";
+                
+                return (
                   <div
-                    className={`flex flex-col ${msg.sender_id === userId ? "items-end" : "items-start"} max-w-[85%]`}
+                    key={msg.id}
+                    className={`flex ${msg.sender_id === userId ? "justify-end" : "justify-start"} group`}
                   >
                     <div
-                      className={`rounded-3xl px-6 py-4 shadow-sm transition-all hover:shadow-md ${
-                        msg.sender_id === userId
-                          ? "bg-slate-900 text-white rounded-tr-none shadow-slate-900/10"
-                          : "bg-white text-slate-800 border border-slate-100 rounded-tl-none"
-                      }`}
+                      className={`flex flex-col ${msg.sender_id === userId ? "items-end" : "items-start"} max-w-[85%]`}
                     >
-                      <p className="text-[13px] leading-relaxed font-medium">
-                        {msg.text}
+                      <div
+                        className={`rounded-3xl px-6 py-4 shadow-sm transition-all hover:shadow-md relative ${
+                          msg.sender_id === userId
+                            ? "bg-slate-900 text-white rounded-tr-none shadow-slate-900/10"
+                            : "bg-white text-slate-800 border border-slate-100 rounded-tl-none"
+                        }`}
+                      >
+                        <p className="text-[13px] leading-relaxed font-medium">
+                          {msg.text}
+                        </p>
+                        
+                        {/* Report button - only show for other person's messages */}
+                        {msg.sender_id !== userId && (
+                          <button
+                            onClick={() => setReportModal({
+                              isOpen: true,
+                              messageId: msg.id,
+                              senderName: otherPartyName
+                            })}
+                            className="absolute -right-12 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity p-2 hover:bg-red-50 rounded-lg"
+                            title="Report this message"
+                          >
+                            <Flag className="w-4 h-4 text-red-500 hover:text-red-600" />
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-[9px] font-black text-slate-300 uppercase tracking-tighter mt-2 px-1">
+                        {format(new Date(msg.created_at), "h:mm a")}
                       </p>
                     </div>
-                    <p className="text-[9px] font-black text-slate-300 uppercase tracking-tighter mt-2 px-1">
-                      {format(new Date(msg.created_at), "h:mm a")}
-                    </p>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               <div ref={messagesEndRef} />
             </div>
 
@@ -538,10 +565,18 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
           jobTitle="Discovery Connection"
           appliedDate={new Date().toISOString()}
           score={0}
-          status="Direct Chat"
-          isDiscovery={true}
         />
       )}
+
+      <ReportMessageModal
+        isOpen={reportModal.isOpen}
+        onClose={() => setReportModal({ ...reportModal, isOpen: false })}
+        messageId={reportModal.messageId}
+        senderName={reportModal.senderName}
+        onReportSuccess={() => {
+          toast.success("Thank you for reporting. Our team will review this.");
+        }}
+      />
     </div>
   );
 }

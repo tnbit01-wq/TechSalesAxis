@@ -111,7 +111,7 @@ CREATE TYPE report_status AS ENUM (
 -- ---------- USERS ----------
 
 CREATE TABLE users (
-  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   role user_role NOT NULL,
   email TEXT NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
@@ -280,7 +280,7 @@ CREATE TABLE assessment_sessions (
 
 CREATE TABLE assessment_responses (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    candidate_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    candidate_id UUID REFERENCES users(id) ON DELETE CASCADE,
     question_id UUID REFERENCES assessment_questions(id), -- Null for AI-generated
     question_text TEXT, -- Stores the actual question asked (crucial for AI questions)
     category TEXT NOT NULL,

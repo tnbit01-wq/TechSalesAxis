@@ -11,7 +11,7 @@ router = APIRouter(prefix="/notifications", tags=["notifications"])
 class NotificationResponse(BaseModel):
     id: str
     user_id: str
-    notification_type: Optional[str]
+    type: Optional[str]
     title: str
     message: str
     metadata: dict = {}
@@ -36,7 +36,7 @@ async def get_notifications(user: dict = Depends(get_current_user), db: Session 
             n_dict = {
                 "id": str(n.id),
                 "user_id": str(n.user_id),
-                "notification_type": n.notification_type,
+                "type": n.notification_type,
                 "title": n.title,
                 "message": n.message,
                 "metadata": n.metadata_ or {},

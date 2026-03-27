@@ -842,6 +842,8 @@ export default function CandidateProfileModal({
           applicationId={applicationId}
           candidateName={candidate.full_name}
           roundName={activeInterview.round_name}
+          recruiterJoinedAt={activeInterview.recruiter_joined_at}
+          candidateJoinedAt={activeInterview.candidate_joined_at}
           onSuccess={() => {
             setShowFeedbackModal(false);
             if (onRefresh) onRefresh();

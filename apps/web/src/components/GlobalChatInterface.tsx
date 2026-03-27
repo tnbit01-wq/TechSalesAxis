@@ -26,7 +26,7 @@ export default function GlobalChatInterface() {
   const [messages, setMessages] = useState<ChatMessage[]>([
     { 
       role: 'assistant', 
-      content: "Welcome back. I'm synchronizing with your TalentFlow workspace. What's our focus today?", 
+      content: "Welcome back. I'm synchronizing with your TechSales Axis workspace. What's our focus today?", 
       timestamp: new Date() 
     }
   ]);

@@ -138,6 +138,28 @@ export default function CommunityFeed() {
     }
   };
 
+  const handleDeleteComment = async (postId: string, commentId: string) => {
+    const token = awsAuth.getToken();
+    if (!token) return;
+
+    try {
+      await apiClient.delete(`/posts/${postId}/comments/${commentId}`, token);
+      
+      setPosts(prev => prev.map(p => {
+        if (p.id === postId) {
+          return {
+            ...p,
+            comments_count: Math.max(0, (p.comments_count || 0) - 1),
+            comments: (p.comments || []).filter(c => c.id !== commentId)
+          };
+        }
+        return p;
+      }));
+    } catch (err) {
+      console.error("Failed to delete comment:", err);
+    }
+  };
+
   const toggleComments = (postId: string) => {
     setExpandingComments(prev => {
       const next = new Set(prev);
@@ -360,7 +382,7 @@ export default function CommunityFeed() {
   };
 
   return (
-    <div className="max-w-280 mx-auto">
+    <div className="w-full p-6 sm:p-8">
       {/* Top Header Navigation */}
       <div className="flex items-center justify-between mb-8">
         <div className="flex items-center gap-6">
@@ -396,7 +418,7 @@ export default function CommunityFeed() {
           <div className="px-3 py-1.5 flex items-center gap-2">
             <TrendingUp size={14} className="text-indigo-600" />
             <span className="text-3xs font-black uppercase text-slate-500 tracking-widest">
-              Live Flow
+              Trending Now
             </span>
           </div>
         </div>
@@ -496,7 +518,7 @@ export default function CommunityFeed() {
             </form>
           </div>
 
-          {/* Feed Signals */}
+          {/* Community Discussions */}
           <div className="space-y-6">
             {loading ? (
               <div className="py-20 flex flex-col items-center justify-center space-y-4">
@@ -604,9 +626,9 @@ export default function CommunityFeed() {
                   {post.media_urls &&
                     post.media_urls.length > 0 &&
                     !editingPost && (
-                      <div className="px-6 sm:px-8 pb-4">
+                      <div className="px-6 sm:px-8 py-4">
                         <div
-                          className={`rounded-2xl overflow-hidden border border-slate-100 shadow-sm ${post.media_urls.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}
+                          className={`grid rounded-2xl overflow-hidden border border-slate-100 shadow-sm ${post.media_urls.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}
                         >
                           {post.media_urls.map((url, i) => (
                             <div key={i} className="relative aspect-video">
@@ -684,7 +706,7 @@ export default function CommunityFeed() {
 
                   {/* Comments Section */}
                   {expandingComments.has(post.id) && (
-                    <div className="px-6 sm:px-8 pb-6 bg-white border-t border-slate-50 animate-in slide-in-from-top-2 duration-300">
+                    <div className="px-6 sm:px-8 pb-6 bg-white border-t border-slate-50 animate-in slide-in-from-bottom-2 duration-300">
                       <div className="pt-6 space-y-6">
                         {/* New Comment Input */}
                         <div className="flex gap-4">
@@ -733,6 +755,15 @@ export default function CommunityFeed() {
                                         {format(new Date(comment.created_at), "MMM d")}
                                       </span>
                                     </div>
+                                    {comment.user_id === currentUserId && (
+                                      <button
+                                        onClick={() => handleDeleteComment(post.id, comment.id)}
+                                        className="opacity-0 group-hover/comment:opacity-100 transition-opacity"
+                                        title="Delete comment"
+                                      >
+                                        <Trash2 size={14} className="text-slate-400 hover:text-red-500" />
+                                      </button>
+                                    )}
                                   </div>
                                   <p className="text-[11px] text-slate-600 leading-relaxed font-medium">
                                     {comment.content}
@@ -752,7 +783,7 @@ export default function CommunityFeed() {
         </div>
 
         {/* Sidebar Column */}
-        <div className="col-span-12 lg:col-span-4 space-y-8">
+        <div className="col-span-12 lg:col-span-4 space-y-8 lg:sticky lg:top-24">
           <div className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm relative overflow-hidden group">
             <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full -mr-16 -mt-16 group-hover:scale-110 transition-transform duration-700" />
             <div className="flex items-center justify-between mb-6">

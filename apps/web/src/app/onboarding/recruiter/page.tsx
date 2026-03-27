@@ -498,7 +498,7 @@ export default function RecruiterOnboarding() {
               <div className={`h-4 w-4 rounded ${isAssessmentActive ? "bg-black" : "bg-white"} rotate-45`} />
             </div>
             <h1 className={`text-xl font-bold tracking-tight ${isAssessmentActive ? "text-white uppercase italic" : "text-slate-800"}`}>
-              TalentFlow {isAssessmentActive ? "" : <span className="font-medium text-slate-400 ml-1">Onboarding</span>}
+              TechSales Axis {isAssessmentActive ? "" : <span className="font-medium text-slate-400 ml-1">Onboarding</span>}
             </h1>
           </div>
         </div>
@@ -617,7 +617,7 @@ export default function RecruiterOnboarding() {
                     <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">Encryption: Shield-V3.0-AES-256</span>
                   </div>
                 </div>
-                <span className="text-[10px] font-bold text-zinc-700 uppercase tracking-widest">© 2026 TalentFlow AI Corp</span>
+                <span className="text-[10px] font-bold text-zinc-700 uppercase tracking-widest">© 2026 TechSales Axis AI</span>
               </div>
             </div>
           </div>

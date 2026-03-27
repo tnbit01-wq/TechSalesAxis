@@ -37,8 +37,48 @@ DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 
 # Auth Configuration (AWS)
 JWT_SECRET = os.getenv("JWT_SECRET", "7c8e57bb9c29f040c2a83db8d27f4b1f8b22ca0096fa54333cae6bf28ad856a7").strip()
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", JWT_SECRET).strip()  # Alias for compatibility
+JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256").strip()
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 4320 # 3 days
+
+# ============================================================================
+# PHASE 1: BULK UPLOAD CONFIGURATION
+# ============================================================================
+
+# File Storage - Bulk Upload (Supports 500-1000 resumes per batch)
+BULK_UPLOAD_DIR = os.getenv("BULK_UPLOAD_DIR", "/uploads/bulk_uploads").strip()
+MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", "50"))  # 50MB per file (supports large PDFs)
+MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+MAX_BATCH_SIZE_MB = int(os.getenv("MAX_BATCH_SIZE_MB", "500"))  # 500MB total batch (500-1000 resumes)
+MAX_BATCH_SIZE_BYTES = MAX_BATCH_SIZE_MB * 1024 * 1024
+ALLOWED_UPLOAD_EXTENSIONS = os.getenv("ALLOWED_UPLOAD_EXTENSIONS", "pdf,doc,docx,txt").strip().split(",")
+
+# Redis & Celery Configuration
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0").strip()
+CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/1").strip()
+CELERY_TIMEZONE = os.getenv("CELERY_TIMEZONE", "UTC").strip()
+
+# AWS SES Configuration
+AWS_SES_REGION = os.getenv("AWS_SES_REGION", "us-east-1").strip()
+AWS_SES_SENDER_EMAIL = os.getenv("AWS_SES_SENDER_EMAIL", "noreply@techsalesaxis.ai").strip()
+AWS_SES_SENDER_NAME = os.getenv("AWS_SES_SENDER_NAME", "TalentFlow Team").strip()
+
+# Admin Configuration
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@talentflow.com").strip()
+TALENT_TEAM_EMAIL = os.getenv("TALENT_TEAM_EMAIL", "talent@techsalesaxis.ai").strip()
+
+# Data Retention
+BULK_UPLOAD_RETENTION_DAYS = int(os.getenv("BULK_UPLOAD_RETENTION_DAYS", "90"))
+VIRUS_SCAN_ENABLED = os.getenv("VIRUS_SCAN_ENABLED", "true").lower() == "true"
+CLAMAV_HOST = os.getenv("CLAMAV_HOST", "localhost").strip()
+CLAMAV_PORT = int(os.getenv("CLAMAV_PORT", "3310"))
+
+# Zoho Email (Fallback)
+ZOHO_SMTP_HOST = os.getenv("ZOHO_SMTP_HOST", "smtp.zoho.in").strip()
+ZOHO_SMTP_PORT = int(os.getenv("ZOHO_SMTP_PORT", "465"))
+ZOHO_EMAIL = os.getenv("ZOHO_EMAIL", "admin@techsalesaxis.ai").strip()
+ZOHO_USE_TLS = os.getenv("ZOHO_USE_TLS", "true").lower() == "true"
 
 if not DATABASE_URL:
     print("WARNING: DATABASE_URL not set. AWS RDS features will be unavailable.")

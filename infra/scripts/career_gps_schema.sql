@@ -49,5 +49,4 @@ ON career_milestones FOR ALL
 USING (gps_id IN (SELECT id FROM career_gps WHERE candidate_id = auth.uid()));
 
 -- 6. Add to Realtime Publication
-ALTER PUBLICATION supabase_realtime ADD TABLE career_gps;
-ALTER PUBLICATION supabase_realtime ADD TABLE career_milestones;
+-- Realtime features removed - authenticationand updates handled by FastAPI application layer

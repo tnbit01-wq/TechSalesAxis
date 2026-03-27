@@ -57,6 +57,8 @@ class InterviewResponse(BaseModel):
     interviewer_names: List[str] = []
     feedback: Optional[str] = None
     cancellation_reason: Optional[str] = None
+    candidate_joined_at: Optional[datetime] = None
+    recruiter_joined_at: Optional[datetime] = None
     slots: List[InterviewSlotResponse] = []
     created_at: datetime
     updated_at: datetime

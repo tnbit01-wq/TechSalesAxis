@@ -648,16 +648,29 @@ function OnboardingContent() {
             );
           }, 1000);
         } else {
-          // Save target_role temporarily (or just proceed)
-          // We'll update the profile at the end or per step.
-          const token = awsAuth.getToken() || undefined;
-          await apiClient.patch(
-            "/candidate/profile",
-            { target_role: workingInput },
-            token,
-          );
+          // Save target_role
+          try {
+            const token = awsAuth.getToken();
+            if (!token) {
+              addMessage("Error: Authentication required. Please log in again.", "bot");
+              return;
+            }
+            
+            const result = await apiClient.patch(
+              "/candidate/profile",
+              { target_role: workingInput },
+              token,
+            );
+            
+            if (result) {
+              addMessage(`Got it! Target Role: ${workingInput}. Saved successfully.`, "bot");
+            }
+          } catch (err) {
+            console.error("Error saving target_role:", err);
+            addMessage(`Error saving target role: ${err instanceof Error ? err.message : "Unknown error"}`, "bot");
+            return;
+          }
 
-          addMessage(`Got it! Target: ${workingInput}.`, "bot");
           const nextState = "AWAITING_GPS_INTERESTS";
           await saveStep(nextState);
           setState(nextState);
@@ -673,20 +686,33 @@ function OnboardingContent() {
         if (workingInput.toLowerCase().includes("skip")) {
           addMessage("Skipping interests for now.", "bot");
         } else {
-          const token = awsAuth.getToken() || undefined;
-          // Split comma-separated string into an array for the TEXT[] database column
-          const interestsArray = workingInput
-            .split(",")
-            .map((i) => i.trim())
-            .filter(Boolean);
-          
-          await apiClient.patch(
-            "/candidate/profile",
-            { career_interests: interestsArray },
-            token,
-          );
-
-          addMessage(`Tech Interests recorded: ${workingInput}.`, "bot");
+          try {
+            const token = awsAuth.getToken();
+            if (!token) {
+              addMessage("Error: Authentication required. Please log in again.", "bot");
+              return;
+            }
+            
+            // Split comma-separated string into an array for the TEXT[] database column
+            const interestsArray = workingInput
+              .split(",")
+              .map((i) => i.trim())
+              .filter(Boolean);
+            
+            const result = await apiClient.patch(
+              "/candidate/profile",
+              { career_interests: interestsArray },
+              token,
+            );
+            
+            if (result) {
+              addMessage(`Tech Interests recorded: ${workingInput}. Saved successfully.`, "bot");
+            }
+          } catch (err) {
+            console.error("Error saving career_interests:", err);
+            addMessage(`Error saving interests: ${err instanceof Error ? err.message : "Unknown error"}`, "bot");
+            return;
+          }
         }
         const nextState = "AWAITING_GPS_GOAL";
         await saveStep(nextState);
@@ -702,17 +728,30 @@ function OnboardingContent() {
         if (workingInput.toLowerCase().includes("skip")) {
           addMessage("Skipping long-term goal for now.", "bot");
         } else {
-          const token = awsAuth.getToken() || undefined;
-          await apiClient.patch(
-            "/candidate/profile",
-            { long_term_goal: workingInput },
-            token,
-          );
-
-          addMessage(
-            "Career vision captured! We'll use this to build your personalized Career GPS.",
-            "bot",
-          );
+          try {
+            const token = awsAuth.getToken();
+            if (!token) {
+              addMessage("Error: Authentication required. Please log in again.", "bot");
+              return;
+            }
+            
+            const result = await apiClient.patch(
+              "/candidate/profile",
+              { long_term_goal: workingInput },
+              token,
+            );
+            
+            if (result) {
+              addMessage(
+                "Career vision captured! We'll use this to build your personalized Career GPS.",
+                "bot",
+              );
+            }
+          } catch (err) {
+            console.error("Error saving long_term_goal:", err);
+            addMessage(`Error saving goal: ${err instanceof Error ? err.message : "Unknown error"}`, "bot");
+            return;
+          }
         }
         const nextState = "AWAITING_ID";
         await saveStep(nextState);
@@ -796,6 +835,12 @@ function OnboardingContent() {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || isLoading) return;
+
+    // Client-side size restriction (5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert("File is too large! Maximum allowed is 5MB.");
+      return;
+    }
 
     setIsLoading(true);
     addMessage(`Uploading ${file.name}...`, "user");
@@ -946,7 +991,7 @@ function OnboardingContent() {
               <div className="h-4 w-4 rounded-sm bg-white rotate-45" />
             </div>
             <span className="font-bold text-slate-900">
-              TalentFlow Onboarding
+              TechSales Axis Onboarding
             </span>
           </div>
         </div>
@@ -1220,7 +1265,7 @@ export default function CandidateOnboarding() {
   return (
     <Suspense fallback={
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
       </div>
     }>
       <OnboardingContent />

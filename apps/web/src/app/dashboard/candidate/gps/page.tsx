@@ -171,7 +171,7 @@ export default function CareerGPSPage() {
   if (loading) {
     return (
       <div className="flex bg-slate-50 min-h-screen items-center justify-center">
-        <Loader2 className="w-10 h-10 animate-spin text-indigo-600" />
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
       </div>
     );
   }

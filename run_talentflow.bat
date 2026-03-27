@@ -2,10 +2,11 @@
 setlocal
 
 :: --- TALENTFLOW UNIFIED RUNNER (AWS NATIVE) ---
+:: Update DATABASE_URL with your actual RDS endpoint from AWS RDS Console
 
 echo [1/3] Setting Environment Variables...
-:: Set your RDS URL here if not in .env
-set DATABASE_URL=postgresql://postgres.snzqqjrmthqdezozgvsp:Bvdf2lB7QpL767K5@aws-0-ap-southeast-2.pooler.supabase.com:6543/postgres
+:: Set your AWS RDS URL here
+set DATABASE_URL=postgresql://postgres:PASSWORD@YOUR_RDS_ENDPOINT:5432/techsalesaxis
 set PYTHONPATH=%CD%\apps\api
 
 echo [2/3] Starting FastAPI Backend on port 8000...

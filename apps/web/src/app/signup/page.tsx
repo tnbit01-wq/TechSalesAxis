@@ -249,7 +249,7 @@ function SignupForm() {
               <div className="h-4 w-4 rounded-sm bg-white rotate-45" />
             </div>
             <span className="font-bold text-slate-900 tracking-tight">
-              TalentFlow Onboarding
+              TechSales Axis Onboarding
             </span>
           </div>
         </div>
@@ -360,7 +360,7 @@ function SignupForm() {
           </button>
         </form>
         <p className="max-w-3xl mx-auto mt-2 text-[10px] text-center text-slate-400 uppercase tracking-widest font-medium">
-          Powered by TalentFlow Trust Layer
+          Powered by TechSales Axis Trust Layer
         </p>
       </div>
     </div>

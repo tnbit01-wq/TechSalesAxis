@@ -82,7 +82,7 @@ export default function CandidateDashboard() {
       setError(null);
     } catch (err) {
       console.error("Failed to load candidate dashboard data:", err);
-      setError("Failed to sync dashboard signals");
+      setError("Failed to update dashboard");
     } finally {
       setLoading(false);
     }
@@ -104,9 +104,9 @@ export default function CandidateDashboard() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="flex flex-col items-center gap-4">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-          <p className="text-slate-500 font-bold text-xs uppercase tracking-widest">
-            Compiling Profile Signals...
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
+          <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">
+            Loading Dashboard...
           </p>
         </div>
       </div>
@@ -121,16 +121,16 @@ export default function CandidateDashboard() {
             <ShieldCheck className="h-8 w-8 text-red-500" />
           </div>
           <h2 className="text-lg font-bold text-slate-900 mb-2 uppercase tracking-tight">
-            Sync Offline
+            Connection Error
           </h2>
           <p className="text-slate-500 text-sm mb-6 leading-relaxed">
-            {error || "Server disconnected"}
+            {error || "Unable to connect to server"}
           </p>
           <button
             onClick={() => window.location.reload()}
             className="w-full py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition"
           >
-            RETRY CONNECTION
+            Try Again
           </button>
         </div>
       </div>
@@ -168,36 +168,8 @@ export default function CandidateDashboard() {
 
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-1">
-            <div className="flex items-center gap-3">
-              <h1 className="text-4xl font-bold text-slate-900 tracking-tight">
-                Candidate <span className="text-indigo-600">Overview</span>
-              </h1>
-              <div className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-widest rounded-md border border-indigo-200">
-                Verified
-              </div>
-            </div>
-            <p className="text-slate-500 font-medium flex items-center gap-2">
-              <User className="h-4 w-4 text-slate-400" />
-              Real-time profile syncing active
-            </p>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="text-right hidden sm:block">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">
-                System Status
-              </span>
-              <div className="flex items-center gap-2 text-emerald-600 font-bold text-xs bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100">
-                <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                OPERATIONAL
-              </div>
-            </div>
-            <div className="h-10 w-px bg-slate-200 mx-2 hidden md:block" />
-            <button
-              onClick={handleLogout}
-              className="px-4 py-2 bg-slate-100 hover:bg-red-100 text-slate-600 hover:text-red-600 rounded-xl text-xs font-bold transition-all border border-slate-200"
-            >
-              Logout
-            </button>
+            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Dashboard</h1>
+            <p className="text-slate-500 text-sm mt-1">Your profile overview and progress tracking.</p>
           </div>
         </header>
 
@@ -210,42 +182,42 @@ export default function CandidateDashboard() {
                   <div className="px-3 py-1 bg-white/10 backdrop-blur-md rounded-full border border-white/10 flex items-center gap-2">
                     <ShieldCheck className="h-3 w-3 text-indigo-400" />
                     <span className="text-[9px] font-black uppercase tracking-[0.2em] text-indigo-400">
-                      Standardized Verification
+                      Identity Verified
                     </span>
                   </div>
                 </div>
                 <h2 className="text-4xl md:text-5xl font-black text-white tracking-tighter leading-tight">
                   Your{" "}
                   <span className="text-transparent bg-clip-text bg-linear-to-r from-indigo-400 to-purple-400">
-                    Trust score
+                    Profile Score
                   </span>
                 </h2>
                 <p className="text-slate-400 text-sm md:text-base font-medium leading-relaxed max-w-md opacity-80">
-                  Your overall score based on skills, behavior, and professional assessment.
+                  Your overall score based on skills, work style, and assessment results.
                 </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="p-5 rounded-3xl bg-white/5 border border-white/10 backdrop-blur-md hover:bg-white/10 transition-colors">
                   <div className="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">
-                    Ranking
+                    Tier
                   </div>
                   <div className="flex items-end gap-2">
                     <div className="text-3xl font-black text-white leading-none">
                       {(stats.profile_score ?? 0) >= 85
-                        ? "Elite"
+                        ? "Top"
                         : (stats.profile_score ?? 0) >= 70
-                          ? "Prime"
-                          : "Growth"}
+                          ? "Strong"
+                          : "Growing"}
                     </div>
                   </div>
                   <div className="mt-2 text-[8px] font-bold text-slate-500 uppercase tracking-widest leading-normal">
-                    Market position
+                    Your position
                   </div>
                 </div>
                 <div className="p-5 rounded-3xl bg-white/5 border border-white/10 backdrop-blur-md hover:bg-white/10 transition-colors">
                   <div className="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">
-                    Data Strength
+                    Completeness
                   </div>
                   <div className="flex items-end gap-2">
                     <div className="text-3xl font-black text-white leading-none">
@@ -253,7 +225,7 @@ export default function CandidateDashboard() {
                     </div>
                   </div>
                   <div className="mt-2 text-[8px] font-bold text-slate-500 uppercase tracking-widest leading-normal">
-                    Profile density
+                    Profile filled
                   </div>
                 </div>
               </div>
@@ -269,7 +241,7 @@ export default function CandidateDashboard() {
                       {stats.profile_score ?? 0}
                     </div>
                     <div className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-400">
-                      Standard Score
+                      Profile Score
                     </div>
                   </div>
                 </div>
@@ -317,7 +289,7 @@ export default function CandidateDashboard() {
           <StatCard
             label="Invites Received"
             value={stats.invites_received.toString()}
-            sub="Direct transmissions"
+            sub="Interview invitations"
             icon={Zap}
             color="amber"
           />
@@ -342,7 +314,7 @@ export default function CandidateDashboard() {
                     Action Items
                   </h3>
                   <p className="text-xs text-slate-500 font-medium">
-                    Critical tasks to improve your standardized standing.
+                    Complete these tasks to improve your profile.
                   </p>
                 </div>
               </div>
@@ -361,7 +333,7 @@ export default function CandidateDashboard() {
                   icon={<ShieldCheck className="h-3.5 w-3.5" />}
                 />
                 <CompletionItem
-                  label="Standardized Assessment"
+                  label="Skill Assessment"
                   done={isAssessmentCompleted}
                   href="/onboarding/candidate/assessment"
                   icon={<Zap className="h-3.5 w-3.5" />}
@@ -387,13 +359,13 @@ export default function CandidateDashboard() {
                 </div>
                 <div className="space-y-2">
                   <div className="text-[9px] font-black uppercase tracking-[0.2em] text-indigo-400">
-                    Trajectory Insights
+                    Path Insights
                   </div>
                   <h3 className="text-xl font-black tracking-tighter leading-tight">
-                    Career Trajectory
+                    Career Path
                   </h3>
                   <p className="text-slate-400 text-[11px] leading-relaxed font-medium opacity-80 px-4">
-                    Your standardized profile is trending higher than <span className="text-white font-bold">{stats.profile_score}%</span> of other candidates.
+                    Your profile is trending higher than <span className="text-white font-bold">{stats.profile_score}%</span> of other candidates.
                   </p>
                 </div>
               </div>
@@ -411,7 +383,7 @@ export default function CandidateDashboard() {
                   onClick={() => router.push("/dashboard/candidate/gps")}
                   className="w-full py-2 bg-white/5 border border-white/10 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-white/10 transition-all hover:scale-[1.02] active:scale-95"
                 >
-                  Deep Trajectory
+                  View Path
                 </button>
               </div>
             </div>
@@ -425,10 +397,10 @@ export default function CandidateDashboard() {
               <div className="space-y-1">
                 <h3 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
                   <Target className="h-5 w-5 text-indigo-500" />
-                  Assessment Breakdown
+                  Assessment Results
                 </h3>
                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest opacity-80">
-                  Standardized metrics from your high-fidelity audit
+                  Your scores across key areas
                 </p>
               </div>
               <div className="flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-lg">
@@ -441,11 +413,11 @@ export default function CandidateDashboard() {
 
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
               {[
-                { label: "Behavioral", score: results.component_scores.behavioral, icon: <Users className="h-4 w-4" /> },
-                { label: "Technical", score: results.component_scores.skill, icon: <Zap className="h-4 w-4" /> },
-                { label: "Psychometric", score: results.component_scores.psychometric, icon: <ShieldCheck className="h-4 w-4" /> },
+                { label: "Work Style", score: results.component_scores.behavioral, icon: <Users className="h-4 w-4" /> },
+                { label: "Skills & Expertise", score: results.component_scores.skill, icon: <Zap className="h-4 w-4" /> },
+                { label: "Personality & Fit", score: results.component_scores.psychometric, icon: <ShieldCheck className="h-4 w-4" /> },
                 { label: "Resume Quality", score: results.component_scores.resume, icon: <FileText className="h-4 w-4" /> },
-                { label: "Reliability", score: results.component_scores.reference, icon: <BadgeCheck className="h-4 w-4" /> },
+                { label: "Verification & References", score: results.component_scores.reference, icon: <BadgeCheck className="h-4 w-4" /> },
               ].map((item) => (
                 <div key={item.label} className="space-y-3 p-4 rounded-3xl bg-slate-50 border border-slate-100 group hover:bg-white hover:border-indigo-100 hover:shadow-xl transition-all duration-300">
                   <div className="flex items-center justify-between">
@@ -490,8 +462,8 @@ function CompletionItem({ label, done, href, icon }: { label: string; done: bool
         </div>
       ) : (
         href && (
-          <Link href={href} className="px-4 py-1.5 bg-indigo-50 text-[9px] font-black uppercase tracking-widest text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white transition-all transform active:scale-90">
-            Fix Gate
+          <Link href={href} className="px-4 py-1.5 bg-indigo-50 text-[9px] font-black uppercase tracking-widest text-indigo-600 rounded-xl hover:bg-indigo-600 hover:text-white transition-all transform active:scale-90">
+            Complete
           </Link>
         )
       )}

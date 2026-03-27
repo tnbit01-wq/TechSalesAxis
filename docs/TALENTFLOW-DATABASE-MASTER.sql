@@ -108,7 +108,7 @@ $$ LANGUAGE plpgsql;
 
 -- 1. USERS
 CREATE TABLE IF NOT EXISTS users (
-  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   role user_role NOT NULL,
   email TEXT NOT NULL,
   created_at TIMESTAMPTZ DEFAULT now()
@@ -295,7 +295,7 @@ CREATE TABLE IF NOT EXISTS assessment_sessions (
 -- 10. ASSESSMENT RESPONSES
 CREATE TABLE IF NOT EXISTS assessment_responses (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    candidate_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    candidate_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     question_id UUID REFERENCES assessment_questions(id),
     question_text TEXT,
     category TEXT NOT NULL,
@@ -670,6 +670,5 @@ CREATE POLICY "Users can view message history" ON chat_messages FOR SELECT USING
 CREATE POLICY "Users can send messages" ON chat_messages FOR INSERT WITH CHECK (EXISTS (SELECT 1 FROM chat_threads WHERE chat_threads.id = chat_messages.thread_id AND chat_threads.is_active = true AND (chat_threads.candidate_id = auth.uid() OR chat_threads.recruiter_id = auth.uid())) AND (auth.uid() = sender_id));
 
 -- Realtime
-ALTER PUBLICATION supabase_realtime ADD TABLE chat_messages;
-ALTER PUBLICATION supabase_realtime ADD TABLE chat_threads;
-ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
+-- AWS RDS Realtime not supported - use application-level polling for real-time features
+-- For chat and notifications, use WebSockets via FastAPI with periodic database polling

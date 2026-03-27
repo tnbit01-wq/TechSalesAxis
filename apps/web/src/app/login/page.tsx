@@ -89,7 +89,7 @@ function LoginForm() {
         
         if (error === "blocked") {
           addMessage("CRITICAL SECURITY ALERT: Your account has been permanently blocked for security violations. Access denied.", "bot");
-          addMessage("Please contact support@talentflow.ai for recovery options.", "bot");
+          addMessage("Please contact support@techsalesaxis.ai for recovery options.", "bot");
         } else {
           addMessage("Welcome back! Please enter your email to sign in.", "bot");
         }
@@ -138,7 +138,7 @@ function LoginForm() {
         try {
           const authRes = await awsAuth.login(email, workingInput);
           addMessage(
-            "Success! Synchronizing with the TalentFlow security layer...",
+            "Success! Synchronizing with the TechSales Axis security layer...",
             "bot",
           );
 
@@ -168,7 +168,7 @@ function LoginForm() {
                 "CRITICAL SECURITY ALERT: Your account has been permanently blocked for security violations. Access denied.",
                 "bot",
               );
-              addMessage("Please contact support@talentflow.ai if you believe this is an error.", "bot");
+              addMessage("Please contact support@techsalesaxis.ai if you believe this is an error.", "bot");
               awsAuth.logout();
             } else {
               const errorMessage = err instanceof Error ? err.message : "Unknown error";
@@ -227,7 +227,7 @@ function LoginForm() {
               <div className="h-4 w-4 rounded-sm bg-white rotate-45" />
             </div>
             <span className="font-bold text-slate-900 tracking-tight">
-              TalentFlow Sign In
+              TechSales Axis Sign In
             </span>
           </div>
         </div>

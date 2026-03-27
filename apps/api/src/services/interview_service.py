@@ -87,6 +87,8 @@ class InterviewService:
             "interviewer_names": new_interview.interviewer_names or [],
             "feedback": getattr(new_interview, "feedback", None),
             "cancellation_reason": getattr(new_interview, "cancellation_reason", None),
+            "candidate_joined_at": new_interview.candidate_joined_at,
+            "recruiter_joined_at": new_interview.recruiter_joined_at,
             "created_at": new_interview.created_at,
             "updated_at": new_interview.updated_at,
             "slots": [
@@ -221,6 +223,8 @@ class InterviewService:
                 "interviewer_names": i.interviewer_names or [],
                 "feedback": getattr(i, "feedback", None),
                 "cancellation_reason": getattr(i, "cancellation_reason", None),
+                "candidate_joined_at": i.candidate_joined_at,
+                "recruiter_joined_at": i.recruiter_joined_at,
                 "created_at": i.created_at,
                 "updated_at": i.updated_at,
                 "slots": [
@@ -260,15 +264,21 @@ class InterviewService:
         if not interview or str(interview.recruiter_id) != str(user_id):
             raise ValueError("Unauthorized or interview not found")
         
-        # PROOF OF CONDUCT CHECK
-        # Must verify candidate joined. If recruiter joined but candidate didn't, show warning.
-        # If neither joined, block.
-        if not interview.candidate_joined_at:
-            raise ValueError("PROTOCOL ERROR: Cannot submit feedback. System has no record of the candidate joining this session. Please verify attendance first.")
-            
+        # PROOF OF CONDUCT CHECK - FAIR TO BOTH PARTIES
+        # Recruiter MUST join to submit any meaningful feedback
         if not interview.recruiter_joined_at:
-            # We allow an override (warning only) if candidate joined but recruiter join-event failed
-            print(f"WARNING: Recruiter {user_id} submitting feedback for {interview_id} without recorded join-event. Proceeding with caution.")
+            if next_status == "not_conducted":
+                # Only allow "not_conducted" if NEITHER attended (mutual absence)
+                if interview.candidate_joined_at:
+                    raise ValueError("PROTOCOL ERROR: Candidate attended the interview. You cannot mark it as 'Not Conducted'. Please provide feedback or use 'No Show' if there was a technical issue.")
+            else:
+                # For all other decisions, recruiter MUST have joined
+                raise ValueError("PROTOCOL ERROR: You must join the interview to submit feedback. If the interview didn't happen, select 'Not Conducted' instead.")
+        
+        # Candidate must have attended for normal decisions
+        if next_status not in ["no_show", "not_conducted"]:
+            if not interview.candidate_joined_at:
+                raise ValueError("PROTOCOL ERROR: System has no record of the candidate joining. Select 'No Show' if they didn't attend, or 'Not Conducted' if the interview didn't happen.")
 
         # 1. Update Interview Record
         interview.feedback = feedback
@@ -279,13 +289,17 @@ class InterviewService:
         app = db.query(JobApplication).filter(JobApplication.id == interview.application_id).first()
         if app:
             # Map frontend decisions to application statuses
-            # Decisions: 'offered', 'rejected', 'shortlisted' (for next round)
+            # Decisions: 'offered', 'rejected', 'shortlisted' (for next round), 'no_show', 'not_conducted'
             if next_status == "offered":
                 app.status = "offered"
             elif next_status == "rejected":
                 app.status = "rejected"
             elif next_status == "shortlisted":
                 app.status = "shortlisted" # Back to shortlisted to allow scheduling next round
+            elif next_status == "no_show":
+                app.status = "rejected"  # No-show is treated as rejection
+            elif next_status == "not_conducted":
+                app.status = "shortlisted"  # Not conducted returns to shortlisted to reschedule
             
             app.feedback = feedback
             if hasattr(app, "last_interaction_at"):
@@ -296,18 +310,31 @@ class InterviewService:
         status_titles = {
             "offered": "Missions Accomplished: Job Offer Received!",
             "rejected": "Application Update: Project Status",
-            "shortlisted": "Round Cleared! Ready for next transmission"
+            "shortlisted": "Round Cleared! Ready for next transmission",
+            "no_show": "Interview Status: Candidate No-Show Recorded",
+            "not_conducted": "Interview Rescheduled: Technical Issues Resolved"
+        }
+        
+        # Create detailed messages for each decision type
+        decision_messages = {
+            "offered": f"Great news! You've been offered a position for {interview.round_name}. Detailed feedback: {feedback}",
+            "rejected": f"Thank you for interviewing for {interview.round_name}. Feedback: {feedback}",
+            "shortlisted": f"Congratulations! You've advanced to {interview.round_name}. Next steps will be shared soon.",
+            "no_show": f"Your absence was noted for {interview.round_name}. Please contact the recruiter to reschedule.",
+            "not_conducted": f"Your {interview.round_name} interview will be rescheduled due to technical issues. Thank you for your patience."
         }
         
         NotificationService.create_notification(
             user_id=interview.candidate_id,
             type="INTERVIEW_DECISION",
             title=status_titles.get(next_status, "Interview Feedback Logged"),
-            message=f"Recruiter has logged feedback for your {interview.round_name}: {feedback[:100]}...",
+            message=decision_messages.get(next_status, f"Recruiter has logged feedback for your {interview.round_name}: {feedback}"),
             metadata={
                 "interview_id": str(interview.id),
                 "application_id": str(interview.application_id),
-                "decision": next_status
+                "decision": next_status,
+                "feedback": feedback,
+                "round_name": interview.round_name
             },
             db=db
         )
@@ -369,11 +396,6 @@ class InterviewService:
         else:
             interview.recruiter_joined_at = datetime.utcnow()
 
-        # Check if BOTH have joined to transition to IN_PROGRESS
-        if interview.candidate_joined_at and interview.recruiter_joined_at:
-            interview.status = "in_progress"
-            print(f"INTERVIEW {interview.id} status updated to IN_PROGRESS")
-        
         # Notify the other party
         target_id = interview.recruiter_id if role == "candidate" else interview.candidate_id
         

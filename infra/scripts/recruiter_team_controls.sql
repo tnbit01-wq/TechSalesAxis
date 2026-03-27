@@ -27,13 +27,9 @@ CREATE POLICY admin_manage_invites ON team_invitations
     USING (
         EXISTS (
             SELECT 1 FROM recruiter_profiles
-            WHERE recruiter_profiles.user_id = auth.uid()
-            AND recruiter_profiles.company_id = team_invitations.company_id
-            AND recruiter_profiles.is_admin = true
+            -- Authorization handled at application layer (FastAPI)
         )
     );
 
 -- Users can view invitations meant for them
-CREATE POLICY invitee_view_invites ON team_invitations
-    FOR SELECT
-    USING (email = (SELECT email FROM auth.users WHERE id = auth.uid()));
+-- CREATE POLICY removed - authorization handled at application layer (FastAPI)

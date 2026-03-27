@@ -27,7 +27,7 @@ export function TermsModal({ isOpen, onClose }: TermsModalProps) {
           <section>
             <h3 className="text-lg font-semibold text-slate-800 mb-2">1. High-Trust Verification</h3>
             <p className="text-sm leading-relaxed">
-              TalentFlow is built on the principle of verified excellence. By using this platform, you agree to provide accurate, current, and complete information. Users found uploading falsified government identification or providing fraudulent professional history will have their accounts permanently deactivated.
+              TechSales Axis is built on the principle of verified excellence. By using this platform, you agree to provide accurate, current, and complete information. Users found uploading falsified government identification or providing fraudulent professional history will have their accounts permanently deactivated.
             </p>
           </section>
 
@@ -41,7 +41,7 @@ export function TermsModal({ isOpen, onClose }: TermsModalProps) {
           <section>
             <h3 className="text-lg font-semibold text-slate-800 mb-2">3. Application Limits & Anti-Spam</h3>
             <p className="text-sm leading-relaxed">
-              To maintain high quality for both candidates and recruiters, TalentFlow enforces a maximum of 5 job applications per 24-hour period. This encourages thoughtful, targeted applications. Mass-applying or automated application scripts are strictly prohibited.
+              To maintain high quality for both candidates and recruiters, TechSales Axis enforces a maximum of 5 job applications per 24-hour period. This encourages thoughtful, targeted applications. Mass-applying or automated application scripts are strictly prohibited.
             </p>
           </section>
 
@@ -55,13 +55,13 @@ export function TermsModal({ isOpen, onClose }: TermsModalProps) {
           <section>
             <h3 className="text-lg font-semibold text-slate-800 mb-2">5. Professional Conduct</h3>
             <p className="text-sm leading-relaxed">
-              Communication through the TalentFlow Controlled Chat must remain professional. Harassment, solicitation, or sharing of external contact information to bypass platform security during the early interview stages is discouraged and may result in a trust-score penalty.
+              Communication through the TechSales Axis Controlled Chat must remain professional. Harassment, solicitation, or sharing of external contact information to bypass platform security during the early interview stages is discouraged and may result in a trust-score penalty.
             </p>
           </section>
 
           <section className="bg-slate-50 p-4 rounded-xl border border-slate-100">
             <p className="text-xs text-slate-500 italic">
-              Last Updated: February 2025. TalentFlow reserves the right to update these terms to maintain platform security.
+              Last Updated: February 2025. TechSales Axis reserves the right to update these terms to maintain platform security.
             </p>
           </section>
         </div>

@@ -45,5 +45,4 @@ CREATE INDEX idx_chat_threads_recruiter ON chat_threads(recruiter_id);
 
 -- ---------- RLS HELPERS ----------
 -- Enable Realtime for these tables
-ALTER PUBLICATION supabase_realtime ADD TABLE chat_messages;
-ALTER PUBLICATION supabase_realtime ADD TABLE chat_threads;
+-- Realtime features removed - messaging handled by FastAPI WebSocket layer

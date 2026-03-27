@@ -57,7 +57,7 @@ async def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(
     db.commit()
 
     # Create reset link
-    reset_link = f"https://talentflow.app/reset-password?token={token}"
+    reset_link = f"https://techsalesaxis.app/reset-password?token={token}"
     from src.services.email_service import send_password_reset_email
     send_password_reset_email(user.email, reset_link)
 
@@ -266,7 +266,7 @@ async def forgot_password(request: ForgotPasswordRequest):
         db.commit()
         
         # Link would normally point to frontend reset page with token
-        reset_link = f"https://talentflow.cloud/reset-password?email={request.email}&token={otp}"
+        reset_link = f"https://techsalesaxis.cloud/reset-password?email={request.email}&token={otp}"
         from src.services.email_service import send_password_reset_email
         send_password_reset_email(request.email, reset_link)
 

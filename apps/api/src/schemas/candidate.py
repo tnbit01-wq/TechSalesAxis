@@ -22,6 +22,8 @@ class CandidateProfileUpdate(BaseModel):
     learning_links: Optional[List[Dict[str, str]]] = None
     career_interests: Optional[Union[str, List[str]]] = None
     learning_interests: Optional[Union[str, List[str]]] = None
+    target_role: Optional[str] = None
+    long_term_goal: Optional[str] = None
     job_type: Optional[str] = None
     gender: Optional[str] = None
     birthdate: Optional[str] = None
