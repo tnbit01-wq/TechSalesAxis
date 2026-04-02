@@ -39,17 +39,17 @@ function getCityTier(location: string): string {
 }
 
 const COLORS = {
-  fresher: "#6366f1",    // Indigo
-  mid: "#3b82f6",        // Blue
-  senior: "#8b5cf6",     // Violet
-  leadership: "#ec4899"  // Pink
+  fresher: "#06b6d4",    // Vibrant Cyan
+  mid: "#0891b2",        // Darker Cyan
+  senior: "#0e7490",     // Teal
+  leadership: "#164e63"  // Dark Teal
 };
 
 const BAND_LABELS: Record<string, string> = {
-  fresher: "0-1 FRESHER",
-  mid: "1-5 MID",
-  senior: "5-10 SENIOR",
-  leadership: "10+ LEADERSHIP"
+  fresher: "Entry Level",
+  mid: "Intermediate",
+  senior: "Senior",
+  leadership: "Leadership"
 };
 
 export default function TalentBubbleChart({ data }: TalentBubbleChartProps) {
@@ -102,22 +102,36 @@ export default function TalentBubbleChart({ data }: TalentBubbleChartProps) {
       .attr("viewBox", [0, 0, width, height])
       .attr("style", "max-width: 100%; height: auto;");
 
-    // Scale for bubble sizes - adjust range to make them look good
+    // Scale for bubble sizes - adjust range to prevent overlapping
+    const maxValue = d3.max(aggregateData, d => d.value) || 10;
+    const minRadius = Math.min(width, height) / 12;
+    const maxRadius = Math.min(width, height) / 3.5;
+    
     const radiusScale = d3.scaleSqrt()
-      .domain([0, d3.max(aggregateData, d => d.value) || 10])
-      .range([50, Math.min(width, height) / 3]);
+      .domain([0, maxValue])
+      .range([minRadius, maxRadius]);
 
     aggregateData.forEach(d => {
       d.radius = radiusScale(d.value);
     });
 
     const simulation = d3.forceSimulation(aggregateData)
-      .force("x", d3.forceX(width / 2).strength(0.05))
-      .force("y", d3.forceY(height / 2).strength(0.05))
-      .force("collide", d3.forceCollide((d: any) => d.radius + 10))
+      .force("x", d3.forceX(width / 2).strength(0.12))
+      .force("y", d3.forceY(height / 2).strength(0.12))
+      .force("collide", d3.forceCollide((d: any) => d.radius + 30).strength(1.0))
       .on("tick", () => {
-        node.attr("transform", (d: any) => `translate(${d.x},${d.y})`);
+        node.attr("transform", (d: any) => {
+          // Constrain bubbles within bounds
+          const constrainedX = Math.max(d.radius, Math.min(width - d.radius, d.x || 0));
+          const constrainedY = Math.max(d.radius, Math.min(height - d.radius, d.y || 0));
+          d.x = constrainedX;
+          d.y = constrainedY;
+          return `translate(${constrainedX},${constrainedY})`;
+        });
       });
+
+    // Pre-simulate for stable positioning
+    for (let i = 0; i < 150; ++i) simulation.tick();
 
     const node = svg.append("g")
       .selectAll("g")
@@ -126,37 +140,49 @@ export default function TalentBubbleChart({ data }: TalentBubbleChartProps) {
       .attr("cursor", "pointer")
       .on("mouseover", (event, d) => {
         setHoverNode(d);
-        d3.select(event.currentTarget).select("circle")
+        d3.select(event.currentTarget)
+          .selectAll("circle:nth-child(1)")
           .transition()
           .duration(200)
-          .attr("r", d.radius + 10)
-          .attr("fill-opacity", 0.4);
+          .attr("fill-opacity", 0.35);
+        d3.select(event.currentTarget)
+          .selectAll("circle:nth-child(2)")
+          .transition()
+          .duration(200)
+          .attr("fill-opacity", 0.5);
       })
       .on("mouseout", (event, d) => {
         setHoverNode(null);
-        d3.select(event.currentTarget).select("circle")
+        d3.select(event.currentTarget)
+          .selectAll("circle:nth-child(1)")
           .transition()
           .duration(200)
-          .attr("r", d.radius)
-          .attr("fill-opacity", 0.2);
+          .attr("fill-opacity", 0.15);
+        d3.select(event.currentTarget)
+          .selectAll("circle:nth-child(2)")
+          .transition()
+          .duration(200)
+          .attr("fill-opacity", 0.25);
       });
 
     // Outer glow circle
     node.append("circle")
       .attr("r", d => d.radius)
       .attr("fill", d => d.color)
-      .attr("fill-opacity", 0.2)
+      .attr("fill-opacity", 0.15)
       .attr("stroke", d => d.color)
       .attr("stroke-width", 2)
-      .style("filter", "blur(4px)");
+      .attr("stroke-opacity", 0.3)
+      .style("filter", "drop-shadow(0 0 8px " + "rgba(6, 182, 212, 0.3)" + ")");
 
     // Main circle
     node.append("circle")
       .attr("r", d => d.radius - 5)
       .attr("fill", d => d.color)
-      .attr("fill-opacity", 0.3)
+      .attr("fill-opacity", 0.25)
       .attr("stroke", d => d.color)
-      .attr("stroke-width", 1);
+      .attr("stroke-width", 2)
+      .attr("stroke-opacity", 0.4);
 
     // Label
     node.append("text")

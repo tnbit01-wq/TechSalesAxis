@@ -1,0 +1,48 @@
+name: Frontend CI
+
+on:
+  pull_request:
+    paths:
+      - 'apps/web/**'
+      - '.github/workflows/frontend-ci.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/web/**'
+
+jobs:
+  lint-and-build:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          cache-dependency-path: 'apps/web/package-lock.json'
+      
+      - name: Install dependencies
+        working-directory: apps/web
+        run: npm ci
+      
+      - name: Lint code
+        working-directory: apps/web
+        run: npm run lint --max-warnings 0
+      
+      - name: Build frontend
+        working-directory: apps/web
+        run: npm run build
+      
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build-${{ matrix.node-version }}
+          path: apps/web/.next

@@ -43,8 +43,13 @@ export default function DuplicateReviewPage() {
 
   const fetchDuplicates = async () => {
     try {
-      const token = localStorage.getItem('auth_token');
-      const response = await fetch('/api/v1/admin/duplicates/pending', {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('tf_token') : null;
+      if (!token) {
+        router.push('/login');
+        return;
+      }
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8005';
+      const response = await fetch(`${apiUrl}/api/v1/admin/duplicates/pending`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -70,8 +75,14 @@ export default function DuplicateReviewPage() {
   const handleDecision = async (matchId: string, decision: 'approved' | 'rejected' | 'skipped', notes?: string) => {
     setProcessingId(matchId);
     try {
-      const token = localStorage.getItem('auth_token');
-      const response = await fetch(`/api/v1/admin/duplicates/${matchId}/review`, {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('tf_token') : null;
+      if (!token) {
+        alert('Authentication token missing. Please login again.');
+        router.push('/login');
+        return;
+      }
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8005';
+      const response = await fetch(`${apiUrl}/api/v1/admin/duplicates/${matchId}/review`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -102,10 +113,10 @@ export default function DuplicateReviewPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-primary-light">
         <div className="text-center">
           <div className="mb-4">
-            <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto"></div>
+            <div className="w-12 h-12 border-4 border-primary-light border-t-primary rounded-full animate-spin mx-auto"></div>
           </div>
           <p className="text-gray-600">Loading duplicates...</p>
         </div>
@@ -114,22 +125,20 @@ export default function DuplicateReviewPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-100 to-slate-200 p-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <button
-            onClick={() => router.back()}
-            className="text-blue-600 hover:text-blue-700 font-medium mb-4"
-          >
-            ← Back to Dashboard
-          </button>
-          <h1 className="text-4xl font-bold text-gray-800">Review Duplicate Matches</h1>
-          <p className="text-gray-600 mt-2">
-            {duplicates.length} pending matches found. Review and approve merges.
-          </p>
-        </div>
-
+    <div className="max-w-7xl mx-auto">
+      {/* Header */}
+      <div className="mb-8">
+        <button
+          onClick={() => router.back()}
+          className="text-primary hover:text-primary-dark font-bold mb-4"      
+        >
+          ← Back
+        </button>
+        <h1 className="text-3xl font-black text-slate-800 tracking-tight">Review Profile Matches</h1>
+        <p className="text-slate-500 font-medium mt-2">
+          {duplicates.length} pending matches found. Review and approve merges.
+        </p>
+      </div>
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
             {error}
@@ -288,7 +297,7 @@ export default function DuplicateReviewPage() {
             )}
           </div>
         )}
-      </div>
     </div>
   );
 }
+

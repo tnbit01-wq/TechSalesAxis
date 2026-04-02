@@ -46,8 +46,13 @@ export default function AdminSettingsPage() {
 
   const fetchSettings = async () => {
     try {
-      const token = localStorage.getItem('auth_token');
-      const response = await fetch('/api/v1/admin/settings', {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('tf_token') : null;
+      if (!token) {
+        router.push('/login');
+        return;
+      }
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8005';
+      const response = await fetch(`${apiUrl}/api/v1/admin/settings`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -72,8 +77,10 @@ export default function AdminSettingsPage() {
 
   const fetchAdmins = async () => {
     try {
-      const token = localStorage.getItem('auth_token');
-      const response = await fetch('/api/v1/admin/users', {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('tf_token') : null;
+      if (!token) return;
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8005';
+      const response = await fetch(`${apiUrl}/api/v1/admin/users`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -101,8 +108,14 @@ export default function AdminSettingsPage() {
     if (!settings) return;
     setSaving(true);
     try {
-      const token = localStorage.getItem('auth_token');
-      const response = await fetch('/api/v1/admin/settings', {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('tf_token') : null;
+      if (!token) {
+        setError('Authentication token missing');
+        setSaving(false);
+        return;
+      }
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8005';
+      const response = await fetch(`${apiUrl}/api/v1/admin/settings`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -126,10 +139,10 @@ export default function AdminSettingsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-primary-light">
         <div className="text-center">
           <div className="mb-4">
-            <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto"></div>
+            <div className="w-12 h-12 border-4 border-primary-light border-t-primary rounded-full animate-spin mx-auto"></div>
           </div>
           <p className="text-gray-600">Loading settings...</p>
         </div>
@@ -138,20 +151,18 @@ export default function AdminSettingsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-100 to-slate-200 p-8">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <button
-            onClick={() => router.back()}
-            className="text-blue-600 hover:text-blue-700 font-medium mb-4"
-          >
-            ← Back
-          </button>
-          <h1 className="text-4xl font-bold text-gray-800">Admin Settings</h1>
-          <p className="text-gray-600 mt-2">Configure bulk upload settings and administrator permissions</p>
-        </div>
-
+    <div className="max-w-6xl mx-auto">
+      {/* Header */}
+      <div className="mb-8">
+        <button
+          onClick={() => router.back()}
+          className="text-primary hover:text-primary-dark font-bold mb-4"      
+        >
+          ← Back
+        </button>
+        <h1 className="text-3xl font-black text-slate-800 tracking-tight">System Settings</h1>  
+        <p className="text-slate-500 font-medium mt-2">Configure data ingestion and internal permissions</p>
+      </div>
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
             {error}
@@ -284,7 +295,7 @@ export default function AdminSettingsPage() {
                               Role: <span className="font-medium">{admin.role}</span>
                             </p>
                             <div className="mt-2 flex flex-wrap gap-2">
-                              {admin.permissions.map((perm) => (
+                              {(admin.permissions || []).map((perm) => (
                                 <span key={perm} className="bg-purple-100 text-purple-900 px-2 py-1 rounded text-xs font-medium">
                                   {perm}
                                 </span>
@@ -309,7 +320,7 @@ export default function AdminSettingsPage() {
                     placeholder="Enter email address"
                     className="flex-1 border border-gray-300 rounded-lg px-4 py-2"
                   />
-                  <select className="border border-gray-300 rounded-lg px-4 py-2">
+                  <select className="border-2 border-slate-300 rounded-lg px-4 py-2 bg-white text-slate-900 font-medium focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/50">
                     <option value="admin">Admin</option>
                     <option value="moderator">Moderator</option>
                   </select>
@@ -369,8 +380,8 @@ export default function AdminSettingsPage() {
                 </p>
                 <ul className="text-blue-900 text-sm space-y-1">
                   <li>• Active Storage (files): ~{settings.max_batch_size_mb} MB</li>
-                  <li>• Database (parsed data): ~50 MB per 1000 candidates</li>
-                  <li>• Total: ~{settings.max_batch_size_mb + 50} MB</li>
+                  <li>• Database (parsed data): Standard storage rules apply</li>
+                  <li>• Total: Estimated dynamically</li>       
                 </ul>
               </div>
             </div>
@@ -399,7 +410,7 @@ export default function AdminSettingsPage() {
             </button>
           </div>
         )}
-      </div>
     </div>
   );
 }
+

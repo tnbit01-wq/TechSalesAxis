@@ -2,6 +2,7 @@ import json
 import random
 import asyncio
 import httpx
+import time
 from typing import List, Dict, Optional, Any
 from datetime import datetime
 from sqlalchemy.orm import Session
@@ -145,12 +146,12 @@ class AssessmentService:
                 db.commit()
             return session
             
-        budgets = {"fresher": 10, "mid": 12, "senior": 15, "leadership": 18}
+        budgets = {"fresher": 8, "mid": 10, "senior": 13, "leadership": 16}
         new_session = AssessmentSession(
             candidate_id=user_id,
             experience_band=band,
             status="started",
-            total_budget=budgets.get(band, 10),
+            total_budget=budgets.get(band, 8),
             current_step=1
         )
         db.add(new_session)
@@ -220,15 +221,22 @@ class AssessmentService:
         answered_ids = db.query(AssessmentResponse.question_id).filter(AssessmentResponse.candidate_id == user_id).all()
         answered_ids = [str(r[0]) for r in answered_ids if r[0] is not None]  # Filter out None values from dynamic questions
         
-        # TRY DYNAMIC GENERATION FIRST FOR RESUME AND SKILL
-        if preferred_category == "resume":
+        # Check current counts for resume questions specifically
+        resume_answered_count = answered_count.get("resume", 0)
+        
+        # TRY DYNAMIC GENERATION FIRST FOR RESUME AND SKILL (Interleaved logic)
+        # We prioritize Resume questions if the deficit is high and we haven't reached the 3-question cap
+        if preferred_category == "resume" and resume_answered_count < 3:
             resume_q = self._try_generate_resume_question(user_id, db)
             if resume_q:
+                # Add a flag to indicate this is an AI-evaluated dynamic question
+                resume_q["is_ai_evaluated"] = True
                 return resume_q
         
         if preferred_category == "skill":
             skill_q = self._try_generate_skill_question(user_id, session.experience_band, db)
             if skill_q:
+                skill_q["is_ai_evaluated"] = True 
                 return skill_q
         
         # Try to find seeded question from preferred category first
@@ -257,14 +265,16 @@ class AssessmentService:
             remaining_cats = [cat for cat, deficit in category_deficit.items() if deficit > 0 and cat != preferred_category]
             for alt_cat in sorted(remaining_cats, key=lambda c: category_deficit[c], reverse=True):
                 # Try dynamic generation for alternate categories
-                if alt_cat == "resume":
+                if alt_cat == "resume" and resume_answered_count < 3:
                     resume_q = self._try_generate_resume_question(user_id, db)
                     if resume_q:
+                        resume_q["is_ai_evaluated"] = True
                         return resume_q
                 
                 if alt_cat == "skill":
                     skill_q = self._try_generate_skill_question(user_id, session.experience_band, db)
                     if skill_q:
+                        skill_q["is_ai_evaluated"] = True
                         return skill_q
                 
                 # Try seeded questions for this category
@@ -300,11 +310,16 @@ class AssessmentService:
             "difficulty": q.difficulty,
             "current_step": session.current_step,
             "total_budget": session.total_budget,
+            "is_ai_evaluated": False, # Predefined questions are not AI evaluated per instructions
             "status": "active"
         }
 
     def _try_generate_resume_question(self, user_id: str, db: Session) -> Optional[Dict]:
-        """Generate dynamic resume-based questions about role consistency, career gaps, and achievements."""
+        """Generate dynamic resume-based questions about role consistency, career gaps, and achievements.
+        
+        FIXED Phase 4: Now uses ResumeParserV2 extracted data (dominant_role, tech_sales_years, etc.)
+        instead of basic current_role/years_of_experience which may be None.
+        """
         try:
             profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == user_id).first()
             resume = db.query(ResumeData).filter(ResumeData.user_id == user_id).first()
@@ -312,24 +327,46 @@ class AssessmentService:
             if not profile and not resume:
                 return None
             
-            # Extract resume context
-            current_role = profile.current_role if profile else "Unknown"
-            yoe = profile.years_of_experience if profile else 0
+            # FIXED: Use new Phase 2/3 fields from ResumeParserV2 extraction
+            # These are more reliable than the basic current_role
+            current_role = profile.dominant_role if profile and profile.dominant_role else profile.current_role if profile else None
+            primary_pattern = profile.primary_career_pattern if profile and profile.primary_career_pattern else "Unknown"
+            
+            # Use total relevant years (tech+sales+general) instead of all experience
+            yoe = profile.total_relevant_years if profile and profile.total_relevant_years > 0 else profile.years_of_experience if profile else 0
+            
+            # Get achievements and career info
             achievements = resume.achievements if resume and resume.achievements else []
             career_gaps = resume.career_gaps if resume and resume.career_gaps else {}
             timeline = resume.timeline if resume and resume.timeline else {}
+            experience_history = profile.experience_history if profile and profile.experience_history else {}
             
             # Build dynamic question based on resume data
             questions_pool = []
             
-            # Question 1: Role Consistency (if timeline exists)
-            if timeline:
+            # Question 1: Role Consistency (use dominant role from V2 extraction)
+            if current_role and current_role != "None":
                 questions_pool.append({
-                    "text": f"You've held the position of {current_role} for the past {yoe} years. Walk us through how you've evolved your responsibilities and impact in this role. Highlight specific milestones or transitions that shaped your expertise.",
+                    "text": f"According to your resume, your most recent role has been {current_role}. Walk us through how you've evolved your responsibilities and impact in this role. Highlight specific milestones or transitions that shaped your expertise.",
                     "driver": "role_continuity"
                 })
             
-            # Question 2: Career Gaps (if gaps detected)
+            # Question 1.5: Career Pattern Recognition (new with Phase 2/3)
+            if primary_pattern and primary_pattern != "Unknown":
+                role_count = len(experience_history) if isinstance(experience_history, (list, dict)) else 1
+                questions_pool.append({
+                    "text": f"Your career shows a strong pattern in {primary_pattern} ({role_count} roles). Can you describe your philosophy on this career track? What attracts you to this domain, and how do you see your expertise evolving?",
+                    "driver": "career_pattern"
+                })
+            
+            # Question 2: Years of Experience & Growth (using correct YOE)
+            if yoe and yoe > 0:
+                questions_pool.append({
+                    "text": f"With {yoe} years of relevant experience in {primary_pattern}, describe a major evolution in your skillset or responsibilities. What challenge drove this growth, and how has it shaped your approach to work?",
+                    "driver": "experience_growth"
+                })
+            
+            # Question 2.5: Career Gaps (if gaps detected)
             if career_gaps and isinstance(career_gaps, dict) and career_gaps.get("gaps"):
                 questions_pool.append({
                     "text": f"Your resume shows a career gap of {career_gaps.get('gap_duration', 'some time')}. Could you elaborate on what you did during this period and how you stayed current with industry trends?",
@@ -344,11 +381,18 @@ class AssessmentService:
                     "driver": "achievement_validation"
                 })
             
-            # Question 4: Generic Role Deep Dive (always available)
-            questions_pool.append({
-                "text": f"In your current role as {current_role}, describe a complex technical or business challenge you faced. Walk us through your problem-solving approach and the outcome.",
-                "driver": "role_deep_dive"
-            })
+            # Question 4: Generic Role Deep Dive (fallback)
+            if current_role and current_role != "None":
+                questions_pool.append({
+                    "text": f"In your role as {current_role}, describe a complex technical or business challenge you faced. Walk us through your problem-solving approach and the outcome.",
+                    "driver": "role_deep_dive"
+                })
+            else:
+                # Fallback if no role captured
+                questions_pool.append({
+                    "text": f"Describe a complex professional challenge you've faced in your {yoe if yoe else ''} years of experience. Walk us through your problem-solving approach and the business impact.",
+                    "driver": "general_challenge"
+                })
             
             if not questions_pool:
                 return None
@@ -357,7 +401,7 @@ class AssessmentService:
             selected = random.choice(questions_pool)
             
             return {
-                "id": f"dynamic_resume_{user_id}_{int(asyncio.get_event_loop().time())}",
+                "id": f"dynamic_resume_{user_id}_{int(time.time() * 1000)}",
                 "text": selected["text"],
                 "category": "resume",
                 "driver": selected.get("driver", "role_narrative"),
@@ -366,18 +410,37 @@ class AssessmentService:
         
         except Exception as e:
             print(f"DEBUG: Resume question generation failed: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return None
 
     def _try_generate_skill_question(self, user_id: str, experience_band: str, db: Session) -> Optional[Dict]:
         """Generate dynamic skill-based case study questions from candidate's profile skills."""
         try:
             profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == user_id).first()
+            resume = db.query(ResumeData).filter(ResumeData.user_id == user_id).first()
             
-            if not profile or not profile.skills:
-                return None
+            # Combine skills from Profile (added by user) and ResumeData (extracted by AI)
+            skills = []
             
-            # Get skills and filter out already tested ones from current session
-            skills = profile.skills if isinstance(profile.skills, list) else []
+            if profile and profile.skills:
+                skills.extend(profile.skills if isinstance(profile.skills, list) else [])
+            
+            if resume and resume.skills:
+                skills.extend(resume.skills if isinstance(resume.skills, list) else [])
+            
+            # Deduplicate and clean
+            skills = list(set([str(s).strip() for s in skills if s]))
+            
+            if not skills:
+                # Fallback to Skill Catalog to avoid blocking the assessment
+                from src.core.models import SkillCatalog
+                catalog_skills = db.query(SkillCatalog).filter(
+                    SkillCatalog.experience_band == experience_band
+                ).limit(10).all()
+                if catalog_skills:
+                    skills = [s.name for s in catalog_skills]
+            
             if not skills:
                 return None
             
@@ -418,7 +481,7 @@ class AssessmentService:
             print(f"DEBUG: Skill question generation failed: {str(e)}")
             return None
 
-    async def submit_answer(self, user_id: str, question_id: str, answer: str, db: Session):
+    async def submit_answer(self, user_id: str, question_id: str, answer: str, db: Session, is_skipped: bool = False):
         session = db.query(AssessmentSession).filter(AssessmentSession.candidate_id == user_id).first()
         if not session:
             session = self.get_or_create_session(user_id, db)
@@ -459,116 +522,95 @@ class AssessmentService:
                 print(f"DEBUG: Failed to query question {question_id}: {str(e)}")
                 question = None
         
-        # --- AI EVALUATION ENGINE WITH LENIENT RUBRIC FALLBACK ---
+        # --- BEHAVIORAL IMPACT OF SKIPPING ---
+        # Skipping affects behavioral scores based on difficulty
+        skip_penalty = 0
+        if is_skipped and question:
+            difficulty_map = {"easy": 5, "medium": 12, "hard": 20, "leadership": 25, "senior": 18, "fresher": 5, "mid": 10}
+            skip_penalty = difficulty_map.get(question.difficulty.lower(), 10)
+        
+        # --- AI EVALUATION ENGINE ---
         evaluation_result = {
             "score": 0,
             "reasoning": "Evaluation pending",
             "driver_scores": {},
-            "rubric_type": "none"  # Track whether we used seeded or lenient rubric
+            "rubric_type": "none"
         }
 
-        if question:
-            # Build evaluation prompt - use seeded rubric if available, otherwise use lenient STAR-based evaluation
-            if hasattr(question, 'evaluation_rubric') and question.evaluation_rubric:
-                # Strict evaluation with seeded rubric
-                prompt = f"""
-                Task: Evaluate the following candidate answer using the provided rubric.
-                Question: {question.question_text}
-                Category: {question.category}
-                Driver: {question.driver}
-                Experience Band: {question.experience_band}
-                Candidate Answer: {answer}
-                
-                Evaluation Rubric: {question.evaluation_rubric}
-                
-                Return a JSON object with:
-                1. "score": integer 0-100 based on the rubric
-                2. "reasoning": short explanation of the score
-                3. "driver_scores": {{ "{question.driver}": score }}
-                """
-                rubric_type = "seeded"
-            else:
-                # Lenient STAR-based evaluation for questions without explicit rubrics
-                prompt = f"""
-                Task: Evaluate the following candidate answer using a lenient STAR framework assessment.
-                Question: {question.question_text}
-                Category: {question.category}
-                Driver: {question.driver}
-                Experience Band: {question.experience_band}
-                Candidate Answer: {answer}
-                
-                Evaluation Criteria (Lenient):
-                - Structure: Does the answer follow STAR format (Situation, Task, Action, Result)?
-                - Depth: Is there sufficient detail and context?
-                - Clarity: Is the answer coherent and well-organized?
-                - Relevance: Does it address the question?
-                - Growth: Shows learning or problem-solving capability?
-                
-                Score Ranges (Lenient):
-                - 80-100: Clear structure, good depth, addresses question well
-                - 60-79: Reasonable structure, adequate depth, addresses question
-                - 40-59: Minimal structure, some depth, partially addresses question
-                - 20-39: Poor structure, limited detail, doesn't fully address question
-                - 0-19: Insufficient answer or irrelevant
-                
-                Return a JSON object with:
-                1. "score": integer 0-100 based on lenient criteria
-                2. "reasoning": short explanation of the score
-                3. "driver_scores": {{ "{question.driver}": score }}
-                """
-                rubric_type = "lenient"
+        if question and not is_skipped:
+            # Build evaluation prompt - ALL categories are now AI evaluated
+            category_context = {
+                "resume": "Validate claims and depth of experience.",
+                "skill": "Evaluate technical application and problem-solving.",
+                "behavioral": "Evaluate soft skills, transparency, and accountability.",
+                "psychometric": "Evaluate logical reasoning and decision-making patterns."
+            }
+            
+            prompt = f"""
+            Task: Evaluate the candidate's answer for this {question.category} question.
+            Context: {category_context.get(question.category, "Professional assessment.")}
+            Question: {question.question_text}
+            Candidate Answer: {answer}
+            Experience Band: {question.experience_band}
+            Difficulty: {question.difficulty}
+            
+            Criteria:
+            1. Relevance: { "Addresses technical constraints" if question.category == 'skill' else "Directly answers the prompt" }
+            2. Specificity: { "Includes metrics or clear steps" if question.category in ['resume', 'skill'] else "Clear context provided" }
+            3. Ownership: Shows personal accountability.
+            
+            Return a JSON object with:
+            1. "score": integer 0-100 (0 for non-answers or nonsensical text)
+            2. "reasoning": concise explanation
+            3. "driver_scores": {{ "{question.driver}": score }}
+            """
             
             try:
-                ai_raw = await self._call_ai_robust(prompt, "You are an expert HR auditor evaluating candidate responses fairly and leniently.")
+                ai_raw = await self._call_ai_robust(prompt, "You are a strict professional auditor. Use 0 for empty, evasive, or low-quality answers.")
                 if ai_raw:
-                    # Clean potential markdown
                     clean_json = ai_raw.replace('```json', '').replace('```', '').strip()
                     eval_data = json.loads(clean_json)
-                    score_val = eval_data.get("score", 50)
-                    # Convert to int if float, and ensure within 0-100
+                    score_val = eval_data.get("score", 0)
+                    
                     try:
                         score_val = int(float(score_val))
                         score_val = max(0, min(100, score_val))
-                    except (ValueError, TypeError):
-                        score_val = 50
+                    except:
+                        score_val = 0
                         
                     evaluation_result["score"] = score_val
-                    evaluation_result["reasoning"] = eval_data.get("reasoning", "")
+                    evaluation_result["reasoning"] = eval_data.get("reasoning", "No reasoning provided.")
                     evaluation_result["driver_scores"] = eval_data.get("driver_scores", {question.driver: score_val})
-                    evaluation_result["rubric_type"] = rubric_type
+                    evaluation_result["rubric_type"] = "ai_standard"
             except Exception as e:
-                print(f"DEBUG: AI Evaluation Failed: {str(e)}")
-                # Fallback: Calculate score based on answer quality metrics
-                answer_len = len(answer.strip())
+                # Same strict fallback as before
                 word_count = len(answer.split())
-                
-                # Lenient baseline scoring
-                if answer_len > 200 and word_count > 30:
-                    evaluation_result["score"] = 75  # Good answer with detail
-                elif answer_len > 100 and word_count > 15:
-                    evaluation_result["score"] = 60  # Decent answer
-                elif answer_len > 50:
-                    evaluation_result["score"] = 45  # Minimal answer
-                else:
-                    evaluation_result["score"] = 30  # Very brief answer
-                
-                evaluation_result["reasoning"] = f"Fallback scoring based on answer depth ({word_count} words)"
+                if word_count > 40: evaluation_result["score"] = 70
+                elif word_count > 25: evaluation_result["score"] = 50
+                elif word_count > 10: evaluation_result["score"] = 25
+                else: evaluation_result["score"] = 0
+                evaluation_result["reasoning"] = f"Fallback scoring (AI error): {word_count} words."
                 evaluation_result["driver_scores"] = {question.driver: evaluation_result["score"]}
                 evaluation_result["rubric_type"] = "fallback"
-            
-            # Final safety check before DB insertion
-            evaluation_result["score"] = max(0, min(100, int(evaluation_result["score"])))
+        elif is_skipped:
+            evaluation_result["score"] = 0
+            evaluation_result["reasoning"] = f"Candidate skipped a {question.difficulty if question else 'medium'} question. Penalty applied to behavioral score."
+            evaluation_result["driver_scores"] = {question.driver: 0, "grit": -skip_penalty}
+        
+        # Final safety check
+        evaluation_result["score"] = max(0, min(100, int(evaluation_result["score"])))
 
         # Store the response
         response = AssessmentResponse(
             candidate_id=user_id,
-            question_id=question_id if not is_dynamic_question else None,  # Don't store dynamic IDs as they're not in DB
+            question_id=question_id if not is_dynamic_question else None,
             question_text=question.question_text if question else "Unknown Question",
             category=question.category if question else "general",
             driver=question.driver if question else "none",
             difficulty=question.difficulty if question else "medium",
-            raw_answer=answer,
+            raw_answer=answer if not is_skipped else "[SKIPPED]",
             score=evaluation_result["score"],
+            is_skipped=is_skipped,
             evaluation_metadata=evaluation_result
         )
         db.add(response)

@@ -7,6 +7,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import ComprehensiveDataTable from '@/components/admin/ComprehensiveDataTable';
 
 interface ParsedFile {
   id: string;
@@ -48,6 +49,44 @@ export default function BatchDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedFileId, setExpandedFileId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid');
+
+  const handleDownloadCsv = () => {
+    if (!batch) return;
+    const headers = ['File Name', 'Status', 'Name', 'Email', 'Phone', 'Location', 'Current Role', 'Years Experience', 'Skills', 'Error Message'];
+    const rows = batch.files.map((f: any) => {
+      let skillsArr: string[] = [];
+      if (f.parsed_data && f.parsed_data.skills) {
+        if (Array.isArray(f.parsed_data.skills)) {
+          skillsArr = f.parsed_data.skills;
+        } else if (typeof f.parsed_data.skills === 'object') {
+          skillsArr = Object.values(f.parsed_data.skills).flat() as string[];
+        }
+      }
+      return [
+        f.file_name,
+        f.status,
+        f.parsed_data?.name || '',
+        f.parsed_data?.email || '',
+        f.parsed_data?.phone || '',
+        f.parsed_data?.location || '',
+        f.parsed_data?.current_role || '',
+        f.parsed_data?.years_experience || '',
+        skillsArr.join(' | '),
+        f.error_message || ''
+      ].map(cell => `"${String(cell).replace(/"/g, '""')}"`); // Escape quotes
+    });
+    
+    const csvContent = [headers.join(','), ...rows.map((e: any) => e.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `batch_${batch.batch_name.replace(/\s+/g, '_')}_results.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   useEffect(() => {
     if (batchId) {
@@ -60,8 +99,13 @@ export default function BatchDetailPage() {
 
   const fetchBatchDetail = async () => {
     try {
-      const token = localStorage.getItem('auth_token');
-      const response = await fetch(`/api/v1/admin/bulk-uploads/${batchId}`, {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('tf_token') : null;
+      if (!token) {
+        router.push('/login');
+        return;
+      }
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8005';
+      const response = await fetch(`${apiUrl}/api/v1/admin/bulk-uploads/${batchId}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -114,12 +158,13 @@ export default function BatchDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 flex items-center justify-center">
         <div className="text-center">
-          <div className="mb-4">
-            <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto"></div>
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-white rounded-full shadow-lg mb-6">
+            <div className="w-8 h-8 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin"></div>
           </div>
-          <p className="text-gray-600">Loading batch details...</p>
+          <p className="text-slate-600 font-medium text-lg">Loading batch details...</p>
+          <p className="text-slate-400 text-sm mt-2">This may take a moment</p>
         </div>
       </div>
     );
@@ -127,16 +172,18 @@ export default function BatchDetailPage() {
 
   if (!batch) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-100 to-slate-200 p-8">
-        <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-md p-12 text-center">
-          <div className="text-5xl mb-4">❌</div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Batch Not Found</h2>
-          <p className="text-gray-600 mb-6">The batch you're looking for doesn't exist.</p>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 p-8">
+        <div className="max-w-2xl mx-auto bg-white rounded-xl border border-slate-200 shadow-sm p-12 text-center">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mb-6">
+            <span className="text-3xl">❌</span>
+          </div>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">Batch Not Found</h2>
+          <p className="text-slate-600 mb-6">The batch you're looking for doesn't exist or has been removed.</p>
           <button
-            onClick={() => router.push('/admin/bulk-upload')}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg"
+            onClick={() => router.push('/admin/bulk-uploads')}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-8 rounded-lg transition-all shadow-md hover:shadow-lg active:scale-95"
           >
-            Back to Bulk Upload
+            Back to Batches
           </button>
         </div>
       </div>
@@ -146,35 +193,48 @@ export default function BatchDetailPage() {
   const progressPercentage = Math.round((batch.files_processed / batch.total_files) * 100);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-100 to-slate-200 p-8">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 py-8">
+      <div className="max-w-7xl mx-auto px-6">
+        {/* Back Button */}
+        <button
+          onClick={() => router.push('/admin/bulk-uploads')}
+          className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 font-semibold mb-6 px-4 py-2 rounded-lg hover:bg-blue-50 transition-all"
+        >
+          ← Back to Batches
+        </button>
+
+        {/* Header Section */}
         <div className="mb-8">
-          <button
-            onClick={() => router.push('/admin/bulk-upload')}
-            className="text-blue-600 hover:text-blue-700 font-medium mb-4"
-          >
-            ← Back to Batches
-          </button>
-          <h1 className="text-4xl font-bold text-gray-800">{batch.batch_name}</h1>
-          <p className="text-gray-600 mt-2">Created: {new Date(batch.created_at).toLocaleString()}</p>
+          <h1 className="text-4xl font-bold text-slate-900 mb-2 tracking-tight">{batch.batch_name}</h1>
+          <p className="text-slate-600 text-sm">
+            ID: {batch.id} • Created: {new Date(batch.created_at).toLocaleString()}
+          </p>
+          {error && (
+            <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
+              <span className="text-red-600 font-bold text-lg">⚠</span>
+              <div>
+                <p className="text-red-900 font-semibold">Error</p>
+                <p className="text-red-800 text-sm mt-1">{error}</p>
+              </div>
+            </div>
+          )}
         </div>
 
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
-            {error}
-          </div>
-        )}
-
         {/* Status Section */}
-        <div className="bg-white rounded-lg shadow-md overflow-hidden mb-6">
-          <div className="bg-gradient-to-r from-purple-600 to-purple-700 text-white p-6">
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-6">
+          <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-xl font-bold">Batch Status</h2>
-                <p className="text-purple-100">Overall processing status and metrics</p>
+                <h2 className="text-2xl font-bold">Batch Status</h2>
+                <p className="text-blue-100 text-sm mt-1">Overall processing status and metrics</p>
               </div>
-              <span className={`px-4 py-2 rounded-full font-bold border-2 ${getStatusColor(batch.status)}`}>
+              <span className={`px-4 py-2.5 rounded-full font-bold text-sm border-2 ${
+                batch.status === 'completed' ? 'bg-emerald-100 text-emerald-700 border-emerald-300' :
+                batch.status === 'processing' ? 'bg-blue-100 text-blue-700 border-blue-300' :
+                batch.status === 'uploading' ? 'bg-amber-100 text-amber-700 border-amber-300' :
+                batch.status === 'failed' ? 'bg-red-100 text-red-700 border-red-300' :
+                'bg-slate-100 text-slate-700 border-slate-300'
+              }`}>
                 {batch.status.toUpperCase()}
               </span>
             </div>
@@ -184,134 +244,58 @@ export default function BatchDetailPage() {
             {/* Progress Bar */}
             <div className="mb-6">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-gray-700 font-medium">Processing Progress</span>
-                <span className="text-gray-600 text-sm">{batch.files_processed} / {batch.total_files} files</span>
+                <span className="text-slate-700 font-semibold">Processing Progress</span>
+                <span className="text-slate-600 text-sm font-medium">{batch.files_processed} / {batch.total_files} files</span>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-3">
+              <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
                 <div
-                  className="bg-gradient-to-r from-purple-600 to-purple-700 h-3 rounded-full transition-all"
+                  className="bg-gradient-to-r from-blue-600 to-blue-700 h-3 rounded-full transition-all duration-500"
                   style={{ width: `${progressPercentage}%` }}
                 ></div>
               </div>
-              <p className="text-gray-600 text-sm mt-2">{progressPercentage}% Complete</p>
+              <p className="text-slate-600 text-sm font-medium mt-2">{progressPercentage}% Complete</p>
             </div>
 
             {/* Metrics Grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-blue-50 rounded-lg p-4">
-                <p className="text-gray-600 text-xs font-medium">FILES PROCESSED</p>
-                <p className="text-3xl font-bold text-blue-600">{batch.files_processed}</p>
+              <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-lg p-4 hover:shadow-md transition-all">
+                <p className="text-blue-600 text-xs font-bold uppercase tracking-wider">Files Processed</p>
+                <p className="text-3xl font-bold text-blue-700 mt-2">{batch.files_processed}</p>
               </div>
-              <div className="bg-orange-50 rounded-lg p-4">
-                <p className="text-gray-600 text-xs font-medium">DUPLICATES FOUND</p>
-                <p className="text-3xl font-bold text-orange-600">{batch.duplicates_found}</p>
+              <div className="bg-gradient-to-br from-amber-50 to-amber-100 border border-amber-200 rounded-lg p-4 hover:shadow-md transition-all">
+                <p className="text-amber-600 text-xs font-bold uppercase tracking-wider">Duplicates Found</p>
+                <p className="text-3xl font-bold text-amber-700 mt-2">{batch.duplicates_found}</p>
               </div>
-              <div className="bg-green-50 rounded-lg p-4">
-                <p className="text-gray-600 text-xs font-medium">APPROVED MERGES</p>
-                <p className="text-3xl font-bold text-green-600">{batch.duplicates_approved}</p>
+              <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 border border-emerald-200 rounded-lg p-4 hover:shadow-md transition-all">
+                <p className="text-emerald-600 text-xs font-bold uppercase tracking-wider">Approved Merges</p>
+                <p className="text-3xl font-bold text-emerald-700 mt-2">{batch.duplicates_approved}</p>
               </div>
-              <div className="bg-purple-50 rounded-lg p-4">
-                <p className="text-gray-600 text-xs font-medium">NEW CANDIDATES</p>
-                <p className="text-3xl font-bold text-purple-600">{batch.new_candidates_created}</p>
+              <div className="bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 rounded-lg p-4 hover:shadow-md transition-all">
+                <p className="text-purple-600 text-xs font-bold uppercase tracking-wider">New Candidates</p>
+                <p className="text-3xl font-bold text-purple-700 mt-2">{batch.new_candidates_created}</p>
               </div>
             </div>
           </div>
         </div>
 
         {/* Parsed Files Section */}
-        <div className="bg-white rounded-lg shadow-md overflow-hidden">
-          <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6">
-            <h2 className="text-xl font-bold">Parsed Files ({batch.files.length})</h2>
-            <p className="text-blue-100">Individual file processing status and extracted data</p>
-          </div>
-
-          <div className="divide-y max-h-96 overflow-y-auto">
-            {batch.files.map((file) => (
-              <div key={file.id} className="p-4 hover:bg-gray-50 transition">
-                <button
-                  onClick={() => setExpandedFileId(expandedFileId === file.id ? null : file.id)}
-                  className="w-full text-left"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4 flex-1">
-                      <span className="text-lg">{getFileStatusIcon(file.status)}</span>
-                      <div className="flex-1">
-                        <p className="font-semibold text-gray-800">{file.file_name}</p>
-                        <p className="text-gray-600 text-xs">{file.status}</p>
-                      </div>
-                    </div>
-                    <span className="text-gray-400">▼</span>
-                  </div>
-                </button>
-
-                {/* Expanded Details */}
-                {expandedFileId === file.id && (
-                  <div className="mt-4 pl-12 pr-4 pb-4 border-t pt-4 bg-gray-50 rounded">
-                    {file.error_message ? (
-                      <div className="bg-red-100 border border-red-300 text-red-700 px-4 py-2 rounded">
-                        <p className="font-semibold">Error:</p>
-                        <p className="text-sm">{file.error_message}</p>
-                      </div>
-                    ) : file.parsed_data ? (
-                      <div className="space-y-3">
-                        <div>
-                          <p className="text-gray-600 text-xs font-medium">NAME</p>
-                          <p className="text-gray-800">{file.parsed_data.name}</p>
-                        </div>
-                        <div>
-                          <p className="text-gray-600 text-xs font-medium">EMAIL</p>
-                          <p className="text-gray-800 font-mono">{file.parsed_data.email}</p>
-                        </div>
-                        <div>
-                          <p className="text-gray-600 text-xs font-medium">PHONE</p>
-                          <p className="text-gray-800">{file.parsed_data.phone || 'N/A'}</p>
-                        </div>
-                        <div>
-                          <p className="text-gray-600 text-xs font-medium">LOCATION</p>
-                          <p className="text-gray-800">{file.parsed_data.location}</p>
-                        </div>
-                        <div>
-                          <p className="text-gray-600 text-xs font-medium">CURRENT ROLE</p>
-                          <p className="text-gray-800">{file.parsed_data.current_role}</p>
-                        </div>
-                        <div>
-                          <p className="text-gray-600 text-xs font-medium">EXPERIENCE</p>
-                          <p className="text-gray-800">{file.parsed_data.years_experience} years</p>
-                        </div>
-                        <div>
-                          <p className="text-gray-600 text-xs font-medium mb-2">SKILLS</p>
-                          <div className="flex flex-wrap gap-2">
-                            {file.parsed_data.skills.map((skill, i) => (
-                              <span key={i} className="bg-blue-100 text-blue-900 px-2 py-1 rounded text-xs">
-                                {skill}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-gray-500">Processing...</p>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+        <div className="mb-6">
+          <ComprehensiveDataTable files={batch.files} batchName={batch.batch_name} />
         </div>
 
         {/* Action Buttons */}
-        <div className="mt-6 flex gap-4">
+        <div className="flex gap-4">
           <button
             onClick={() => router.push('/admin/bulk-upload/review')}
-            className="flex-1 bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white font-bold py-3 px-6 rounded-lg transition"
+            className="flex-1 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white font-semibold py-3 px-6 rounded-lg transition-all shadow-md hover:shadow-lg active:scale-95"
           >
-            Review Duplicates ({batch.duplicates_found - batch.duplicates_approved - batch.duplicates_rejected})
+            Review Matches ({Math.max(0, batch.duplicates_found - batch.duplicates_approved - batch.duplicates_rejected)})
           </button>
           <button
-            onClick={() => router.push('/admin/bulk-upload')}
-            className="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg transition"
+            onClick={() => router.push('/admin/bulk-uploads')}
+            className="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold py-3 px-6 rounded-lg transition-all"
           >
-            Return to Batches
+            Back to Batches
           </button>
         </div>
       </div>

@@ -133,7 +133,7 @@ export default function CandidateSidebar({
             <div className="h-4 w-4 rounded-sm bg-white rotate-45 group-hover:rotate-0 transition-transform duration-500" />
           </div>
           <span className="font-bold text-white tracking-tight text-xl">
-            Talent<span className="text-indigo-400">Flow</span>
+            Techsales<span className="text-indigo-400">Axis</span>
           </span>
         </div>
       </div>

@@ -25,6 +25,8 @@ import {
   CheckCircle,
   PauseCircle,
   XCircle,
+  Eye,
+  AlertCircle,
 } from "lucide-react";
 import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
@@ -47,9 +49,20 @@ interface Job {
   };
 }
 
+interface JobView {
+  id: string;
+  job_id: string;
+  candidate_id: string;
+  candidate_name: string;
+  candidate_email?: string;
+  job_title: string;
+  viewed_at: string;
+}
+
 export default function JobsManagement() {
   const router = useRouter();
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [recentJobViews, setRecentJobViews] = useState<JobView[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -77,12 +90,14 @@ export default function JobsManagement() {
           return;
         }
 
-        const [jobsData, profileData] = await Promise.all([
+        const [jobsData, profileData, viewsData] = await Promise.all([
           apiClient.get("/recruiter/jobs", token),
           apiClient.get("/recruiter/profile", token),
+          apiClient.get("/analytics/recruiter/recent-job-views", token).catch(() => ({ recent_views: [] })),
         ]);
         setJobs(jobsData);
         setProfile(profileData);
+        setRecentJobViews(viewsData.recent_views || []);
       } catch (err) {
         console.error("Failed to load jobs:", err);
       } finally {
@@ -146,11 +161,15 @@ export default function JobsManagement() {
     return matchesSearch && matchesStatus;
   });
 
+  const getJobViewCount = (jobId: string): number => {
+    return recentJobViews.filter((view) => view.job_id === jobId).length;
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
         <div className="flex flex-col items-center gap-4">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
           <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Loading Jobs...</p>
         </div>
       </div>
@@ -173,12 +192,46 @@ export default function JobsManagement() {
 
             <Link
               href="/dashboard/recruiter/hiring/jobs/new"
-              className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-slate-900 transition-colors shadow-md flex items-center justify-center gap-2 w-full md:w-auto"
+              className="px-6 py-2.5 bg-primary text-white rounded-xl text-sm font-bold hover:bg-slate-900 transition-colors shadow-md flex items-center justify-center gap-2 w-full md:w-auto"
             >
               <Plus className="h-4 w-4" />
               Post a Job
             </Link>
           </header>
+
+          {/* Recent Job Views Section */}
+          {recentJobViews.length > 0 && (
+            <div className="bg-gradient-to-br from-blue-50 via-white to-indigo-50 border border-blue-100 rounded-3xl p-6 shadow-sm">
+              <div className="flex items-center gap-2 mb-4">
+                <Eye className="h-5 w-5 text-blue-600" />
+                <h2 className="text-lg font-bold text-slate-900">Recent Job Views</h2>
+                <span className="ml-auto bg-blue-100 text-blue-700 text-xs font-bold px-3 py-1 rounded-full">
+                  {recentJobViews.length} view{recentJobViews.length !== 1 ? 's' : ''} today
+                </span>
+              </div>
+              
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {recentJobViews.map((view, idx) => (
+                  <div
+                    key={view.id}
+                    className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-100 hover:border-blue-200 hover:bg-blue-50/50 transition-all"
+                  >
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-slate-900">
+                        {view.candidate_name}
+                        <span className="text-slate-400 font-normal"> viewed </span>
+                        <span className="text-blue-600">{view.job_title}</span>
+                      </p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {new Date(view.viewed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} today
+                      </p>
+                    </div>
+                    <ArrowUpRight className="h-4 w-4 text-blue-400 ml-2 flex-shrink-0" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-col gap-4">
             <div className="relative">
@@ -188,7 +241,7 @@ export default function JobsManagement() {
                 placeholder="Search by title or location..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm"
+                className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 shadow-sm"
               />
             </div>
             <div className="flex flex-wrap gap-2">
@@ -198,7 +251,7 @@ export default function JobsManagement() {
                   onClick={() => setStatusFilter(status)}
                   className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors ${
                     statusFilter === status
-                      ? "bg-indigo-600 text-white"
+                      ? "bg-primary text-white"
                       : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
                   }`}
                 >
@@ -215,7 +268,7 @@ export default function JobsManagement() {
               <p className="text-slate-500 text-sm mt-1">Post your first job to get started recruiting.</p>
               <Link
                 href="/dashboard/recruiter/hiring/jobs/new"
-                className="mt-6 inline-flex px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-slate-900 transition-colors gap-2"
+                className="mt-6 inline-flex px-6 py-2.5 bg-primary text-white rounded-xl text-sm font-bold hover:bg-slate-900 transition-colors gap-2"
               >
                 <Plus className="h-4 w-4" />
                 Post a Job
@@ -232,8 +285,8 @@ export default function JobsManagement() {
                   }
                 >
                   <div className="flex justify-between items-start mb-4">
-                    <div className="h-12 w-12 bg-slate-50 rounded-2xl flex items-center justify-center border border-slate-100 group-hover:bg-indigo-50 transition-colors">
-                      <Briefcase className="h-6 w-6 text-slate-400 group-hover:text-indigo-600" />
+                    <div className="h-12 w-12 bg-slate-50 rounded-2xl flex items-center justify-center border border-slate-100 group-hover:bg-primary-light transition-colors">
+                      <Briefcase className="h-6 w-6 text-slate-400 group-hover:text-primary" />
                     </div>
                     <div className="relative">
                       <button
@@ -284,7 +337,7 @@ export default function JobsManagement() {
                                 `/dashboard/recruiter/hiring/jobs/${job.id}/edit`,
                               );
                             }}
-                            className="w-full text-left px-4 py-2.5 rounded-xl text-[10px] font-bold text-slate-600 hover:bg-slate-50 hover:text-indigo-600 transition-colors flex items-center gap-2"
+                            className="w-full text-left px-4 py-2.5 rounded-xl text-[10px] font-bold text-slate-600 hover:bg-slate-50 hover:text-primary transition-colors flex items-center gap-2"
                           >
                             <Edit3 className="w-4 h-4" />
                             Edit
@@ -319,11 +372,11 @@ export default function JobsManagement() {
                   </div>
 
                   <div className="flex-1">
-                    <h2 className="text-lg font-bold text-slate-900 line-clamp-1 group-hover:text-indigo-600 transition-colors">
+                    <h2 className="text-lg font-bold text-slate-900 line-clamp-1 group-hover:text-primary transition-colors">
                       {job.title}
                     </h2>
                     <div className="flex items-center gap-2 mt-2">
-                      <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider">
+                      <span className="text-xs font-bold text-primary uppercase tracking-wider">
                         {profile?.companies?.name || "Company"}
                       </span>
                       <span className="h-1 w-1 rounded-full bg-slate-200" />
@@ -337,7 +390,13 @@ export default function JobsManagement() {
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Positions</span>
                         <span className="text-sm font-bold text-slate-900">{job.number_of_positions}</span>
                       </div>
-                      <div className="flex flex-col text-right">
+                      <div className="flex flex-col items-end">
+                        {getJobViewCount(job.id) > 0 && (
+                          <div className="flex items-center gap-1 px-2.5 py-1 bg-blue-50 border border-blue-100 rounded-lg mb-2">
+                            <Eye className="h-3 w-3 text-blue-600" />
+                            <span className="text-xs font-bold text-blue-600">{getJobViewCount(job.id)}</span>
+                          </div>
+                        )}
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status</span>
                         <span
                           className={`text-xs font-bold uppercase tracking-wider ${
@@ -371,3 +430,4 @@ export default function JobsManagement() {
     </div>
   );
 }
+

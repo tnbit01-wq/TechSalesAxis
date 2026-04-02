@@ -71,6 +71,8 @@ class CandidateProfile(Base):
     projects = Column(JSONB)
     learning_links = Column(JSONB)
     social_links = Column(JSONB)
+    bulk_file_id = Column(UUID(as_uuid=True), ForeignKey('bulk_upload_files.id'), nullable=True)
+    is_shadow_profile = Column(Boolean, default=False)
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     created_at = Column(DateTime, default=func.now())
 
@@ -168,7 +170,7 @@ class RecruiterProfile(Base):
     warning_count = Column(Integer, default=0)
     terms_accepted = Column(Boolean, default=False)
     team_role = Column(Text)
-    professional_persona = Column(Text)
+    professional_persona = Column(JSONB)
     assessment_status = Column(Text, default='not_started')
     created_at = Column(DateTime)
     updated_at = Column(DateTime)
@@ -184,9 +186,9 @@ class ResumeData(Base):
     achievements = Column(ARRAY(Text))
     skills = Column(ARRAY(Text))
     education = Column(JSONB)
-    raw_education = Column(Text)
-    raw_experience = Column(Text)
-    raw_projects = Column(Text)
+    raw_education = Column(JSONB)
+    raw_experience = Column(JSONB)
+    raw_projects = Column(JSONB)
     parsed_at = Column(DateTime, default=func.now())
 
 class ProfileScore(Base):
@@ -228,7 +230,9 @@ class ChatThread(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     candidate_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
     recruiter_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
-    is_active = Column(Boolean, default=False)
+    is_active = Column(Boolean, default=True)  # Legacy global flag
+    recruiter_archived = Column(Boolean, default=False)
+    candidate_archived = Column(Boolean, default=False)
     last_message_at = Column(DateTime, default=func.now())
     created_at = Column(DateTime, default=func.now())
 
@@ -495,6 +499,17 @@ class CandidateJobSync(Base):
     overall_match_score = Column(Numeric, default=0.0)
     match_explanation = Column(Text)
     missing_critical_skills = Column(ARRAY(Text), default=[])
+    created_at = Column(DateTime, default=func.now())
+
+class CandidateCompanySync(Base):
+    __tablename__ = 'candidate_company_sync'
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    candidate_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
+    company_id = Column(UUID(as_uuid=True), ForeignKey('companies.id'), nullable=False)
+    overall_match_score = Column(Numeric, default=0.0)
+    match_explanation = Column(Text)
+    strength_areas = Column(ARRAY(Text), default=[])
+    improvement_areas = Column(ARRAY(Text), default=[])
     created_at = Column(DateTime, default=func.now())
 
 # ============================================================================

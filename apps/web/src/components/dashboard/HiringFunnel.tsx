@@ -38,8 +38,8 @@ const HiringFunnel: React.FC<HiringFunnelProps> = ({ data }) => {
       fullLabel: "Verified Matches",
       value: data.shortlisted,
       icon: UserCheck,
-      color: "text-indigo-500",
-      bg: "bg-indigo-500/5",
+      color: "text-primary",
+      bg: "bg-primary/5",
     },
     {
       label: "Dialogues",
@@ -74,7 +74,7 @@ const HiringFunnel: React.FC<HiringFunnelProps> = ({ data }) => {
                 </div>
               </div>
               <div className="space-y-0.5">
-                <div className="text-[10px] font-black text-slate-800 tracking-tight leading-none group-hover:text-indigo-600 truncate">
+                <div className="text-[10px] font-black text-slate-800 tracking-tight leading-none group-hover:text-primary truncate">
                   {stage.label}
                 </div>
                 <div className="text-[9px] font-medium text-slate-400 opacity-60 leading-none">
@@ -90,10 +90,10 @@ const HiringFunnel: React.FC<HiringFunnelProps> = ({ data }) => {
       </div>
 
       <div className="p-4 bg-slate-900 rounded-xl flex items-center justify-between text-white overflow-hidden relative border border-white/5 shadow-lg shadow-indigo-900/10">
-        <div className="absolute inset-0 bg-linear-to-r from-indigo-500/5 to-transparent pointer-events-none" />
+        <div className="absolute inset-0 bg-linear-to-r from-primary/5 to-transparent pointer-events-none" />
         <div className="flex items-center gap-4 relative z-10">
-          <div className="h-8 px-2.5 bg-indigo-500/10 rounded-lg flex items-center gap-2">
-            <Zap size={14} className="text-indigo-400" />
+          <div className="h-8 px-2.5 bg-primary/10 rounded-lg flex items-center gap-2">
+            <Zap size={14} className="text-primary" />
             <span className="text-[8px] font-black uppercase tracking-[0.2em] text-indigo-300">
               Performance
             </span>
@@ -117,3 +117,4 @@ const HiringFunnel: React.FC<HiringFunnelProps> = ({ data }) => {
 };
 
 export default HiringFunnel;
+

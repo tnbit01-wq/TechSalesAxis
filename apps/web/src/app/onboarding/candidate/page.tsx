@@ -852,16 +852,14 @@ function OnboardingContent() {
 
       const fileExt = file.name.split(".").pop();
       const bucket = state === "AWAITING_RESUME" ? "resumes" : "id-proofs";
-      const folder = bucket; 
+      const endpoint = state === "AWAITING_RESUME" ? "/storage/upload/resume" : "/storage/upload/aadhaar";
       const fileName = `${user.id}-${Date.now()}.${fileExt}`;
 
       // Upload via backend API which handles S3
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("bucket", bucket);
-      formData.append("file_name", fileName);
-
-      const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8001"}/storage/upload`, {
+      
+      const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8001"}${endpoint}`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${token}`
@@ -969,7 +967,7 @@ function OnboardingContent() {
         <div className="flex items-center gap-4">
           <Link
             href="/"
-            className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500 hover:text-indigo-600"
+            className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500 hover:text-primary"
             aria-label="Back to home"
           >
             <svg
@@ -987,7 +985,7 @@ function OnboardingContent() {
             </svg>
           </Link>
           <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-indigo-600 flex items-center justify-center">
+            <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
               <div className="h-4 w-4 rounded-sm bg-white rotate-45" />
             </div>
             <span className="font-bold text-slate-900">
@@ -1028,7 +1026,7 @@ function OnboardingContent() {
             <div
               className={`max-w-[80%] rounded-2xl px-4 py-3 shadow-sm ${
                 msg.sender === "user"
-                  ? "bg-indigo-600 text-white rounded-tr-none"
+                  ? "bg-primary text-white rounded-tr-none"
                   : "bg-white text-slate-800 border border-slate-100 rounded-tl-none"
               }`}
             >
@@ -1041,7 +1039,7 @@ function OnboardingContent() {
                     key={opt}
                     onClick={() => handleSend(opt)}
                     disabled={isLoading}
-                    className="bg-white hover:bg-indigo-50 text-indigo-600 border border-indigo-200 text-xs py-2 px-4 rounded-full transition-all shadow-sm"
+                    className="bg-white hover:bg-primary-light text-primary border border-primary-light text-xs py-2 px-4 rounded-full transition-all shadow-sm"
                   >
                     {opt}
                   </button>
@@ -1073,7 +1071,7 @@ function OnboardingContent() {
                 <button
                   onClick={() => handleSend()}
                   disabled={isLoading || selectedSkills.length === 0}
-                  className="bg-indigo-600 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg hover:bg-indigo-700 disabled:bg-slate-300 transition-colors shadow-sm"
+                  className="bg-primary text-white text-[10px] font-bold px-3 py-1.5 rounded-lg hover:bg-primary-dark disabled:bg-slate-300 transition-colors shadow-sm"
                 >
                   {isLoading ? "Saving..." : "CONFIRM SKILLS"}
                 </button>
@@ -1086,7 +1084,7 @@ function OnboardingContent() {
                     onClick={() => toggleSkill(skill)}
                     className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
                       selectedSkills.includes(skill)
-                        ? "bg-indigo-600 text-white shadow-md shadow-indigo-100"
+                        ? "bg-primary text-white shadow-md shadow-primary-light"
                         : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                     }`}
                   >
@@ -1103,7 +1101,7 @@ function OnboardingContent() {
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">
                       Custom / Extracted Skills
                     </span>
-                    <span className="text-[10px] text-indigo-500 font-medium bg-indigo-50 px-2 py-0.5 rounded-full">
+                    <span className="text-[10px] text-primary font-medium bg-primary-light px-2 py-0.5 rounded-full">
                       {
                         selectedSkills.filter(
                           (s) =>
@@ -1203,7 +1201,7 @@ function OnboardingContent() {
                 state === "AWAITING_RESUME" ||
                 state === "AWAITING_ID"
               }
-              className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-80"
+              className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-80"
             />
             <button
               onClick={isListening ? stopListening : startListening}
@@ -1234,7 +1232,7 @@ function OnboardingContent() {
                   !input.trim() &&
                   selectedSkills.length === 0)
               }
-              className="p-3 bg-indigo-600 text-white rounded-xl disabled:bg-slate-300"
+              className="p-3 bg-primary text-white rounded-xl disabled:bg-slate-300"
             >
               <svg
                 className="w-5 h-5"
@@ -1265,10 +1263,11 @@ export default function CandidateOnboarding() {
   return (
     <Suspense fallback={
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
       </div>
     }>
       <OnboardingContent />
     </Suspense>
   );
 }
+

@@ -92,22 +92,39 @@ class ComprehensiveResumeExtractor:
         lines = text.split('\n')
         
         # Strategy 1: Look for header pattern (name usually at top, all caps or Title Case)
+        # Also handle names with spaces between characters (e.g., "L A L I T  K O T I A N" from PDF extraction)
         for i, line in enumerate(lines[:15]):  # Check first 15 lines
             line = line.strip()
             if not line or len(line) < 3 or len(line) > 100:
                 continue
             
             # Skip common headers
-            if any(x in line.lower() for x in ['curriculum', 'resume', 'cv', 'objective', 'summary', 'profile']):
+            if any(x in line.lower() for x in ['curriculum', 'resume', 'cv', 'objective', 'summary', 'profile', 'core', 'skill', 'experience', 'education']):
                 continue
             
             # Check if line has email/phone/date (unlikely to be name line)
-            if any(x in line for x in ['@', '+91', '+1', '(', '-', '.']):
+            if any(x in line for x in ['@', '+91', '+1', '(', '/']):
                 continue
             
-            # Check if line matches name pattern (Capital Words, no numbers)
+            # For lines that might have spaces between characters (PDF extraction artifact)
+            # E.g., "L A L I T  K O T I A N" -> collect words with spaces
+            # Check pattern: words can be single letters or normal words with potential space between caps
+            if i < 3:  # Priority to very first lines
+                # More lenient pattern for spaced names
+                # Allow "X X X" or "Name Surname" or mixed
+                words_with_potential_space = re.sub(r'\s+', ' ', line).split()
+                # Check if looks like names (2-5 words, mostly capitalized)
+                if 1 <= len(words_with_potential_space) <= 5:
+                    capital_words = sum(1 for w in words_with_potential_space if w and w[0].isupper())
+                    if capital_words >= len(words_with_potential_space) * 0.7:  # 70% capitalized
+                        name_candidate = ' '.join(words_with_potential_space)
+                        # Remove internal spaces within words for name-like patterns
+                        # E.g., "L A L I T" -> "LALIT"  
+                        if len([c for c in name_candidate if c.isalpha()]) >= 4:
+                            return name_candidate
+            
+            # Check if line matches standard name pattern
             if re.match(r'^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*(?:\s*[A-Z]\.)*\s*)*$', line):
-                # Additional validation: name should be 3-50 chars
                 words = line.split()
                 if 1 <= len(words) <= 5 and all(len(w) >= 2 for w in words):
                     return line
@@ -116,14 +133,14 @@ class ComprehensiveResumeExtractor:
         name_match = re.search(r'(?:full\s*)?name\s*:?\s*([A-Za-z\s]+?)(?:\n|,|$)', text, re.IGNORECASE)
         if name_match:
             name = name_match.group(1).strip()
-            if 3 < len(name) < 100 and name.count(' ') <= 4:
+            if 3 < len(name) < 100 and name.count(' ') <= 8:  # Allow more spaces for spaced names
                 return name
         
         # Strategy 3: First meaningful line that looks like a name
         for line in lines:
             line = line.strip()
             if 3 < len(line) < 80:
-                # Check word boundaries
+                # Check word boundaries - allow for names with spaces
                 words = line.split()
                 if all(w and w[0].isupper() for w in words if len(w) > 1):
                     if not any(digit in line for digit in '0123456789'):
@@ -142,23 +159,35 @@ class ComprehensiveResumeExtractor:
             "portfolio": None
         }
         
-        # Extract email
-        email_match = re.search(r'([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})', text)
-        if email_match:
-            contact["email"] = email_match.group(1)
+        # Extract email - also try links like "email: address"
+        email_patterns = [
+            r'([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})',
+            r'(?:email|mail):\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})'
+        ]
+        for pattern in email_patterns:
+            email_match = re.search(pattern, text, re.IGNORECASE)
+            if email_match:
+                contact["email"] = email_match.group(1)
+                break
         
-        # Extract phone
+        # Extract phone - multiple patterns for different formats
         phone_patterns = [
-            r'\+91\s?[\d\s\-]{10,}',  # India
-            r'\+\d{1,2}\s?[\d\s\-]{8,}',  # International
-            r'(?:phone|mobile|contact):\s*([\d\s\-\+]+)',
-            r'^[\d\s\-\+]{10,}$'  # Standalone phone
+            r'\+91\s?[\d\s\-]{10,}',  # India with +91
+            r'\+\d{1,2}\s?[\d\s\-]{8,}',  # International with + prefix
+            r'(?:phone|mobile|contact):\s*([\d\s\-\+]+)',  # Label format
+            r'(?:^|\s)(\d{10})(?:\s|•|$)',  # 10 digit phone anywhere (with boundaries)
+            r'^[\d\s\-\+]{10,}$'  # Standalone phone (multiline)
         ]
         for pattern in phone_patterns:
             phone_match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
             if phone_match:
-                contact["phone"] = ''.join(filter(str.isdigit, phone_match.group(0)[-10:]))
-                break
+                # Extract just the digits from the last 12 characters of match (to get full number)
+                matched_text = phone_match.group(1) if phone_match.lastindex else phone_match.group(0)
+                digits_only = ''.join(filter(str.isdigit, matched_text.strip()))
+                if len(digits_only) >= 10:
+                    # Take last 10 digits if more than 10 (handles +91 country code)
+                    contact["phone"] = digits_only[-10:] if len(digits_only) > 10 else digits_only
+                    break
         
         # Extract LinkedIn
         linkedin_match = re.search(r'linkedin\.com/in/([a-zA-Z0-9\-]+)', text, re.IGNORECASE)
@@ -340,6 +369,7 @@ class ComprehensiveResumeExtractor:
         exp_patterns = [
             r'(?:professional\s+)?experience\s*\n+(.*?)(?=\n(?:education|projects|skills|certifications|languages|awards|volunteer|personal|key\s+achievements|$))',
             r'work\s+experience\s*\n+(.*?)(?=\n(?:education|projects|skills|certifications|languages|awards|volunteer|personal|key\s+achievements|$))',
+            r'experience\s*\n+(.*?)(?=\n[A-Z\s]{3,}|$)',  # Fallback: experience section until next capitalized header
         ]
         
         for pattern in exp_patterns:
@@ -371,7 +401,8 @@ class ComprehensiveResumeExtractor:
                 continue
             
             # ===== FORMAT 1: PIPE-SEPARATED =====
-            if '|' in line and not ('–' in line or '—' in line or 'ÔÇô' in line):
+            # Check if line has multiple pipes (3+ pipes = pipe separated format)
+            if line.count('|') >= 3:
                 parts = [p.strip() for p in line.split('|') if p.strip()]
                 if len(parts) >= 2:
                     job_entry = ComprehensiveResumeExtractor._parse_pipe_format(parts)
@@ -379,7 +410,7 @@ class ComprehensiveResumeExtractor:
                         job_entries.append(job_entry)
             
             # ===== FORMAT 2: DASH-SEPARATED WITH DATES ON NEXT LINE =====
-            elif '–' in line or '—' in line or 'ÔÇô' in line:
+            elif ('–' in line or '—' in line or 'ÔÇô' in line) and line.count('|') < 3:
                 job_entry = ComprehensiveResumeExtractor._parse_dash_format_with_dates(line, lines, i)
                 if job_entry.get("position"):
                     job_entries.append(job_entry)
@@ -402,6 +433,40 @@ class ComprehensiveResumeExtractor:
             })
         
         return experience_list, current_role, previous_role
+    
+    @staticmethod
+    def _parse_pipe_format(parts: List[str]) -> Dict:
+        """
+        Parse pipe-separated format.
+        Expected format: | Position | Company | Location | [Dates]
+        
+        Returns dict with position, company, location, start_date, end_date.
+        """
+        result = {
+            "position": None,
+            "company": None,
+            "location": None,
+            "start_date": None,
+            "end_date": None,
+        }
+        
+        if len(parts) >= 1:
+            result["position"] = parts[0].strip()
+        if len(parts) >= 2:
+            result["company"] = parts[1].strip()
+        if len(parts) >= 3:
+            result["location"] = parts[2].strip()
+        if len(parts) >= 4:
+            # Handle dates in pipe format
+            date_str = parts[3].strip()
+            # Try to split date range by dash or hyphen
+            date_parts = date_str.split('–', 1) if '–' in date_str else date_str.split('-', 1)
+            if len(date_parts) >= 1:
+                result["start_date"] = date_parts[0].strip()
+            if len(date_parts) >= 2:
+                result["end_date"] = date_parts[1].strip()
+        
+        return result
     
     @staticmethod
     def _parse_dash_format_with_dates(line: str, all_lines: List[str], line_index: int) -> Dict:
@@ -715,8 +780,45 @@ class ComprehensiveResumeExtractor:
             return "leadership"
     
     @staticmethod
+    def _clean_text_spacing(text: str) -> str:
+        """
+        Fix common PDF extraction issues with excessive spacing.
+        Handles cases where spaces are inserted between every character.
+        """
+        if not text:
+            return text
+        
+        # Strategy: Target specific patterns that are clearly broken
+        
+        # Pattern 1: Fix spaced email addresses
+        # Match: (char space)+ char @ (char space)+ char . (char space)* char+
+        # E.g.: "l k o t i a n 5 2 @ g m a i l . c o m"
+        pattern = r'((?:[a-zA-Z0-9]\s+)*[a-zA-Z0-9])\s*@\s*((?:[a-zA-Z0-9]\s+)*[a-zA-Z0-9])\s*\.\s*([a-zA-Z\s]+)'
+        
+        def fix_email(m):
+            local = m.group(1).replace(' ', '')
+            domain = m.group(2).replace(' ', '')
+            tld = m.group(3).replace(' ', '')
+            return f"{local}@{domain}.{tld}"
+        
+        text = re.sub(pattern, fix_email, text, flags=re.IGNORECASE)
+        
+        # Pattern 2: Fix spaced phone numbers  
+        # Match exactly 10 or 12 digits separated by spaces
+        text = re.sub(r'(\d)\s+(\d)\s+(\d)\s+(\d)\s+(\d)\s+(\d)\s+(\d)\s+(\d)\s+(\d)\s+(\d)(?:\s+(\d)\s+(\d))?',
+                      lambda m: ''.join([g for g in m.groups() if g]), text)
+        
+        # Clean up excessive multi-spaces
+        text = re.sub(r' {2,}', ' ', text)
+        
+        return text
+
+    @staticmethod
     def extract_all(text: str) -> Dict:
         """Master extraction method - returns all fields properly mapped."""
+        
+        # Clean up text formatting issues (e.g., spaces between characters from PDF extraction)
+        text = ComprehensiveResumeExtractor._clean_text_spacing(text)
         
         # Extract basic info
         name = ComprehensiveResumeExtractor.extract_name(text)

@@ -126,7 +126,7 @@ export default function ReportMessageModal({
                     value={r}
                     checked={reason === r}
                     onChange={(e) => setReason(e.target.value)}
-                    className="w-4 h-4 text-indigo-600 cursor-pointer"
+                    className="w-4 h-4 text-primary cursor-pointer"
                   />
                   <span className="text-sm font-medium text-slate-700">{r}</span>
                 </label>
@@ -145,7 +145,7 @@ export default function ReportMessageModal({
                 onChange={(e) => setCustomReason(e.target.value)}
                 placeholder="Please provide more information about this report..."
                 rows={4}
-                className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none resize-none text-sm font-medium text-slate-700 placeholder:text-slate-400"
+                className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent outline-none resize-none text-sm font-medium text-slate-700 placeholder:text-slate-400"
               />
             </div>
           )}
@@ -155,14 +155,14 @@ export default function ReportMessageModal({
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm uppercase tracking-tighter hover:bg-slate-200 transition-colors disabled:opacity-50"
+              className="flex-1 px-4 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm uppercase tracking-tighter hover:bg-slate-200 transition-colors disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed"
               disabled={isSubmitting}
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="flex-1 px-4 py-3 bg-red-600 text-white rounded-xl font-bold text-sm uppercase tracking-tighter hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              className="flex-1 px-4 py-3 bg-red-600 text-white rounded-xl font-bold text-sm uppercase tracking-tighter hover:bg-red-700 transition-colors disabled:bg-slate-300 disabled:text-slate-600 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               disabled={isSubmitting}
             >
               {isSubmitting ? (
@@ -183,3 +183,4 @@ export default function ReportMessageModal({
     </div>
   );
 }
+

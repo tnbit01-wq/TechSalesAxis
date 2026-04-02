@@ -180,22 +180,19 @@ export default function ApplicationDetailPage() {
               </div>
 
               {activeInterview.status === 'scheduled' && activeInterview.meeting_link && (() => {
-                  // Standardize time comparison to IST
                   const now = new Date();
-                  // For a very accurate comparison, we should adjust local 'now' to Asia/Kolkata
-                  // However, comparing UTC-to-UTC or parsing both as Date objects works if they both have offsets.
-                  // Database times are UTC, coming from API as ISO strings.
-                  
                   const slot = activeInterview.interview_slots?.find(s => s.is_selected);
                   if (!slot) return null;
                   
                   const start = new Date(slot.start_time);
                   const end = new Date(slot.end_time);
                   
-                  // RELAXED WINDOW FOR TESTING: 24h before to 24h after
-                  const allowedStart = new Date(start.getTime() - 24 * 60 * 60000);
-                  const allowedEnd = new Date(end.getTime() + 24 * 60 * 60000);
+                  // NEW PROTOCOL: Join opens 15m before START 
+                  const allowedStart = new Date(start.getTime() - 15 * 60 * 1000);
+                  const fiveAfterStart = new Date(start.getTime() + 5 * 60 * 1000);
                   
+                  // Cannot join after end time
+                  const allowedEnd = fiveAfterStart < end ? fiveAfterStart : end;
                   const isActive = now >= allowedStart && now <= allowedEnd;
 
                   return (
@@ -223,18 +220,27 @@ export default function ApplicationDetailPage() {
                           try {
                             const token = awsAuth.getToken();
                             if (token) {
-                              apiClient.post(`/interviews/${activeInterview.id}/join-event`, {}, token);
+                              await apiClient.post(`/interviews/${activeInterview.id}/join-event`, { role: "candidate" }, token);
                             }
                           } catch (err) {
                             console.error("Failed to signal join:", err);
+                            return; // Don't open if backend rejects
                           }
                           window.open(activeInterview.meeting_link, '_blank');
                         }}
-                        className={`w-full py-4 rounded-2xl font-black uppercase italic tracking-widest shadow-lg transition-all flex items-center justify-center gap-3 ${
-                          isActive ? "bg-white text-indigo-600 hover:bg-slate-50" : "bg-white/20 text-indigo-300 cursor-not-allowed"
+                        className={`w-full py-4 rounded-full font-black uppercase italic tracking-widest shadow-lg transition-all flex items-center justify-center gap-3 ${
+                          isActive 
+                            ? "bg-white text-indigo-600 hover:bg-slate-50 hover:scale-[1.02] active:scale-[0.98]" 
+                            : "bg-white/20 text-indigo-200 cursor-not-allowed opacity-50"
                         }`}
                       >
-                        {isActive ? "Enter Meeting Room" : now < start ? "Link Not Yet Active" : "Meeting Link Expired"}
+                        {isActive 
+                          ? "Enter Meeting Room" 
+                          : now < allowedStart 
+                            ? `Locked: In ${Math.round((allowedStart.getTime() - now.getTime()) / 60000)}m`
+                            : now > end
+                              ? "Meeting Expired"
+                              : "Window Closed"}
                         {isActive && <ArrowRight className="h-4 w-4" />}
                       </button>
                     </div>

@@ -11,7 +11,6 @@ import {
   Settings,
   Bell,
   UsersRound,
-  Compass,
   Zap,
   Globe,
   LogOut,
@@ -133,23 +132,12 @@ export default function RecruiterSidebar({
           icon: <Zap className="h-4 w-4" />,
           locked: isLocked,
         },
-        {
-          label: "Market Insights",
-          href: "/dashboard/recruiter/intelligence/gps",
-          icon: <Compass className="h-4 w-4" />,
-          locked: isLocked,
-        },
       ],
     },
     {
       label: "Organization",
       icon: <Building2 className="h-4 w-4" />,
       items: [
-        {
-          label: "Employer Branding",
-          href: "/dashboard/recruiter/organization/branding",
-          icon: <Globe className="h-4 w-4" />,
-        },
         teamRole === "admin"
           ? {
               label: "Team",
@@ -193,7 +181,7 @@ export default function RecruiterSidebar({
             <div className="h-4 w-4 rounded-sm bg-white rotate-45 group-hover:rotate-0 transition-transform duration-500" />
           </div>
           <span className="font-bold text-white tracking-tight text-xl">
-            Talent<span className="text-indigo-400">Flow</span>
+            Techsales<span className="text-indigo-400">Axis</span>
           </span>
         </div>
       </div>

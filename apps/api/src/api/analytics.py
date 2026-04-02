@@ -1,9 +1,9 @@
 """Analytics API endpoints for TALENTFLOW."""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException, Request, Depends
 from sqlalchemy.orm import Session
 from uuid import UUID
-from typing import List, Dict
-from src.core.dependencies import get_current_user, get_db
+from typing import List, Dict, Optional
+from src.core.dependencies import get_db, get_current_user
 from src.services.analytics_service import AnalyticsService
 from src.core.models import Job, ProfileAnalytics
 
@@ -15,15 +15,29 @@ router = APIRouter(tags=["analytics"], prefix="/analytics")
 @router.post("/jobs/{job_id}/view")
 def log_job_view(
     job_id: UUID,
-    user: dict = Depends(get_current_user),
+    request: Request,
     db: Session = Depends(get_db)
 ):
-    """Log a candidate viewing a job posting."""
-    candidate_id = user.get("sub")
-    viewer_ip = user.get("ip_address")
-    user_agent = user.get("user_agent")
+    """Log a candidate viewing a job posting - No auth required for analytics."""
+    # Extract user info from request headers if available
+    auth_header = request.headers.get("authorization", "")
+    candidate_id = None
+    
+    if auth_header and auth_header.startswith("Bearer "):
+        # If we have auth, try to decode it (but don't fail if we don't)
+        try:
+            from src.core.auth_utils import decode_access_token
+            token = auth_header.split(" ")[1]
+            payload = decode_access_token(token)
+            candidate_id = payload.get("sub")
+        except Exception as decode_err:
+            print(f"⚠️  Could not decode auth token: {decode_err}")
+    
+    viewer_ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "unknown")
+    user_agent = request.headers.get("user-agent", "unknown")
     
     try:
+        print(f"📊 Analytics: Logging job view - job_id={job_id}, candidate_id={candidate_id}")
         view = AnalyticsService.log_job_view(
             db=db,
             job_id=job_id,
@@ -31,12 +45,16 @@ def log_job_view(
             viewer_ip=viewer_ip,
             user_agent=user_agent
         )
+        print(f"✅ Job view logged successfully: {view.id}")
         return {
             "status": "success",
             "message": "Job view logged",
             "view_id": str(view.id)
         }
     except Exception as e:
+        print(f"❌ Failed to log job view: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -61,6 +61,9 @@ export default function RecruiterSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showOldPassword, setShowOldPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [activeTab, setActiveTab] = useState<"profile" | "company" | "security" | "notifications" | "privacy">("profile");
 
@@ -133,6 +136,10 @@ export default function RecruiterSettingsPage() {
       setMessage({ type: "error", text: "Password must be at least 8 characters" });
       return;
     }
+    if (newPassword !== confirmPassword) {
+      setMessage({ type: "error", text: "New passwords do not match" });
+      return;
+    }
     setSaving(true);
     try {
       const token = awsAuth.getToken();
@@ -145,10 +152,20 @@ export default function RecruiterSettingsPage() {
         setMessage({ type: "success", text: "Security credentials updated." });
         setOldPassword("");
         setNewPassword("");
+        setConfirmPassword("");
       }
     } catch (err: any) {
-      const errorMsg = err.response?.data?.detail || "Verification failed. Check old password.";
-      setMessage({ type: "error", text: errorMsg });
+      // Clean up the error message for the user
+      const messageText = err.message || "";
+      let userFriendlyMsg = "Verification failed. Check old password.";
+      
+      if (messageText.includes("Current password incorrect")) {
+        userFriendlyMsg = "The current password you entered is incorrect.";
+      } else if (messageText) {
+        userFriendlyMsg = messageText;
+      }
+      
+      setMessage({ type: "error", text: userFriendlyMsg });
     } finally {
       setSaving(false);
     }
@@ -228,7 +245,7 @@ export default function RecruiterSettingsPage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
         <div className="min-h-[60vh] flex flex-col items-center justify-center">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
           <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Loading Settings...</p>
         </div>
       </div>
@@ -262,7 +279,7 @@ export default function RecruiterSettingsPage() {
               onClick={() => setActiveTab("profile")}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all font-medium text-sm ${
                 activeTab === "profile"
-                  ? "bg-indigo-600 text-white border-indigo-600"
+                  ? "bg-primary text-white border-primary"
                   : "bg-white text-slate-700 border-slate-200 hover:border-slate-300"
               }`}
             >
@@ -273,7 +290,7 @@ export default function RecruiterSettingsPage() {
               onClick={() => setActiveTab("company")}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all font-medium text-sm ${
                 activeTab === "company"
-                  ? "bg-indigo-600 text-white border-indigo-600"
+                  ? "bg-primary text-white border-primary"
                   : "bg-white text-slate-700 border-slate-200 hover:border-slate-300"
               }`}
             >
@@ -284,7 +301,7 @@ export default function RecruiterSettingsPage() {
               onClick={() => setActiveTab("security")}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all font-medium text-sm ${
                 activeTab === "security"
-                  ? "bg-indigo-600 text-white border-indigo-600"
+                  ? "bg-primary text-white border-primary"
                   : "bg-white text-slate-700 border-slate-200 hover:border-slate-300"
               }`}
             >
@@ -295,7 +312,7 @@ export default function RecruiterSettingsPage() {
               onClick={() => setActiveTab("notifications")}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all font-medium text-sm ${
                 activeTab === "notifications"
-                  ? "bg-indigo-600 text-white border-indigo-600"
+                  ? "bg-primary text-white border-primary"
                   : "bg-white text-slate-700 border-slate-200 hover:border-slate-300"
               }`}
             >
@@ -306,7 +323,7 @@ export default function RecruiterSettingsPage() {
               onClick={() => setActiveTab("privacy")}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all font-medium text-sm ${
                 activeTab === "privacy"
-                  ? "bg-indigo-600 text-white border-indigo-600"
+                  ? "bg-primary text-white border-primary"
                   : "bg-white text-slate-700 border-slate-200 hover:border-slate-300"
               }`}
             >
@@ -321,7 +338,7 @@ export default function RecruiterSettingsPage() {
           {activeTab === "profile" && (
             <div className="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm space-y-8">
               <div className="flex items-center gap-6 mb-8">
-                <div className="h-20 w-20 rounded-full bg-linear-to-br from-indigo-500 to-indigo-700 flex items-center justify-center relative overflow-hidden flex-shrink-0 border-2 border-slate-200">
+                <div className="h-20 w-20 rounded-full bg-linear-to-br from-primary to-primary-dark flex items-center justify-center relative overflow-hidden flex-shrink-0 border-2 border-slate-200">
                   <User className="text-white" size={32} />
                 </div>
                 <div>
@@ -338,7 +355,7 @@ export default function RecruiterSettingsPage() {
                 <InputGroup label="Current Location" value={profile?.location} onChange={(val) => setProfile(p => p ? {...p, location: val} : null)} />
                 
                 <div className="pt-6">
-                  <button type="submit" disabled={saving} className="bg-indigo-600 text-white px-6 py-3 rounded-lg text-sm font-bold hover:bg-indigo-700 transition-all flex items-center gap-2 disabled:opacity-50">
+                  <button type="submit" disabled={saving} className="bg-primary text-white px-6 py-3 rounded-lg text-sm font-bold hover:bg-primary-dark transition-all flex items-center gap-2 disabled:opacity-50">
                     {saving ? "Saving..." : "Save Changes"}
                     <Save size={16} />
                   </button>
@@ -378,7 +395,7 @@ export default function RecruiterSettingsPage() {
                 </div>
 
                 <div className="pt-6">
-                  <button type="submit" disabled={saving} className="bg-indigo-600 text-white px-6 py-3 rounded-lg text-sm font-bold hover:bg-indigo-700 transition-all flex items-center gap-2 disabled:opacity-50">
+                  <button type="submit" disabled={saving} className="bg-primary text-white px-6 py-3 rounded-lg text-sm font-bold hover:bg-primary-dark transition-all flex items-center gap-2 disabled:opacity-50">
                     {saving ? "Updating..." : "Save Changes"}
                     <Save size={16} />
                   </button>
@@ -397,17 +414,43 @@ export default function RecruiterSettingsPage() {
                 </div>
 
                 <div className="space-y-4">
-                  <InputGroup label="Current Password" value={oldPassword} onChange={setOldPassword} isPassword />
-                  <InputGroup label="New Password" value={newPassword} onChange={setNewPassword} isPassword />
+                  <div className="relative">
+                    <InputGroup label="Current Password" value={oldPassword} onChange={setOldPassword} isPassword={!showOldPassword} />
+                    <button 
+                      type="button"
+                      onClick={() => setShowOldPassword(!showOldPassword)}
+                      className="absolute right-3 top-9 text-slate-400 hover:text-primary transition-colors"
+                    >
+                      {showOldPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+                  
+                  <div className="relative">
+                    <InputGroup label="New Password" value={newPassword} onChange={setNewPassword} isPassword={!showNewPassword} />
+                    <button 
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-3 top-9 text-slate-400 hover:text-primary transition-colors"
+                    >
+                      {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+
+                  <div className="relative">
+                    <InputGroup label="Confirm New Password" value={confirmPassword} onChange={setConfirmPassword} isPassword={!showNewPassword} />
+                  </div>
                   
                   <div className="flex items-center gap-3 pt-4">
                     <button 
                       onClick={handleUpdatePassword}
-                      disabled={saving || !newPassword || !oldPassword}
-                      className="bg-indigo-600 text-white px-6 py-3 rounded-lg text-sm font-bold hover:bg-indigo-700 transition-all disabled:opacity-50"
+                      disabled={saving || !newPassword || !oldPassword || !confirmPassword || newPassword !== confirmPassword}
+                      className="bg-primary text-white px-6 py-3 rounded-lg text-sm font-bold hover:bg-primary-dark transition-all disabled:opacity-50"
                     >
                       {saving ? "Updating..." : "Update Password"}
                     </button>
+                    {newPassword && confirmPassword && newPassword !== confirmPassword && (
+                      <span className="text-xs font-bold text-rose-600 animate-pulse">Passwords do not match</span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -416,14 +459,14 @@ export default function RecruiterSettingsPage() {
               <div className="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm">
                 <h3 className="text-lg font-bold text-slate-900 mb-4">Identity Verification</h3>
                 <div className="bg-slate-50 p-6 rounded-lg border border-slate-200 flex flex-col md:flex-row items-center gap-6">
-                  <div className="h-16 w-16 rounded-lg bg-indigo-100 flex items-center justify-center flex-shrink-0">
-                    <Shield className="text-indigo-600" size={32} />
+                  <div className="h-16 w-16 rounded-lg bg-primary-light flex items-center justify-center flex-shrink-0">
+                    <Shield className="text-primary" size={32} />
                   </div>
                   <div className="flex-1">
                     <h4 className="font-bold text-slate-900 mb-1">Verify Your Identity</h4>
                     <p className="text-sm text-slate-500">Upload your government ID to get a verified badge. Verified profiles get 3x more candidate trust.</p>
                   </div>
-                  <label className={`px-6 py-2.5 rounded-lg text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${profile?.identity_verified ? "bg-emerald-50 text-emerald-600 border border-emerald-100 pointer-events-none" : "bg-indigo-600 text-white hover:bg-indigo-700 border border-indigo-600"}`}>
+                  <label className={`px-6 py-2.5 rounded-lg text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${profile?.identity_verified ? "bg-emerald-50 text-emerald-600 border border-emerald-100 pointer-events-none" : "bg-primary text-white hover:bg-primary-dark border border-primary"}`}>
                     {profile?.identity_verified ? "✓ Verified" : "Upload ID"}
                     {!profile?.identity_verified && (
                       <input 
@@ -468,7 +511,7 @@ export default function RecruiterSettingsPage() {
 
               <div>
                 <label className="text-sm font-bold text-slate-900 mb-2 block">Timezone</label>
-                <select value={settings?.timezone} onChange={(e) => handleSettingsSave({ timezone: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20">
+                <select value={settings?.timezone} onChange={(e) => handleSettingsSave({ timezone: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20">
                   <option value="UTC">UTC</option>
                   <option value="IST">IST (India)</option>
                   <option value="PST">PST (Pacific)</option>
@@ -481,7 +524,7 @@ export default function RecruiterSettingsPage() {
           {activeTab === "privacy" && (
             <div className="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm">
               <div className="flex flex-col md:flex-row items-center gap-8">
-                <div className={`h-24 w-24 rounded-full flex items-center justify-center flex-shrink-0 shadow-lg ${settings?.ghost_mode ? "bg-slate-900" : "bg-indigo-600"}`}>
+                <div className={`h-24 w-24 rounded-full flex items-center justify-center flex-shrink-0 shadow-lg ${settings?.ghost_mode ? "bg-slate-900" : "bg-primary"}`}>
                   {settings?.ghost_mode ? <EyeOff className="text-white" size={40} /> : <Eye className="text-white" size={40} />}
                 </div>
                 <div className="flex-1 text-center md:text-left">
@@ -491,7 +534,7 @@ export default function RecruiterSettingsPage() {
                       ? "Your profile is hidden from candidates. You will only be visible during active interviews." 
                       : "Your profile is visible to candidates. They can find you in the candidate pool and view your details."}
                   </p>
-                  <button onClick={() => handleSettingsSave({ ghost_mode: !settings?.ghost_mode })} className="bg-indigo-600 text-white px-6 py-2.5 rounded-lg text-sm font-bold hover:bg-indigo-700 transition-all">
+                  <button onClick={() => handleSettingsSave({ ghost_mode: !settings?.ghost_mode })} className="bg-primary text-white px-6 py-2.5 rounded-lg text-sm font-bold hover:bg-primary-dark transition-all">
                     {settings?.ghost_mode ? "Disable Private Mode" : "Enable Private Mode"}
                   </button>
                 </div>
@@ -509,9 +552,9 @@ function InputGroup({ label, value, onChange, isTextArea = false, isPassword = f
     <div className="space-y-2">
       <label className="text-sm font-bold text-slate-900">{label}</label>
       {isTextArea ? (
-        <textarea value={value || ""} onChange={(e) => onChange(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 min-h-28 transition-all focus:bg-white" />
+        <textarea value={value || ""} onChange={(e) => onChange(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20 min-h-28 transition-all focus:bg-white" />
       ) : (
-        <input type={isPassword ? "password" : "text"} value={value || ""} onChange={(e) => onChange(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all focus:bg-white" />
+        <input type={isPassword ? "password" : "text"} value={value || ""} onChange={(e) => onChange(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all focus:bg-white" />
       )}
     </div>
   );
@@ -519,8 +562,8 @@ function InputGroup({ label, value, onChange, isTextArea = false, isPassword = f
 
 function ToggleCard({ title, desc, icon, active, onToggle }: { title: string, desc: string, icon: React.ReactNode, active: boolean, onToggle: (v: boolean) => void }) {
   return (
-    <div onClick={() => onToggle(!active)} className={`p-6 rounded-lg border-2 transition-all cursor-pointer hover:shadow-md ${active ? "bg-white border-indigo-500 shadow-lg" : "bg-slate-50 border-slate-200"}`}>
-      <div className={`h-10 w-10 rounded-lg mb-4 flex items-center justify-center transition-all ${active ? "bg-indigo-600 text-white" : "bg-slate-200 text-slate-400"}`}>
+    <div onClick={() => onToggle(!active)} className={`p-6 rounded-lg border-2 transition-all cursor-pointer hover:shadow-md ${active ? "bg-white border-primary shadow-lg" : "bg-slate-50 border-slate-200"}`}>
+      <div className={`h-10 w-10 rounded-lg mb-4 flex items-center justify-center transition-all ${active ? "bg-primary text-white" : "bg-slate-200 text-slate-400"}`}>
         {icon}
       </div>
       <h4 className="font-bold text-slate-900 text-sm mb-1">{title}</h4>
@@ -532,3 +575,4 @@ function ToggleCard({ title, desc, icon, active, onToggle }: { title: string, de
     </div>
   );
 }
+

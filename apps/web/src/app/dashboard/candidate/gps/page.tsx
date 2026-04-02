@@ -105,12 +105,12 @@ export default function CareerGPSPage() {
       // We only update if it's not empty, otherwise we just skip the patch or send an empty string
       await apiClient.patch("/candidate/profile", {
         learning_interests: inputs.learning_interests || ""
-      }, token);
+      }, token || undefined);
 
       await apiClient.post(
         "/candidate/career-gps/generate",
         inputs,
-        token,
+        token || undefined,
       );
       toast.success("Career GPS generated successfully!");
       await fetchGPS();
@@ -171,7 +171,7 @@ export default function CareerGPSPage() {
   if (loading) {
     return (
       <div className="flex bg-slate-50 min-h-screen items-center justify-center">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
       </div>
     );
   }
@@ -180,7 +180,7 @@ export default function CareerGPSPage() {
     <div className="max-w-5xl mx-auto">
       <header className="mb-8">
         <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
-          <MapIcon className="text-indigo-600" /> Career GPS
+          <MapIcon className="text-primary" /> Career GPS
         </h1>
         <p className="text-slate-500 mt-2">
           Personalized roadmap to your dream IT Tech Sales career.
@@ -189,7 +189,7 @@ export default function CareerGPSPage() {
 
       {!gpsData ? (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-10 text-center">
-          <div className="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-6">
+          <div className="w-20 h-20 bg-primary-light text-primary rounded-full flex items-center justify-center mx-auto mb-6">
             <Rocket className="w-10 h-10" />
           </div>
           <h2 className="text-2xl font-bold text-slate-900 mb-2">
@@ -208,7 +208,7 @@ export default function CareerGPSPage() {
               <input
                 type="text"
                 placeholder="e.g. Enterprise Account Executive"
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-primary outline-none"
                 value={inputs.target_role}
                 onChange={(e) =>
                   setInputs({ ...inputs, target_role: e.target.value })
@@ -222,7 +222,7 @@ export default function CareerGPSPage() {
               <input
                 type="text"
                 placeholder="e.g. SaaS, Cybersecurity, AI Infrastructure"
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-primary outline-none"
                 value={inputs.career_interests}
                 onChange={(e) =>
                   setInputs({ ...inputs, career_interests: e.target.value })
@@ -236,7 +236,7 @@ export default function CareerGPSPage() {
               <input
                 type="text"
                 placeholder="e.g. Docker, AWS, React, Advanced CRM"
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-primary outline-none"
                 value={inputs.learning_interests}
                 onChange={(e) =>
                   setInputs({ ...inputs, learning_interests: e.target.value })
@@ -250,7 +250,7 @@ export default function CareerGPSPage() {
               </label>
               <textarea
                 placeholder="e.g. Lead a global sales division at a top-tier tech firm"
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none h-24"
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-primary outline-none h-24"
                 value={inputs.long_term_goal}
                 onChange={(e) =>
                   setInputs({ ...inputs, long_term_goal: e.target.value })
@@ -266,7 +266,7 @@ export default function CareerGPSPage() {
                 !inputs.career_interests ||
                 !inputs.long_term_goal
               }
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full bg-primary hover:bg-primary-dark text-white font-bold py-4 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {isGenerating ? (
                 <>
@@ -284,7 +284,7 @@ export default function CareerGPSPage() {
           <div className="lg:col-span-1 space-y-6 lg:sticky lg:top-8 self-start">
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
               <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
-                <Target className="w-5 h-5 text-indigo-600" /> Current Vision
+                <Target className="w-5 h-5 text-primary" /> Current Vision
               </h3>
               <div className="space-y-4">
                 <div>
@@ -300,14 +300,14 @@ export default function CareerGPSPage() {
                     Status
                   </span>
                   <div className="mt-1">
-                    <span className="px-2 py-1 bg-indigo-50 text-indigo-600 rounded text-[10px] font-bold uppercase tracking-widest">
+                    <span className="px-2 py-1 bg-primary-light text-primary rounded text-[10px] font-bold uppercase tracking-widest">
                       In Orbit
                     </span>
                   </div>
                 </div>
                 <button
                   onClick={() => setGpsData(null)}
-                  className="text-indigo-600 text-sm font-medium hover:underline mt-2 flex items-center gap-1 group"
+                  className="text-primary text-sm font-medium hover:underline mt-2 flex items-center gap-1 group"
                 >
                   Redefine Vision{" "}
                   <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
@@ -317,7 +317,7 @@ export default function CareerGPSPage() {
 
             <div className="bg-slate-900 p-6 rounded-2xl shadow-lg text-white">
               <h3 className="font-bold mb-2 flex items-center gap-2">
-                <Rocket className="w-5 h-5 text-indigo-400" /> Progress Status
+                <Rocket className="w-5 h-5 text-primary" /> Progress Status
               </h3>
               <div className="flex items-end gap-2 mb-1">
                 <span className="text-3xl font-bold">
@@ -341,7 +341,7 @@ export default function CareerGPSPage() {
                   animate={{
                     width: `${(milestones.filter((m) => m.status === "completed").length / milestones.length) * 100}%`,
                   }}
-                  className="bg-indigo-500 h-full shadow-[0_0_10px_rgba(99,102,241,0.5)]"
+                  className="bg-primary h-full shadow-[0_0_10px_rgba(99,102,241,0.5)]"
                 />
               </div>
               <p className="text-[10px] text-slate-500 mt-4 leading-relaxed italic">
@@ -369,7 +369,7 @@ export default function CareerGPSPage() {
                     {/* Milestone Indicator */}
                     <div
                       className={`absolute left-0 md:left-[1.15rem] top-1 w-6 h-6 rounded-full border-4 flex items-center justify-center transition-colors z-10
-                          ${milestone.status === "completed" ? "bg-indigo-600 border-indigo-200" : "bg-white border-slate-300"}
+                          ${milestone.status === "completed" ? "bg-primary border-primary-light" : "bg-white border-slate-300"}
                           hidden md:flex
                         `}
                     >
@@ -380,7 +380,7 @@ export default function CareerGPSPage() {
 
                     <div
                       className={`bg-white p-6 rounded-2xl shadow-sm border transition-all duration-300
-                          ${milestone.status === "completed" ? "border-green-200 bg-green-50/20" : "border-slate-200 group-hover:border-indigo-200"}
+                          ${milestone.status === "completed" ? "border-green-200 bg-green-50/20" : "border-slate-200 group-hover:border-primary-light"}
                         `}
                     >
                       <div className="flex justify-between items-start gap-4 mb-4">
@@ -403,7 +403,7 @@ export default function CareerGPSPage() {
                           onClick={() =>
                             toggleMilestone(milestone.id, milestone.status)
                           }
-                          className={`p-2 rounded-full transition-colors ${milestone.status === "completed" ? "text-green-600 bg-green-100" : "text-slate-300 hover:text-indigo-600 hover:bg-indigo-50"}`}
+                          className={`p-2 rounded-full transition-colors ${milestone.status === "completed" ? "text-green-600 bg-green-100" : "text-slate-300 hover:text-primary hover:bg-primary-light"}`}
                         >
                           <CheckCircle className="w-6 h-6" />
                         </button>
@@ -470,7 +470,7 @@ export default function CareerGPSPage() {
                                   </p>
                                 </div>
                               </div>
-                              <ExternalLink className="w-4 h-4 text-slate-300 group-hover/link:text-indigo-600 transition-colors" />
+                              <ExternalLink className="w-4 h-4 text-slate-300 group-hover/link:text-primary transition-colors" />
                             </a>
                           ))}
                         </div>
@@ -486,3 +486,4 @@ export default function CareerGPSPage() {
     </div>
   );
 }
+

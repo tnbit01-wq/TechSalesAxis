@@ -65,7 +65,16 @@ export default function RecommendationsPage() {
   const [isFetchingProfile, setIsFetchingProfile] = useState(false);
   const [filterExperience, setFilterExperience] = useState<string>("all");
   const [filterLocation, setFilterLocation] = useState<string>("");
+  const [debouncedLocation, setDebouncedLocation] = useState<string>("");
   const [filterMaxSalary, setFilterMaxSalary] = useState<string>("");
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedLocation(filterLocation);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [filterLocation]);
+
   const [currencySymbol, setCurrencySymbol] = useState<string>("$");
   const [isSyncing, setIsSyncing] = useState(false);
   const [filterSalesModel, setFilterSalesModel] = useState<string>("");
@@ -102,6 +111,9 @@ export default function RecommendationsPage() {
   });
 
   const fetchRecommendations = useCallback(async () => {
+    // Only fetch if we're not manually typing in the location field anymore
+    if (filterLocation !== debouncedLocation) return;
+    
     setLoading(true);
     setIsSyncing(true);
     try {
@@ -123,7 +135,7 @@ export default function RecommendationsPage() {
       }
       
       // Add Location & Salary & Sales DNA filters
-      if (filterLocation) url += `&location=${encodeURIComponent(filterLocation)}`;
+      if (debouncedLocation) url += `&location=${encodeURIComponent(debouncedLocation)}`;
       if (filterMaxSalary) url += `&max_salary=${encodeURIComponent(filterMaxSalary)}`;
       if (filterSalesModel) url += `&sales_model=${encodeURIComponent(filterSalesModel)}`;
       if (filterTargetMarket) url += `&target_market=${encodeURIComponent(filterTargetMarket)}`;
@@ -146,7 +158,7 @@ export default function RecommendationsPage() {
       setLoading(false);
       setIsSyncing(false);
     }
-  }, [router, activeFilters, filterLocation, filterMaxSalary, filterSalesModel, filterTargetMarket, searchTerm]);
+  }, [router, activeFilters, debouncedLocation, filterLocation, filterMaxSalary, filterSalesModel, filterTargetMarket, searchTerm]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -208,10 +220,36 @@ export default function RecommendationsPage() {
     }
   };
 
+  const trackProfileView = async (candidateId: string) => {
+    try {
+      console.log("[TRACKING] Starting profile view tracking for:", candidateId);
+      const token = awsAuth.getToken();
+      console.log("[TRACKING] Token exists:", !!token);
+      if (!token) {
+        console.log("[TRACKING] No token, skipping");
+        return;
+      }
+      console.log("[TRACKING] Sending POST to /analytics/profile/" + candidateId + "/view");
+      const response = await apiClient.post(
+        `/analytics/profile/${candidateId}/view`,
+        {},
+        token,
+      );
+      console.log("[TRACKING] ✓ Profile view tracked:", candidateId);
+      console.log("[TRACKING] Response:", response);
+    } catch (err: any) {
+      console.error("[TRACKING] ✗ Failed to track profile view:", candidateId);
+      console.error("[TRACKING] Error details:", err);
+    }
+  };
+
   const handleViewProfile = async (
     candidate: Candidate,
     tab: string = "resume",
   ) => {
+    // Track profile view
+    await trackProfileView(candidate.user_id);
+    
     setIsFetchingProfile(true);
     try {
       const token = awsAuth.getToken();
@@ -262,9 +300,9 @@ export default function RecommendationsPage() {
       <div className="min-h-screen flex items-center justify-center bg-slate-50/50">
         <div className="flex flex-col items-center gap-6">
           <div className="h-16 w-16 rounded-3xl bg-white border border-slate-200 flex items-center justify-center shadow-xl">
-            <div className="h-8 w-8 rounded-full border-4 border-indigo-600 border-t-transparent animate-spin" />
+            <div className="h-8 w-8 rounded-full border-4 border-primary border-t-transparent animate-spin" />
           </div>
-          <p className="text-indigo-600 font-black text-[10px] uppercase tracking-[0.4em]">
+          <p className="text-primary font-black text-[10px] uppercase tracking-[0.4em]">
             Calculating Best Match...
           </p>
         </div>
@@ -285,7 +323,7 @@ export default function RecommendationsPage() {
             <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
               <div>
                 <h1 className="text-3xl font-bold text-slate-900 tracking-tight">
-                  AI <span className="text-indigo-600">Recommendations</span>
+                  AI <span className="text-primary">Recommendations</span>
                 </h1>
                 <p className="text-slate-500 text-sm mt-1">
                   Discover the best candidates for your open roles
@@ -311,7 +349,7 @@ export default function RecommendationsPage() {
                     placeholder="Search by name, role, or skills..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 pl-11 pr-4 py-2.5 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
+                    className="w-full bg-slate-50 border border-slate-200 pl-11 pr-4 py-2.5 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
                   />
                 </div>
                 <div className="flex gap-2 flex-wrap">
@@ -325,7 +363,7 @@ export default function RecommendationsPage() {
                       onClick={() => toggleFilter(f.id)}
                       className={`px-3 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
                         activeFilters.includes(f.id)
-                          ? "bg-indigo-600 text-white shadow-md shadow-indigo-200"
+                          ? "bg-primary text-white shadow-md shadow-primary-light"
                           : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                       }`}
                     >
@@ -349,7 +387,7 @@ export default function RecommendationsPage() {
                     onClick={() => toggleExperienceFilter(band.id)}
                     className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                       filterExperience === band.id
-                        ? "bg-indigo-600 text-white shadow-md shadow-indigo-200"
+                        ? "bg-primary text-white shadow-md shadow-primary-light"
                         : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                     }`}
                   >
@@ -367,7 +405,7 @@ export default function RecommendationsPage() {
                     placeholder="Location..."
                     value={filterLocation}
                     onChange={(e) => setFilterLocation(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 pl-10 pr-4 py-2.5 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-indigo-500 transition-all"
+                    className="w-full bg-slate-50 border border-slate-200 pl-10 pr-4 py-2.5 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-primary transition-all"
                   />
                 </div>
 
@@ -380,7 +418,7 @@ export default function RecommendationsPage() {
                     placeholder="Budget..."
                     value={filterMaxSalary}
                     onChange={(e) => setFilterMaxSalary(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 pl-10 pr-4 py-2.5 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-indigo-500 transition-all"
+                    className="w-full bg-slate-50 border border-slate-200 pl-10 pr-4 py-2.5 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-primary transition-all"
                   />
                 </div>
 
@@ -388,7 +426,7 @@ export default function RecommendationsPage() {
                   <select
                     value={filterSalesModel}
                     onChange={(e) => setFilterSalesModel(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 px-4 py-2.5 rounded-lg text-sm text-slate-700 outline-none focus:border-indigo-500 transition-all cursor-pointer"
+                    className="w-full bg-white border-2 border-slate-300 px-4 py-2.5 rounded-lg text-sm text-slate-900 font-medium outline-none focus:border-primary focus:ring-2 focus:ring-primary/50 transition-all cursor-pointer"
                   >
                     <option value="">Sales Model...</option>
                     <option value="Transactional">Transactional</option>
@@ -401,7 +439,7 @@ export default function RecommendationsPage() {
                   <select
                     value={filterTargetMarket}
                     onChange={(e) => setFilterTargetMarket(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 px-4 py-2.5 rounded-lg text-sm text-slate-700 outline-none focus:border-indigo-500 transition-all cursor-pointer"
+                    className="w-full bg-white border-2 border-slate-300 px-4 py-2.5 rounded-lg text-sm text-slate-900 font-medium outline-none focus:border-primary focus:ring-2 focus:ring-primary/50 transition-all cursor-pointer"
                   >
                     <option value="">Target Market...</option>
                     <option value="SMB">SMB</option>
@@ -413,7 +451,7 @@ export default function RecommendationsPage() {
                 <button
                   onClick={handleApplyFilters}
                   disabled={isSyncing}
-                  className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-all shadow-md shadow-indigo-200 disabled:opacity-50 active:scale-95 flex items-center justify-center gap-2"
+                  className="px-4 py-2.5 bg-primary hover:bg-primary-dark text-white rounded-lg text-sm font-medium transition-all shadow-md shadow-primary-light disabled:opacity-50 active:scale-95 flex items-center justify-center gap-2"
                 >
                   {isSyncing ? (
                     <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -429,7 +467,7 @@ export default function RecommendationsPage() {
             {loading ? (
               <div className="flex items-center justify-center py-20">
                 <div className="flex flex-col items-center gap-4">
-                  <div className="h-8 w-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                  <div className="h-8 w-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                   <p className="text-slate-500 text-sm">Calculating best matches...</p>
                 </div>
               </div>
@@ -445,7 +483,7 @@ export default function RecommendationsPage() {
                               tier === "elite"
                                 ? "bg-orange-500 shadow-orange-200"
                                 : tier === "strong"
-                                  ? "bg-indigo-600 shadow-indigo-200"
+                                  ? "bg-primary shadow-primary-light"
                                   : "bg-slate-400 shadow-slate-200"
                             }`}
                           >
@@ -520,7 +558,7 @@ export default function RecommendationsPage() {
         {isFetchingProfile && (
           <div className="fixed inset-0 z-100 bg-slate-900/10 backdrop-blur-[2px] flex items-center justify-center animate-in fade-in duration-300">
             <div className="bg-white p-6 rounded-2xl shadow-2xl border border-white flex flex-col items-center gap-4">
-              <div className="h-12 w-12 rounded-2xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-200">
+              <div className="h-12 w-12 rounded-2xl bg-primary flex items-center justify-center shadow-lg shadow-primary-light">
                 <div className="h-6 w-6 border-4 border-white border-t-transparent rounded-full animate-spin" />
               </div>
               <p className="text-sm font-semibold text-slate-900">Analyzing match...</p>
@@ -588,15 +626,15 @@ function RecommendedCard({
       <div className="px-5 py-4 flex-1 flex flex-col gap-3">
         {/* Match Score Badge */}
         <div className={`px-3 py-2 rounded-lg text-center ${
-          isElite ? "bg-orange-50" : "bg-indigo-50"
+          isElite ? "bg-orange-50" : "bg-primary-light"
         }`}>
           <p className={`text-xs font-medium ${
-            isElite ? "text-orange-600" : "text-indigo-600"
+            isElite ? "text-orange-600" : "text-primary"
           }`}>
             {isElite ? "Best Match" : "Good Match"}
           </p>
           <p className={`text-xl font-bold ${
-            isElite ? "text-orange-700" : "text-indigo-700"
+            isElite ? "text-orange-700" : "text-primary-dark"
           }`}>
             {candidate.culture_match_score}%
           </p>
@@ -618,7 +656,7 @@ function RecommendedCard({
             </span>
             <span className={`px-2.5 py-1 rounded-md font-medium text-white ${
               candidate.experience === "fresher" ? "bg-blue-600" :
-              candidate.experience === "mid" ? "bg-indigo-600" :
+              candidate.experience === "mid" ? "bg-primary" :
               candidate.experience === "senior" ? "bg-purple-600" :
               "bg-slate-600"
             }`}>
@@ -633,7 +671,7 @@ function RecommendedCard({
                 {candidate.skills.slice(0, 2).map((skill) => (
                   <span
                     key={skill}
-                    className="px-2 py-1 bg-indigo-50 text-indigo-700 rounded-md text-xs font-medium"
+                    className="px-2 py-1 bg-primary-light text-primary-dark rounded-md text-xs font-medium"
                   >
                     {skill}
                   </span>
@@ -662,7 +700,7 @@ function RecommendedCard({
           className={`p-2.5 rounded-lg transition-all active:scale-95 flex-shrink-0 ${
             isElite
               ? "bg-orange-600 text-white hover:bg-orange-700"
-              : "bg-indigo-600 text-white hover:bg-indigo-700"
+              : "bg-primary text-white hover:bg-primary-dark"
           }`}
           title="Invite"
         >
@@ -672,3 +710,4 @@ function RecommendedCard({
     </div>
   );
 }
+

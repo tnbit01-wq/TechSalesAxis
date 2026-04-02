@@ -11,7 +11,7 @@ from src.services.candidate_service import CandidateService
 from src.services.notification_service import NotificationService
 from src.utils.pdf_generator import PDFGenerator
 from src.schemas.candidate import CandidateProfileUpdate, CandidateStats, CandidateJobResponse, JobApplicationResponse, JobApplicationDetailResponse
-from src.core.config import GOOGLE_API_KEY
+from src.core.config import GOOGLE_API_KEY, OPENAI_API_KEY
 from typing import List, Optional
 
 router = APIRouter(prefix="/candidate", tags=["candidate"])
@@ -147,16 +147,19 @@ async def update_profile(
         if is_completed:
             for field in ["experience", "years_of_experience"]:
                 if field in update_data:
-                    print(f"DEBUG: Stripping locked field {field} from profile update.")
-                    del update_data[field]
-
+                    # Log for debugging, but strip from update
+                    # print(f"DEBUG: Stripping locked field {field} from profile update.")
+                    update_data.pop(field)
+        
+        # 2. Update Profile Fields
         for key, value in update_data.items():
             # Ensure ARRAY fields get a list even if a string is provided
             if key in ["career_interests", "learning_interests"] and isinstance(value, str):
                 value = [s.strip() for s in value.split(",") if s.strip()]
             setattr(profile, key, value)
-            
-        # 2. Recalculate Completion Score
+        
+        # 3. Recalculate Completion Score
+        from ..services.candidate_service import CandidateService
         profile_dict = {c.name: getattr(profile, c.name) for c in profile.__table__.columns}
         completion_score = CandidateService.calculate_completion_score(profile_dict)
         
@@ -164,6 +167,7 @@ async def update_profile(
         profile.updated_at = datetime.now()
         
         db.commit()
+        db.refresh(profile)
         
         return {"status": "profile_updated", "completion_score": completion_score}
     except Exception as e:
@@ -338,6 +342,10 @@ async def update_resume(
         except Exception as e:
             print(f"DEBUG: Error extracting path from URL {resume_path}: {e}")
 
+    # ENSURE SUB-FOLDER: Resumes MUST be in the resumes/ subfolder
+    if not resume_path.startswith("resumes/"):
+        resume_path = f"resumes/{resume_path}"
+
     try:
         profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == user_id).first()
         if not profile:
@@ -350,20 +358,29 @@ async def update_resume(
         db.commit()
         
         # 2. Fire-and-forget: Processing happens in background
-        if GOOGLE_API_KEY:
-            # We want to use the RAW path (relative S3 key) for processing
+        # Check for API keys (OpenAI is primary, Google is fallback)
+        has_api_key = OPENAI_API_KEY or GOOGLE_API_KEY
+        
+        if has_api_key:
+            # Use sync wrapper for BackgroundTasks
             background_tasks.add_task(
-                ResumeService.parse_resume, 
+                ResumeService.parse_resume_sync, 
                 user_id, 
                 resume_path, 
                 GOOGLE_API_KEY
             )
             return {
                 "status": "processing", 
-                "message": "Resume linked successfully. AI extraction is running in the background."
+                "message": "Resume linked successfully. AI extraction is running in the background.",
+                "resume_path": resume_path
             }
         
-        return {"status": "resume_linked", "parsed": False, "message": "Resume uploaded but parsing skipped (missing API Key)"}
+        return {
+            "status": "resume_linked", 
+            "parsed": False, 
+            "message": "Resume uploaded but parsing skipped (missing API keys - configure OPENAI_API_KEY or GOOGLE_API_KEY)",
+            "resume_path": resume_path
+        }
     except Exception as e:
         db.rollback()
         print(f"Resume Upload Error: {str(e)}")
@@ -611,6 +628,72 @@ async def get_application_detail(
     if not detail:
         raise HTTPException(status_code=404, detail="Application not found")
     return detail
+
+@router.get("/recommended-jobs")
+async def get_recommended_jobs(
+    filter_type: str = "role_match",
+    location: Optional[str] = None,
+    experience_band: Optional[str] = None,
+    min_salary: Optional[float] = None,
+    max_salary: Optional[float] = None,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Get personalized job recommendations for the candidate.
+    
+    Filter types:
+    - role_match (default): Find lateral moves or promotions based on current role
+    - skills_focus: Leverage specialized skills for premium compensation
+    - opportunity_explorer: Discover unexpected opportunities via career path analysis
+    
+    Returns: Ranked jobs with match scores and reasoning
+    """
+    try:
+        result = await CandidateService.get_recommended_jobs(
+            user_id=user["sub"],
+            filter_type=filter_type,
+            location=location,
+            experience_band=experience_band,
+            min_salary=min_salary,
+            max_salary=max_salary,
+            exclude_applied=True,
+            limit=150
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/recommended-companies")
+async def get_recommended_companies(
+    filter_type: str = "culture_fit",
+    industry: Optional[List[str]] = None,
+    company_size: Optional[str] = None,
+    location: Optional[str] = None,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Get personalized company recommendations for the candidate.
+    
+    Filter types:
+    - culture_fit (default): Companies aligned with candidate's values & work style
+    - hiring_intent: Companies actively hiring for the candidate's profile
+    - growth_hub: High-growth companies that are breakout opportunities
+    
+    Returns: Ranked companies with match scores and hiring signals
+    """
+    try:
+        result = await CandidateService.get_recommended_companies(
+            user_id=user["sub"],
+            filter_type=filter_type,
+            industry=industry,
+            company_size=company_size,
+            location=location,
+            exclude_applied=True,
+            limit=100
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/recommendations")
 async def get_candidate_recommendations(

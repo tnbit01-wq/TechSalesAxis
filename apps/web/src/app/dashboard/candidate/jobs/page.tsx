@@ -20,7 +20,9 @@ import {
   Lock,
   Building2,
   X,
+  Palette,
 } from "lucide-react";
+import CompanyCultureGallery from "@/components/CompanyCultureGallery";
 
 interface Job {
   id: string;
@@ -32,6 +34,11 @@ interface Job {
   job_type: string;
   company_name: string;
   company_website?: string;
+  life_at_photo_urls?: string[];
+  brand_colors?: {
+    primary?: string;
+    secondary?: string;
+  };
   created_at: string;
   has_applied: boolean;
   is_saved: boolean;
@@ -73,6 +80,29 @@ export default function CandidateJobsPage() {
     };
     loadData();
   }, [router]);
+
+  // Track job view when a job is selected
+  useEffect(() => {
+    if (selectedJob) {
+      const trackJobView = async () => {
+        try {
+          const token = awsAuth.getToken();
+          if (!token) return;
+
+          await apiClient.post(
+            `/analytics/jobs/${selectedJob.id}/view`,
+            {},
+            token
+          );
+          console.log("✓ Job view tracked:", selectedJob.id);
+        } catch (err) {
+          console.error("Failed to track job view:", err);
+        }
+      };
+
+      trackJobView();
+    }
+  }, [selectedJob?.id]);
 
   const handleApply = async (jobId: string) => {
     setApplying(jobId);
@@ -150,7 +180,7 @@ export default function CandidateJobsPage() {
   if (loading) {
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600 mb-4"></div>
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary mb-4"></div>
         <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Loading Jobs...</p>
       </div>
     );
@@ -173,7 +203,7 @@ export default function CandidateJobsPage() {
                 placeholder="Search by title, location, company..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm"
+                className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 shadow-sm"
               />
             </div>
           </div>
@@ -183,7 +213,7 @@ export default function CandidateJobsPage() {
               <select
                 value={filterJobType}
                 onChange={(e) => setFilterJobType(e.target.value)}
-                className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm cursor-pointer font-medium text-slate-900"
+                className="px-3 py-2 bg-white border-2 border-slate-300 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/50 shadow-sm cursor-pointer font-medium text-slate-900"
               >
                 <option value="all">All Types</option>
                 <option value="remote">Remote</option>
@@ -196,7 +226,7 @@ export default function CandidateJobsPage() {
               <select
                 value={filterExperience}
                 onChange={(e) => setFilterExperience(e.target.value)}
-                className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm cursor-pointer font-medium text-slate-900"
+                className="px-3 py-2 bg-white border-2 border-slate-300 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/50 shadow-sm cursor-pointer font-medium text-slate-900"
               >
                 <option value="all">All Levels</option>
                 <option value="fresher">Fresher (0-1y)</option>
@@ -230,8 +260,8 @@ export default function CandidateJobsPage() {
               onClick={() => setSelectedJob(job)}
             >
               <div className="flex justify-between items-start mb-4">
-                <div className="h-12 w-12 bg-slate-50 rounded-2xl flex items-center justify-center border border-slate-100 group-hover:bg-indigo-50 transition-colors">
-                  <Building2 className="h-6 w-6 text-slate-400 group-hover:text-indigo-600" />
+                <div className="h-12 w-12 bg-slate-50 rounded-2xl flex items-center justify-center border border-slate-100 group-hover:bg-primary-light transition-colors">
+                  <Building2 className="h-6 w-6 text-slate-400 group-hover:text-primary" />
                 </div>
                 <button
                   onClick={(e) => {
@@ -241,8 +271,8 @@ export default function CandidateJobsPage() {
                   disabled={saving === job.id}
                   className={`p-2 rounded-xl transition-all ${
                     job.is_saved
-                      ? "bg-indigo-50 text-indigo-600"
-                      : "text-slate-400 hover:bg-slate-50 hover:text-indigo-600"
+                      ? "bg-primary-light text-primary"
+                      : "text-slate-400 hover:bg-slate-50 hover:text-primary"
                   }`}
                 >
                   <Pin className={`h-4 w-4 ${job.is_saved ? "fill-current" : ""}`} />
@@ -250,11 +280,11 @@ export default function CandidateJobsPage() {
               </div>
 
               <div className="flex-1">
-                <h2 className="text-lg font-bold text-slate-900 line-clamp-1 group-hover:text-indigo-600 transition-colors">
+                <h2 className="text-lg font-bold text-slate-900 line-clamp-1 group-hover:text-primary transition-colors">
                   {job.title}
                 </h2>
                 <div className="flex items-center gap-2 mt-1">
-                  <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider">{job.company_name}</span>
+                  <span className="text-xs font-bold text-primary uppercase tracking-wider">{job.company_name}</span>
                   <span className="h-1 w-1 rounded-full bg-slate-200" />
                   <span className="text-xs text-slate-500">{job.location || "Remote"}</span>
                 </div>
@@ -287,7 +317,7 @@ export default function CandidateJobsPage() {
             <div className="p-8 md:p-12 space-y-8">
               <div className="flex justify-between items-start">
                 <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-indigo-600 font-bold text-sm">
+                  <div className="flex items-center gap-2 text-primary font-bold text-sm">
                     <Building2 className="h-4 w-4" />
                     {selectedJob.company_name}
                   </div>
@@ -295,7 +325,7 @@ export default function CandidateJobsPage() {
                   <div className="flex flex-wrap gap-2">
                     <span className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold">{selectedJob.job_type}</span>
                     <span className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold">{selectedJob.experience_band}</span>
-                    <span className="px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-xl text-xs font-bold">{selectedJob.salary_range}</span>
+                    <span className="px-3 py-1.5 bg-primary-light text-primary-dark rounded-xl text-xs font-bold">{selectedJob.salary_range}</span>
                   </div>
                 </div>
                 <button 
@@ -312,6 +342,16 @@ export default function CandidateJobsPage() {
                   {selectedJob.description}
                 </p>
               </div>
+
+              {/* Company Culture Gallery */}
+              {selectedJob.life_at_photo_urls && selectedJob.life_at_photo_urls.length > 0 && (
+                <div className="pt-8 border-t border-slate-100">
+                  <CompanyCultureGallery 
+                    urls={selectedJob.life_at_photo_urls} 
+                    companyName={selectedJob.company_name} 
+                  />
+                </div>
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-8 border-y border-slate-100">
                 <div className="flex items-center gap-4">
@@ -343,7 +383,7 @@ export default function CandidateJobsPage() {
                       ? "bg-emerald-50 text-emerald-600 border border-emerald-200"
                       : assessmentStatus !== "completed"
                         ? "bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200"
-                        : "bg-indigo-600 text-white hover:bg-slate-900 shadow-xl shadow-indigo-200"
+                        : "bg-primary text-white hover:bg-slate-900 shadow-xl shadow-primary-light"
                   }`}
                 >
                   {applying === selectedJob.id ? (
@@ -367,7 +407,7 @@ export default function CandidateJobsPage() {
                   disabled={saving === selectedJob.id}
                   className={`h-14 px-8 rounded-2xl font-bold uppercase tracking-widest text-xs border transition-all flex items-center justify-center gap-2 ${
                     selectedJob.is_saved
-                      ? "bg-indigo-50 border-indigo-200 text-indigo-600"
+                      ? "bg-primary-light border-primary-light text-primary"
                       : "border-slate-200 hover:bg-slate-50 text-slate-500"
                   }`}
                 >
@@ -396,7 +436,7 @@ function SignalBadge({
     <div
       className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${
         highlight
-          ? "bg-indigo-600 text-white border-indigo-500 shadow-lg shadow-indigo-100"
+          ? "bg-primary text-white border-primary shadow-lg shadow-primary-light"
           : "bg-slate-50 text-slate-500 border-slate-100"
       }`}
     >
@@ -405,4 +445,5 @@ function SignalBadge({
     </div>
   );
 }
+
 

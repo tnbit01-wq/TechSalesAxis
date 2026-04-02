@@ -50,8 +50,10 @@ TALENTFLOW/
 ```powershell
 # Terminal 1: Backend
 cd apps/api
+cd c:\Users\Admin\Desktop\Projects\TALENTFLOW\apps\api
 $env:PYTHONPATH="."
-python -m uvicorn src.main:app --host 127.0.0.1 --port 8000 --reload
+$env:DATABASE_URL="postgresql://postgres:tX6v2KraCehQkZR@talentflow-db.cjymcuai297y.ap-southeast-2.rds.amazonaws.com:5432/talentflow"
+..\..\.venv\Scripts\python.exe -m uvicorn src.main:app --host 127.0.0.1 --port 8005 --reload
 
 # Terminal 2: Frontend
 cd apps/web
@@ -76,6 +78,7 @@ taskkill /F /IM node.exe
 | **Auth** | Custom JWT (FastAPI + Secrets Manager) + AWS SES OTP |
 | **AI** | Google Gemini 1.5 Flash + Groq Llama 3.3 (70B) |
 | **Video** | Jitsi Meet (open-source) |
+
 | **Storage** | AWS S3 (ap-south-1) + CloudFront CDN |
 | **Email** | AWS SES for OTP, Password Reset, Notifications |
 

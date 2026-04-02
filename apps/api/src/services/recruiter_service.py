@@ -7,7 +7,7 @@ from src.core.models import (
 from src.models.invitation import TeamInvitation
 from src.services.s3_service import S3Service
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func, text, desc, and_
+from sqlalchemy import func, text, desc, and_, or_
 import json
 import random
 import httpx
@@ -136,18 +136,43 @@ class RecruiterService:
 
     async def generate_company_bio(self, website_url: str) -> str:
         try:
+            if not website_url:
+                return ""
+                
             if not website_url.startswith(('http://', 'https://')):
                 website_url = 'https://' + website_url
+            
+            print(f"DEBUG: Fetching website: {website_url}")
+            
             async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
                 response = await client.get(website_url)
                 response.raise_for_status()
+            
             soup = BeautifulSoup(response.text, 'html.parser')
             for script in soup(["script", "style"]):
                 script.decompose()
+            
             clean_text = '\n'.join([line.strip() for line in soup.get_text().splitlines() if line.strip()])[:2000]
-            prompt = f"Extract a professional 2-3 sentence bio for a recruiter from this text:\n{clean_text}\nReturn ONLY the bio."
-            bio = await self._call_ai(prompt, "You are an elite company biographer.")
-            return bio.replace('"', '').replace('**', '').strip() if bio else ""
+            
+            if not clean_text.strip():
+                print("DEBUG: No text extracted from website")
+                return ""
+            
+            prompt = f"Extract a professional 2-3 sentence bio for a recruiter from this company website text:\n{clean_text}\nReturn ONLY the bio, no quotes or markdown."
+            bio = await self._call_ai(prompt, "You are an elite company biographer. Extract professional company information.")
+            
+            if bio:
+                cleaned = bio.replace('"', '').replace('**', '').strip()
+                print(f"DEBUG: Generated bio: {cleaned}")
+                return cleaned
+            return ""
+            
+        except httpx.ConnectError as e:
+            print(f"DEBUG: Network error connecting to website: {str(e)}")
+            return ""
+        except httpx.TimeoutException as e:
+            print(f"DEBUG: Timeout fetching website: {str(e)}")
+            return ""
         except Exception as e:
             print(f"DEBUG: Bio generation failed: {str(e)}")
             return ""
@@ -529,28 +554,48 @@ class RecruiterService:
 
     async def get_recommended_candidates(self, user_id: str, filter_type: str = "culture_fit", params: Dict[str, Any] = {}):
         """
-        AI-powered High-Precision Candidate Recommendation Engine.
-        Matches on: Skills (60%), Experience (20%), Salary Alignment (10%), Location Preference (10%).
+        AI-powered High-Precision Candidate Recommendation Engine - Master Matching Engine.
+        
+        Three distinct matching modes:
+        1. 'culture_fit': Behavioral + ICP Alignment (40% weight) + Skills (30%) + Experience (20%) + Salary (10%)
+        2. 'skill_match': Technical expertise focus (60% weight) + Experience (20%) + Skills matching (20%)
+        3. 'profile_matching' (Expert View): Holistic Master Match - Synthesis of ALL factors via AI
+           - Candidate Behavioral DNA vs Recruiter ICP (40%)
+           - Technical Alignment (30%)
+           - Experience Band Match (15%)
+           - Profile Strength & Trust (15%)
         """
         db = SessionLocal()
         try:
-            # 1. Get recruiter's job/company profile context
-            # If job_id or context provided, use it. Otherwise use generic company context.
+            # 1. Context building
             target_job = None
             if params.get("job_id"):
                 target_job = db.query(Job).filter(Job.id == params["job_id"]).first()
             
-            # 2. Base query: Candidates with completed profiles
+            # Recruiter assessment data for all AI-matching modes
+            recruiter_assessments = None
+            recruiter_icp = ""
+            
+            if filter_type in ["culture_fit", "profile_matching"]:
+                recruiter_assessments = db.query(RecruiterAssessmentResponse).filter(
+                    RecruiterAssessmentResponse.user_id == user_id
+                ).all()
+                if recruiter_assessments:
+                    recruiter_icp = " | ".join([f"{r.question_text}: {r.answer_text}" for r in recruiter_assessments])
+            
+            # 2. Base query: Include verified candidates and shadow profiles
             query = db.query(CandidateProfile).filter(
-                CandidateProfile.assessment_status == 'completed'
+                or_(
+                    CandidateProfile.assessment_status == 'completed',
+                    CandidateProfile.is_shadow_profile == True
+                )
             )
             
-            # 3. Dynamic Filters (User-Driven)
+            # 3. Dynamic Filters
             if params.get("location"):
                 query = query.filter(CandidateProfile.location.ilike(f"%{params['location']}%"))
             
             if params.get("experience_band") and params["experience_band"] != "all":
-                # Map years to band for strict filtering if requested (Updated Protocol: 0-1, 1-5, 5-10, 10+)
                 if params["experience_band"] == "fresher":
                     query = query.filter(CandidateProfile.years_of_experience <= 1)
                 elif params["experience_band"] == "mid":
@@ -560,17 +605,25 @@ class RecruiterService:
                 elif params["experience_band"] == "leadership":
                     query = query.filter(CandidateProfile.years_of_experience > 10)
 
-            # 4. Fetch candidates for ranking
-            candidates = query.limit(100).all()
+            candidates = query.limit(200).all()
             
-            # 5. Precision Scoring Logic
-            results = []
-            
-            # Target requirements from Job context if available
+            # 4. Build target skills from job or active jobs
             target_skills = set(target_job.skills_required if target_job and target_job.skills_required else (params.get("required_skills") or []))
+            
+            if not target_skills:
+                active_jobs = db.query(Job).filter(Job.recruiter_id == user_id, Job.status == "active").all()
+                if active_jobs:
+                    for job in active_jobs:
+                        if job.skills_required:
+                            target_skills.update([s.lower() for s in job.skills_required])
+                
+                if not target_skills:
+                    latest_job = db.query(Job).filter(Job.recruiter_id == user_id).order_by(Job.created_at.desc()).first()
+                    if latest_job and latest_job.skills_required:
+                        target_skills = set([s.lower() for s in latest_job.skills_required])
+
             target_exp_band = target_job.experience_band if target_job else params.get("experience_band")
             
-            # Estimated target salary parsing (e.g. "$100k - $150k" -> 150000)
             target_max_salary = 0
             if target_job and target_job.salary_range:
                 nums = re.findall(r"\d+", target_job.salary_range.replace(",","").replace("k","000"))
@@ -579,72 +632,284 @@ class RecruiterService:
                 try: target_max_salary = float(params["max_salary"])
                 except: pass
 
+            # 5. Score candidates according to filter_type
+            results = []
+            
             for c in candidates:
-                base_score = 50 # Start from baseline
-                reasoning_steps = []
-
-                # A. Skill Matching (Weight: 60%)
-                c_skills = set(c.skills or [])
-                if target_skills:
-                    overlap = c_skills.intersection(target_skills)
-                    match_ratio = len(overlap) / len(target_skills) if target_skills else 0
-                    skill_bonus = int(match_ratio * 40)
-                    base_score += skill_bonus
-                    if overlap: reasoning_steps.append(f"Matched {len(overlap)} core skills")
-
-                # B. Experience Alignment (Weight: 20%)
-                years = c.years_of_experience or 0
-                exp_status = "mid"
-                if years <= 1: exp_status = "fresher"
-                elif years > 10: exp_status = "leadership"
-                elif years > 5: exp_status = "senior"
-
-                if target_exp_band and target_exp_band.lower() == exp_status:
-                    base_score += 15
-                    reasoning_steps.append("Experience band matches role")
-                elif target_exp_band:
-                    # Partial match for adjacent bands
-                    base_score += 5
+                is_shadow = getattr(c, 'is_shadow_profile', False)
                 
-                # C. Salary Alignment (Weight: 10%)
-                if target_max_salary > 0 and c.expected_salary:
-                    if c.expected_salary <= target_max_salary:
-                        base_score += 10
-                        reasoning_steps.append("Within salary expectations")
-                    elif c.expected_salary <= target_max_salary * 1.15: # 15% buffer
-                        base_score += 5
-                        reasoning_steps.append("Slightly above salary range")
-
-                # D. Assessment Performance (Bonus)
-                if (c.final_profile_score or 0) > 80:
-                    base_score += 5
-                    reasoning_steps.append("Verified High-Trust candidate")
-
-                # Normalize and Caps
-                match_score = min(99, base_score)
-                reasoning = " | ".join(reasoning_steps) if reasoning_steps else "Aligned with IT Sales profile."
-
+                if filter_type == "profile_matching":
+                    # **EXPERT VIEW: Master Match Algorithm**
+                    if is_shadow:
+                        # Shadow profiles: Use pedigree-based matching
+                        score, reasoning = await self._expert_match_score_shadow(c, target_skills, target_exp_band, target_max_salary)
+                    else:
+                        # Verified candidates: Full assessment analysis
+                        score, reasoning = await self._expert_match_score(
+                            c, target_skills, target_exp_band, target_max_salary,
+                            recruiter_icp=recruiter_icp,
+                            recruiter_assessments=recruiter_assessments,
+                            user_id=user_id,
+                            db=db
+                        )
+                elif filter_type == "skill_match":
+                    # **SKILLS FOCUS**
+                    score, reasoning = self._score_skill_match(c, target_skills, target_exp_band, target_max_salary, is_shadow)
+                else:
+                    # **CULTURE FIT (Default)**
+                    score, reasoning = await self._score_culture_fit(
+                        c, target_skills, target_exp_band, target_max_salary,
+                        is_shadow=is_shadow,
+                        recruiter_icp=recruiter_icp,
+                        db=db
+                    )
+                
                 results.append({
                     "user_id": str(c.user_id),
-                    "full_name": c.full_name or "Anonymous Talent",
+                    "full_name": c.full_name or ("Potential Lead" if is_shadow else "Anonymous Talent"),
                     "current_role": c.current_role or "Sales Professional",
-                    "experience": exp_status,
-                    "years_of_experience": years,
-                    "culture_match_score": match_score,
+                    "experience": self._get_exp_label(c.years_of_experience or 0),
+                    "years_of_experience": c.years_of_experience or 0,
+                    "culture_match_score": score,
                     "match_reasoning": reasoning,
                     "skills": c.skills or [],
                     "profile_photo_url": c.profile_photo_url,
                     "resume_path": S3Service.get_signed_url(c.resume_path) if c.resume_path else None,
                     "identity_verified": c.identity_verified or False,
-                    "profile_strength": c.profile_strength or "Medium",
-                    "expected_salary": float(c.expected_salary or 0)
+                    "profile_strength": "Lead" if is_shadow else (c.profile_strength or "Medium"),
+                    "expected_salary": float(c.expected_salary or 0),
+                    "is_shadow": is_shadow,
+                    "assessment_status": "verified" if not is_shadow else "passive_lead"
                 })
             
-            # Sort by score
             results.sort(key=lambda x: x["culture_match_score"], reverse=True)
             return results
         finally:
             db.close()
+
+    async def _expert_match_score(self, candidate, target_skills, target_exp_band, target_max_salary, 
+                                   recruiter_icp="", recruiter_assessments=None, user_id="", db=None):
+        """
+        **MASTER EXPERT VIEW SCORING**
+        Holistic synthesis of behavioral DNA, ICP alignment, technical fit, and professional pedigree.
+        """
+        base_score = 35  # Lower base to allow factors to shine
+        reasoning_steps = []
+        
+        # ==== A. BEHAVIORAL & PSYCHOMETRIC DNA (40% weight) ====
+        profile_score = db.query(ProfileScore).filter(ProfileScore.user_id == candidate.user_id).first() if db else None
+        behavioral_score = getattr(profile_score, 'behavioral_score', 0) or 0
+        psychometric_score = getattr(profile_score, 'psychometric_score', 0) or 0
+        
+        if behavioral_score > 85:
+            base_score += 15
+            reasoning_steps.append("Outstanding Behavioral Profile")
+        elif behavioral_score > 75:
+            base_score += 10
+            reasoning_steps.append("Strong Behavioral Fit")
+        elif behavioral_score > 60:
+            base_score += 5
+            reasoning_steps.append("Acceptable Behavior Traits")
+        
+        if psychometric_score > 80:
+            base_score += 10
+            reasoning_steps.append("Excellent Psychometric Match")
+        elif psychometric_score > 65:
+            base_score += 5
+            reasoning_steps.append("Solid Psychometric Alignment")
+        
+        # ==== B. AI ICP ALIGNMENT (15% weight) ====
+        if recruiter_icp:
+            candidate_data = f"Bio: {candidate.bio} | Role: {candidate.current_role} | Achievements: {candidate.major_achievements}"
+            prompt = f"""You are an Expert Recruitment Strategist. Analyze this candidate's fit:
+RECRUITER NEEDS: {recruiter_icp}
+CANDIDATE: {candidate_data}
+
+Rate ICP alignment on 0-100. Output format: SCORE: [number] | REASON: [one sentence]"""
+            
+            icp_res = await self._call_ai(prompt, "You are an expert recruiter analyzing ICP fit.")
+            if icp_res and "SCORE:" in icp_res:
+                try:
+                    score_part = icp_res.split("SCORE:")[1].split("|")[0].strip()
+                    icp_score = min(100, max(0, int(float(score_part))))
+                    base_score += int((icp_score / 100) * 15)
+                    reason_part = icp_res.split("REASON:")[1].strip() if "REASON:" in icp_res else ""
+                    if reason_part:
+                        reasoning_steps.append(f"ICP Match: {reason_part}")
+                except:
+                    pass
+        
+        # ==== C. TECHNICAL & SKILLS ALIGNMENT (25% weight) ====
+        c_skills = set([s.lower() for s in (candidate.skills or [])])
+        if target_skills:
+            target_skills_lower = set([s.lower() for s in target_skills])
+            overlap = c_skills.intersection(target_skills_lower)
+            fuzzy_matches = 0
+            
+            if len(overlap) < len(target_skills_lower):
+                remaining = target_skills_lower - overlap
+                for ts in remaining:
+                    if any(ts in cs or cs in ts for cs in c_skills):
+                        fuzzy_matches += 1
+            
+            total_matches = len(overlap) + (fuzzy_matches * 0.5)
+            match_ratio = total_matches / len(target_skills_lower) if target_skills_lower else 0
+            skill_bonus = int(match_ratio * 20)
+            base_score += skill_bonus
+            
+            if overlap:
+                reasoning_steps.append(f"Exact Matches: {len(overlap)}")
+            if fuzzy_matches:
+                reasoning_steps.append(f"Related Skills: {fuzzy_matches}")
+        
+        # ==== D. EXPERIENCE BAND (10% weight) ====
+        years = candidate.years_of_experience or 0
+        exp_status = self._get_exp_label(years)
+        if target_exp_band and target_exp_band.lower() == exp_status:
+            base_score += 8
+            reasoning_steps.append("Perfect Experience Band")
+        elif target_exp_band:
+            base_score += 3
+            reasoning_steps.append("Adjacent Experience Level")
+        
+        # ==== E. PROFILE STRENGTH & TRUST (10% weight) ====
+        profile_strength = candidate.final_profile_score or 0
+        if profile_strength > 85:
+            base_score += 8
+            reasoning_steps.append("Elite Profile Quality")
+        elif profile_strength > 70:
+            base_score += 5
+            reasoning_steps.append("Verified High-Trust")
+        
+        match_score = min(99, base_score)
+        reasoning = " | ".join(reasoning_steps) if reasoning_steps else "Professional fit for your organization."
+        return match_score, reasoning
+
+    async def _expert_match_score_shadow(self, candidate, target_skills, target_exp_band, target_max_salary):
+        """
+        EXPERT VIEW for SHADOW PROFILES (passive leads from bulk upload).
+        Uses pedigree and role analysis since no assessment data exists.
+        """
+        base_score = 30  # Lower base for passive leads
+        reasoning_steps = []
+        
+        # Current Role as Proxy for Level
+        role = (candidate.current_role or "").lower()
+        years = candidate.years_of_experience or 0
+        
+        # Role sophistication scoring
+        if any(kw in role for kw in ["director", "vp", "head", "chief", "founder"]):
+            base_score += 15
+            reasoning_steps.append("Leadership Background")
+        elif any(kw in role for kw in ["manager", "senior", "lead"]):
+            base_score += 10
+            reasoning_steps.append("Management Experience")
+        elif any(kw in role for kw in ["specialist", "engineer", "architect"]):
+            base_score += 8
+            reasoning_steps.append("Technical Expertise")
+        
+        # Experience band match
+        exp_status = self._get_exp_label(years)
+        if target_exp_band and target_exp_band.lower() == exp_status:
+            base_score += 10
+            reasoning_steps.append(f"Matches {target_exp_band} requirement")
+        
+        # Skills match (from parsed data if available)
+        c_skills = set([s.lower() for s in (candidate.skills or [])])
+        if c_skills and target_skills:
+            target_skills_lower = set([s.lower() for s in target_skills])
+            overlap = c_skills.intersection(target_skills_lower)
+            if overlap:
+                match_ratio = len(overlap) / len(target_skills_lower)
+                skill_bonus = int(match_ratio * 20)
+                base_score += skill_bonus
+                reasoning_steps.append(f"Has {len(overlap)} key skills")
+        
+        # Salary alignment
+        if candidate.expected_salary and target_max_salary:
+            if candidate.expected_salary <= target_max_salary:
+                base_score += 5
+                reasoning_steps.append("Salary aligned")
+        
+        match_score = min(99, base_score)
+        reasoning = " | ".join(reasoning_steps) if reasoning_steps else "Passive lead with relevant background."
+        reasoning += " [Passive Candidate]"
+        return match_score, reasoning
+
+    async def _score_culture_fit(self, candidate, target_skills, target_exp_band, target_max_salary, 
+                                  is_shadow=False, recruiter_icp="", db=None):
+        """Culture Fit Scoring - Behavioral + ICP Focus"""
+        base_score = 50
+        reasoning_steps = []
+        
+        if not is_shadow:
+            # Behavioral scoring for verified candidates
+            profile_score = db.query(ProfileScore).filter(ProfileScore.user_id == candidate.user_id).first() if db else None
+            behavioral_score = getattr(profile_score, 'behavioral_score', 0) or 0
+            
+            if behavioral_score > 80:
+                base_score += 20
+                reasoning_steps.append("Elite Behavioral Score")
+            elif behavioral_score > 60:
+                base_score += 10
+                reasoning_steps.append("Strong Team Player")
+        
+        # Skills matching (30% for culture fit)
+        c_skills = set([s.lower() for s in (candidate.skills or [])])
+        if target_skills:
+            target_skills_lower = set([s.lower() for s in target_skills])
+            overlap = c_skills.intersection(target_skills_lower)
+            match_ratio = len(overlap) / len(target_skills_lower) if target_skills_lower else 0
+            skill_bonus = int(match_ratio * 20)
+            base_score += skill_bonus
+            if overlap:
+                reasoning_steps.append(f"Matched {len(overlap)} core skills")
+        
+        # Experience alignment
+        years = candidate.years_of_experience or 0
+        exp_status = self._get_exp_label(years)
+        if target_exp_band and target_exp_band.lower() == exp_status:
+            base_score += 10
+            reasoning_steps.append("Experience band matches")
+        
+        match_score = min(99, base_score)
+        reasoning = " | ".join(reasoning_steps) if reasoning_steps else "Good culture alignment."
+        return match_score, reasoning
+
+    def _score_skill_match(self, candidate, target_skills, target_exp_band, target_max_salary, is_shadow=False):
+        """Skills-focused matching"""
+        base_score = 50
+        reasoning_steps = []
+        
+        c_skills = set([s.lower() for s in (candidate.skills or [])])
+        if target_skills:
+            target_skills_lower = set([s.lower() for s in target_skills])
+            overlap = c_skills.intersection(target_skills_lower)
+            match_ratio = len(overlap) / len(target_skills_lower) if target_skills_lower else 0
+            skill_bonus = int(match_ratio * 40)
+            base_score += skill_bonus
+            if overlap:
+                reasoning_steps.append(f"Matched {len(overlap)} core skills")
+        
+        years = candidate.years_of_experience or 0
+        exp_status = self._get_exp_label(years)
+        if target_exp_band and target_exp_band.lower() == exp_status:
+            base_score += 10
+            reasoning_steps.append("Experience matches")
+        
+        match_score = min(99, base_score)
+        reasoning = " | ".join(reasoning_steps) if reasoning_steps else "Skills aligned with requirements."
+        return match_score, reasoning
+
+    def _get_exp_label(self, years: int) -> str:
+        """Convert years of experience to experience band label"""
+        if years <= 1:
+            return "fresher"
+        elif years > 10:
+            return "leadership"
+        elif years > 5:
+            return "senior"
+        return "mid"
 
     async def create_job(self, user_id: str, job_data: dict):
         db = SessionLocal()

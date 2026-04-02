@@ -129,7 +129,7 @@ export default function CandidateHeader({ profile }: { profile?: ProfileData | n
         onClick={toggleChatMode}
         className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-black text-white rounded-2xl border border-slate-800 transition-all shadow-lg active:scale-95 group overflow-hidden relative"
       >
-        <Sparkles className="h-4 w-4 text-indigo-400 group-hover:rotate-12 transition-transform" />
+        <Sparkles className="h-4 w-4 text-primary group-hover:rotate-12 transition-transform" />
         <span className="text-[11px] font-black tracking-[0.1em] uppercase">AI Assistant</span>
       </button>
 
@@ -139,10 +139,10 @@ export default function CandidateHeader({ profile }: { profile?: ProfileData | n
           className="relative p-2.5 bg-white/80 backdrop-blur-md rounded-2xl border border-slate-200 hover:bg-white transition-all shadow-sm group active:scale-95 flex items-center gap-2"
         >
           <Bell
-            className={`h-5 w-5 ${unreadCount > 0 ? "text-indigo-600 animate-pulse" : "text-slate-500"}`}
+            className={`h-5 w-5 ${unreadCount > 0 ? "text-primary animate-pulse" : "text-slate-500"}`}
           />
           {unreadCount > 0 && (
-            <span className="absolute top-2 right-2 h-2.5 w-2.5 bg-indigo-600 rounded-full ring-2 ring-white"></span>
+            <span className="absolute top-2 right-2 h-2.5 w-2.5 bg-primary rounded-full ring-2 ring-white"></span>
           )}
         </button>
 
@@ -150,12 +150,12 @@ export default function CandidateHeader({ profile }: { profile?: ProfileData | n
           <div className="absolute right-0 mt-4 w-104 bg-white border border-slate-200 rounded-3xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-4 duration-500 origin-top-right">
             <div className="p-7 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
               <div className="flex items-center gap-3">
-                <div className="h-8 w-8 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-200 rotate-3 group-hover:rotate-0 transition-transform">
+                <div className="h-8 w-8 bg-primary rounded-xl flex items-center justify-center shadow-lg shadow-primary-light rotate-3 group-hover:rotate-0 transition-transform">
                   <Zap className="h-4 w-4 text-white" />
                 </div>
                 <div>
                   <h3 className="text-[11px] font-black text-slate-900 uppercase tracking-[0.2em] italic">
-                    Notification <span className="text-indigo-600">Center</span>
+                    Notification <span className="text-primary">Center</span>
                   </h3>
                   <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
                     Your latest updates
@@ -166,7 +166,7 @@ export default function CandidateHeader({ profile }: { profile?: ProfileData | n
                 {unreadCount > 0 && (
                   <button
                     onClick={markAllRead}
-                    className="text-[9px] font-black text-indigo-600 uppercase tracking-widest hover:text-slate-900 transition-all border-b border-transparent hover:border-slate-900 pb-0.5"
+                    className="text-[9px] font-black text-primary uppercase tracking-widest hover:text-slate-900 transition-all border-b border-transparent hover:border-slate-900 pb-0.5"
                   >
                     SYNC ALL
                   </button>
@@ -184,7 +184,7 @@ export default function CandidateHeader({ profile }: { profile?: ProfileData | n
               {notifications.length === 0 ? (
                 <div className="py-20 text-center flex flex-col items-center justify-center">
                   <div className="h-16 w-16 bg-slate-50 rounded-4xl flex items-center justify-center mb-6 border border-slate-100/60 relative">
-                    <div className="absolute inset-0 bg-indigo-50 rounded-4xl animate-ping opacity-20 scale-125" />
+                    <div className="absolute inset-0 bg-primary-light rounded-4xl animate-ping opacity-20 scale-125" />
                     <Sparkles className="h-7 w-7 text-slate-200" />
                   </div>
                   <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 mb-2">
@@ -201,12 +201,12 @@ export default function CandidateHeader({ profile }: { profile?: ProfileData | n
                       key={notif.id}
                       className={`group p-5 rounded-4xl transition-all cursor-pointer relative overflow-hidden ${
                         !notif.is_read
-                          ? "bg-indigo-50/40 hover:bg-indigo-50 border border-indigo-100/50 shadow-sm"
+                          ? "bg-primary-light/40 hover:bg-primary-light border border-primary-light/50 shadow-sm"
                           : "hover:bg-slate-50/80 border border-transparent"
                       }`}
                     >
                       {!notif.is_read && (
-                        <div className="absolute top-0 left-0 w-1 h-full bg-indigo-600" />
+                        <div className="absolute top-0 left-0 w-1 h-full bg-primary" />
                       )}
 
                       <div className="flex justify-between gap-4 relative z-10">
@@ -240,8 +240,8 @@ export default function CandidateHeader({ profile }: { profile?: ProfileData | n
                             </div>
                             {!notif.is_read && (
                               <div className="flex items-center gap-1">
-                                <div className="h-1 w-1 bg-indigo-600 rounded-full animate-pulse" />
-                                <span className="text-[8px] font-black text-indigo-600 uppercase tracking-widest">
+                                <div className="h-1 w-1 bg-primary rounded-full animate-pulse" />
+                                <span className="text-[8px] font-black text-primary uppercase tracking-widest">
                                   UNREAD TRANSMISSION
                                 </span>
                               </div>
@@ -254,7 +254,7 @@ export default function CandidateHeader({ profile }: { profile?: ProfileData | n
                                     "/dashboard/candidate/notifications",
                                   )
                                 }
-                                className="px-2 py-0.5 bg-indigo-600 text-white rounded text-[8px] font-black uppercase tracking-widest hover:bg-slate-900 transition-colors"
+                                className="px-2 py-0.5 bg-primary text-white rounded text-[8px] font-black uppercase tracking-widest hover:bg-slate-900 transition-colors"
                               >
                                 PICK SLOT
                               </button>
@@ -265,7 +265,7 @@ export default function CandidateHeader({ profile }: { profile?: ProfileData | n
                         <div className="flex flex-col gap-2 opacity-0 translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300">
                           <button
                             onClick={(e) => markAsRead(notif.id, e)}
-                            className="p-2 bg-white border border-slate-200 rounded-xl text-indigo-600 hover:bg-slate-900 hover:text-white hover:border-slate-900 shadow-md transition-all active:scale-90"
+                            className="p-2 bg-white border border-slate-200 rounded-xl text-primary hover:bg-slate-900 hover:text-white hover:border-slate-900 shadow-md transition-all active:scale-90"
                             title="Mark read"
                           >
                             <Check className="h-3.5 w-3.5" />
@@ -293,7 +293,7 @@ export default function CandidateHeader({ profile }: { profile?: ProfileData | n
                 className="flex items-center justify-center gap-2 w-full"
               >
                 <div className="h-px flex-1 bg-white/10" />
-                <span className="text-[9px] font-black text-white uppercase tracking-[0.3em] group-hover:text-indigo-400 transition-colors">
+                <span className="text-[9px] font-black text-white uppercase tracking-[0.3em] group-hover:text-primary transition-colors">
                   ENTER ANALYTICS NEXUS
                 </span>
                 <div className="h-px flex-1 bg-white/10" />
@@ -305,3 +305,4 @@ export default function CandidateHeader({ profile }: { profile?: ProfileData | n
     </div>
   );
 }
+

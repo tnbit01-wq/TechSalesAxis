@@ -18,11 +18,12 @@ class S3Service:
         )
 
     @staticmethod
-    def upload_file(file_content: bytes, file_path: str, content_type: str = "application/octet-stream") -> bool:
+    def upload_file(file_content: bytes, file_path: str, content_type: str = "application/octet-stream", bucket_name: Optional[str] = None) -> bool:
         try:
             s3 = S3Service.get_client()
+            target_bucket = bucket_name or S3_BUCKET_NAME
             s3.put_object(
-                Bucket=S3_BUCKET_NAME,
+                Bucket=target_bucket,
                 Key=file_path,
                 Body=file_content,
                 ContentType=content_type
@@ -33,9 +34,11 @@ class S3Service:
             return False
 
     @staticmethod
-    def get_signed_url(file_path: str, expires_in: int = 3600) -> Optional[str]:
+    def get_signed_url(file_path: str, expires_in: int = 3600, bucket_name: Optional[str] = None) -> Optional[str]:
         if not file_path:
             return None
+        
+        target_bucket = bucket_name or S3_BUCKET_NAME
         
         # Determine content type and disposition
         is_pdf = file_path.lower().endswith('.pdf')
@@ -43,7 +46,7 @@ class S3Service:
         
         # If it's a full URL, we need to extract the key to sign it
         if file_path.startswith("http"):
-            if S3_BUCKET_NAME in file_path:
+            if target_bucket in file_path:
                 # Extract the key after the bucket domain
                 try:
                     parts = file_path.split(".com/")
@@ -51,7 +54,7 @@ class S3Service:
                         # Strip query parameters if they exist
                         file_path = parts[1].split('?')[0]
                     else:
-                        parts = file_path.split(f"{S3_BUCKET_NAME}/")
+                        parts = file_path.split(f"{target_bucket}/")
                         if len(parts) > 1:
                             file_path = parts[1].split('?')[0]
                 except:
@@ -62,7 +65,7 @@ class S3Service:
         try:
             s3 = S3Service.get_client()
             params = {
-                'Bucket': S3_BUCKET_NAME, 
+                'Bucket': target_bucket, 
                 'Key': file_path,
                 'ResponseContentDisposition': 'inline'
             }
@@ -80,14 +83,15 @@ class S3Service:
             return None
 
     @staticmethod
-    def get_upload_presigned_url(file_path: str, content_type: str, expires_in: int = 3600) -> Optional[str]:
+    def get_upload_presigned_url(file_path: str, content_type: str, expires_in: int = 3600, bucket_name: Optional[str] = None) -> Optional[str]:
         """Generate a presigned URL for uploading a file directly from the browser."""
         try:
             s3 = S3Service.get_client()
+            target_bucket = bucket_name or S3_BUCKET_NAME
             url = s3.generate_presigned_url(
                 'put_object',
                 Params={
-                    'Bucket': S3_BUCKET_NAME,
+                    'Bucket': target_bucket,
                     'Key': file_path,
                     'ContentType': content_type
                 },

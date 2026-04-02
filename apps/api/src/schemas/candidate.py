@@ -32,7 +32,7 @@ class CandidateProfileUpdate(BaseModel):
     identity_proof_path: Optional[str] = None
     education_history: Optional[List[Dict[str, Any]]] = None
     experience_history: Optional[List[Dict[str, Any]]] = None
-    career_gap_report: Optional[Dict[str, Any]] = None
+    career_gap_report: Optional[Union[Dict[str, Any], List[Any]]] = None
 
     class Config:
         populate_by_name = True
@@ -64,6 +64,8 @@ class CandidateJobResponse(BaseModel):
     job_type: str
     company_name: str
     company_website: Optional[str] = None
+    life_at_photo_urls: Optional[List[str]] = []
+    brand_colors: Optional[Dict[str, str]] = None
     created_at: datetime
     has_applied: bool = False
 

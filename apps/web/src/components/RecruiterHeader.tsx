@@ -152,7 +152,7 @@ export default function RecruiterHeader() {
     <div className="flex items-center gap-3 p-4 absolute top-4 left-8 right-8 z-50">
       <button
         onClick={toggleChatMode}
-        className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl border border-blue-500/20 hover:from-blue-700 hover:to-indigo-700 transition-all shadow-lg shadow-blue-500/20 active:scale-95 group"
+        className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-primary text-white rounded-2xl border border-blue-500/20 hover:from-blue-700 hover:to-primary-dark transition-all shadow-lg shadow-blue-500/20 active:scale-95 group"
       >
         <Sparkles className="h-4 w-4 text-blue-100 group-hover:rotate-12 transition-transform" />
         <span className="text-sm font-semibold tracking-wide uppercase">AI Chat Mode</span>
@@ -165,7 +165,7 @@ export default function RecruiterHeader() {
           className="relative p-2 bg-white rounded-2xl border border-slate-200 hover:bg-slate-50 transition-all shadow-sm group active:scale-95"
         >
           <Bell
-            className={`h-5 w-5 ${unreadCount > 0 ? "text-indigo-600 animate-pulse" : "text-slate-500"}`}
+            className={`h-5 w-5 ${unreadCount > 0 ? "text-primary animate-pulse" : "text-slate-500"}`}
           />
           {unreadCount > 0 && (
             <span className="absolute top-1.5 right-1.5 h-2 w-2 bg-red-500 rounded-full ring-2 ring-white"></span>
@@ -181,7 +181,7 @@ export default function RecruiterHeader() {
               {unreadCount > 0 && (
                 <button
                   onClick={markAllRead}
-                  className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-full flex items-center gap-1 transition-colors"
+                  className="text-[10px] font-bold text-primary hover:text-primary-dark bg-primary-light px-2.5 py-1 rounded-full flex items-center gap-1 transition-colors"
                 >
                   <Check className="h-3 w-3" />
                   Mark All
@@ -204,7 +204,7 @@ export default function RecruiterHeader() {
                   {notifications.map((notif) => (
                     <div
                       key={notif.id}
-                      className={`p-5 transition-colors hover:bg-slate-50/50 flex gap-4 ${!notif.is_read ? "bg-indigo-50/20" : ""}`}
+                      className={`p-5 transition-colors hover:bg-slate-50/50 flex gap-4 ${!notif.is_read ? "bg-primary-light/20" : ""}`}
                       onClick={() => !notif.is_read && markAsRead(notif.id)}
                     >
                       <div
@@ -222,7 +222,7 @@ export default function RecruiterHeader() {
                               ? "text-amber-500"
                               : notif.type === "INTERVIEW_CONFIRMED"
                                 ? "text-emerald-500"
-                                : "text-indigo-500"
+                                : "text-primary"
                           }`}
                         />
                       </div>
@@ -234,7 +234,7 @@ export default function RecruiterHeader() {
                             {notif.title}
                           </p>
                           {!notif.is_read && (
-                            <div className="h-2 w-2 bg-indigo-600 rounded-full"></div>
+                            <div className="h-2 w-2 bg-primary rounded-full"></div>
                           )}
                         </div>
                         <p className="text-xs text-slate-500 leading-relaxed font-medium mb-2">
@@ -275,7 +275,7 @@ export default function RecruiterHeader() {
               className="h-6 w-6 rounded-xl object-cover"
             />
           ) : (
-            <div className="h-6 w-6 rounded-xl bg-gradient-to-br from-indigo-400 to-indigo-600 flex items-center justify-center">
+            <div className="h-6 w-6 rounded-xl bg-gradient-to-br from-primary to-primary flex items-center justify-center">
               <User className="h-3.5 w-3.5 text-white" />
             </div>
           )}
@@ -288,7 +288,7 @@ export default function RecruiterHeader() {
           <div className="absolute right-0 mt-3 w-64 bg-white border border-slate-200 rounded-3xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 origin-top-right">
             {profile && (
               <>
-                <div className="p-5 border-b border-slate-100 bg-gradient-to-br from-indigo-50 to-white">
+                <div className="p-5 border-b border-slate-100 bg-gradient-to-br from-primary-light to-white">
                   <div className="flex items-center gap-3">
                     {profile.profile_photo_url ? (
                       <img
@@ -297,7 +297,7 @@ export default function RecruiterHeader() {
                         className="h-12 w-12 rounded-2xl object-cover border-2 border-white"
                       />
                     ) : (
-                      <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-indigo-400 to-indigo-600 flex items-center justify-center border-2 border-white">
+                      <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-primary to-primary flex items-center justify-center border-2 border-white">
                         <User className="h-5 w-5 text-white" />
                       </div>
                     )}
@@ -320,7 +320,7 @@ export default function RecruiterHeader() {
                     }}
                     className="w-full flex items-center gap-3 px-4 py-2.5 text-slate-700 hover:bg-slate-50 transition-colors rounded-xl text-sm font-medium"
                   >
-                    <User className="h-4 w-4 text-indigo-600" />
+                    <User className="h-4 w-4 text-primary" />
                     View Profile
                   </button>
                   <button
@@ -353,4 +353,5 @@ export default function RecruiterHeader() {
     </div>
   );
 }
+
 

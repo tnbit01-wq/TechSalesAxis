@@ -265,20 +265,20 @@ class InterviewService:
             raise ValueError("Unauthorized or interview not found")
         
         # PROOF OF CONDUCT CHECK - FAIR TO BOTH PARTIES
-        # Recruiter MUST join to submit any meaningful feedback
+        # Recruiter MUST join to submit any meaningful feedback (Passed/Failed rounds)
         if not interview.recruiter_joined_at:
             if next_status == "not_conducted":
-                # Only allow "not_conducted" if NEITHER attended (mutual absence)
-                if interview.candidate_joined_at:
-                    raise ValueError("PROTOCOL ERROR: Candidate attended the interview. You cannot mark it as 'Not Conducted'. Please provide feedback or use 'No Show' if there was a technical issue.")
+                # Allow "not_conducted" if recruiter didn't show up
+                # This stays regardless of whether candidate joined - it logs a technical/absence issue on recruiter's side
+                pass
             else:
-                # For all other decisions, recruiter MUST have joined
-                raise ValueError("PROTOCOL ERROR: You must join the interview to submit feedback. If the interview didn't happen, select 'Not Conducted' instead.")
+                # For all other decisions (offered, shortlisted, rejected), recruiter MUST have joined
+                raise ValueError("PROTOCOL ERROR: You must join the interview to submit evaluation results. If you couldn't attend, select 'Not Conducted' instead.")
         
         # Candidate must have attended for normal decisions
         if next_status not in ["no_show", "not_conducted"]:
             if not interview.candidate_joined_at:
-                raise ValueError("PROTOCOL ERROR: System has no record of the candidate joining. Select 'No Show' if they didn't attend, or 'Not Conducted' if the interview didn't happen.")
+                raise ValueError("PROTOCOL ERROR: System has no record of the candidate joining. Select 'No Show' if they didn't attend, or 'Not Conducted' if you want to reschedule.")
 
         # 1. Update Interview Record
         interview.feedback = feedback
@@ -377,18 +377,30 @@ class InterviewService:
             slot_start_utc = slot.start_time.replace(tzinfo=timezone.utc) if slot.start_time.tzinfo is None else slot.start_time.astimezone(timezone.utc)
             slot_end_utc = slot.end_time.replace(tzinfo=timezone.utc) if slot.end_time.tzinfo is None else slot.end_time.astimezone(timezone.utc)
 
-            # PROTOCOL: Join opens exactly 15m before START until exactly 10m AFTER start
+            # PROTOCOL: Join opens exactly 15m before START until exactly 5m AFTER start
+            # RELAXED JOIN PROTOCOL: Join opens 15m before START until 5m AFTER start
+            # NEW PROTOCOL: Join opens 15m before START until 5m AFTER start
+            # ALSO: Cannot join after end_time if start_time + 5m is exceeds end_time, 
+            # but if meeting is going and exceeded end time its okay (if they already joined)
+            # The constraint is on the "Join" action itself.
+            
             allowed_start_utc = slot_start_utc - timedelta(minutes=15)
-            allowed_end_utc = slot_start_utc + timedelta(minutes=10)
+            # Join remains open until 5m after start OR until the official end time
+            # Whichever is earlier? No, user said "cannot join after end time"
+            # So: min(start + 5m, end_time)
+            allowed_end_utc = min(slot_start_utc + timedelta(minutes=5), slot_end_utc)
 
             # Log for debugging
             print(f"DEBUG JOIN: User {user_id} ({role}) joining at {now_utc}. Window: {allowed_start_utc} to {allowed_end_utc}")
 
             if now_utc < allowed_start_utc:
-                raise ValueError("Wait Protocol Active: You can only join 15 minutes before the start time.")
+                raise ValueError(f"Wait Protocol Active: You can only join 15 minutes before the start time.")
             
             if now_utc > allowed_end_utc:
-                raise ValueError("Late Protocol Active: The join window closed 10 minutes after the scheduled start. Please contact support to reschedule.")
+                if now_utc > slot_end_utc:
+                    raise ValueError("Meeting Expired: The scheduled end time has passed. Joining is no longer permitted.")
+                else:
+                    raise ValueError("Late Protocol Active: The join window closed 5 minutes after the scheduled start.")
 
         # Update Join Timestamps
         if role == "candidate":

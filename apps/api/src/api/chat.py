@@ -87,13 +87,17 @@ async def send_message(
         raise HTTPException(status_code=403, detail=str(e))
 
 @router.get("/threads")
-async def get_threads(current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+async def get_threads(
+    show_archived: bool = False,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """
-    Returns all active chat threads for the logged-in user.
+    Returns chat threads for the logged-in user.
     """
     user_id = current_user.get("sub")
     role = current_user.get("role")
-    threads = ChatService.get_user_threads(db, user_id, role)
+    threads = ChatService.get_user_threads(db, user_id, role, show_archived=show_archived)
     return threads
 
 @router.get("/messages/{thread_id}")
@@ -122,12 +126,13 @@ async def report_message(
 async def create_thread(
     candidate_id: str = Body(..., embed=True),
     current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     user_id = current_user.get("sub")
     role = current_user.get("role")
     if role != "recruiter":
         raise HTTPException(status_code=403, detail="Only recruiters can create threads")
-    return ChatService.get_or_create_thread(user_id, candidate_id)
+    return ChatService.get_or_create_thread(db, user_id, candidate_id)
 
 @router.post("/archive/{thread_id}")
 async def archive_thread(
@@ -136,10 +141,19 @@ async def archive_thread(
     db: Session = Depends(get_db),
 ):
     user_id = current_user.get("sub")
+    role = current_user.get("role")
     thread = db.query(ChatThread).filter(ChatThread.id == thread_id).first()
-    if not thread or user_id not in {str(thread.recruiter_id), str(thread.candidate_id)}:
+    
+    if not thread:
         raise HTTPException(status_code=404, detail="Thread not found")
-    thread.is_active = False
+        
+    if role == "recruiter" and str(thread.recruiter_id) == str(user_id):
+        thread.recruiter_archived = True
+    elif role == "candidate" and str(thread.candidate_id) == str(user_id):
+        thread.candidate_archived = True
+    else:
+        raise HTTPException(status_code=403, detail="Unauthorized to archive this thread")
+        
     db.commit()
     return {"status": "archived"}
 
@@ -150,10 +164,19 @@ async def restore_thread(
     db: Session = Depends(get_db),
 ):
     user_id = current_user.get("sub")
+    role = current_user.get("role")
     thread = db.query(ChatThread).filter(ChatThread.id == thread_id).first()
-    if not thread or user_id not in {str(thread.recruiter_id), str(thread.candidate_id)}:
+    
+    if not thread:
         raise HTTPException(status_code=404, detail="Thread not found")
-    thread.is_active = True
+        
+    if role == "recruiter" and str(thread.recruiter_id) == str(user_id):
+        thread.recruiter_archived = False
+    elif role == "candidate" and str(thread.candidate_id) == str(user_id):
+        thread.candidate_archived = False
+    else:
+        raise HTTPException(status_code=403, detail="Unauthorized to restore this thread")
+        
     db.commit()
     return {"status": "restored"}
 

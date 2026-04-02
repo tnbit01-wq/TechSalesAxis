@@ -27,7 +27,8 @@ export const BulkUploadInitialize: React.FC = () => {
     setError('');
 
     try {
-      const response = await fetch('/api/v1/bulk-upload/initialize', {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8005';
+      const response = await fetch(`${apiUrl}/api/v1/bulk-upload/initialize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -120,12 +121,12 @@ export const BulkUploadInitialize: React.FC = () => {
 interface UploadProgress {
   fileId: string;
   filename: string;
-  status: 'uploading' | 'processing' | 'completed' | 'failed';
+  status: 'uploading' | 'queued' | 'processing' | 'completed' | 'failed';
   progress: number; // 0-100
   error?: string;
 }
 
-export const BulkUploadFileUpload: React.FC<{ bulkUploadId: string }> = ({ bulkUploadId }) => {
+export const BulkUploadFileUpload: React.FC<{ bulkUploadId: string; onUploadComplete?: () => void }> = ({ bulkUploadId, onUploadComplete }) => {
   const [uploadProgress, setUploadProgress] = useState<UploadProgress[]>([]);
   const [uploading, setUploading] = useState(false);
   const [allUploadedCount, setAllUploadedCount] = useState(0);
@@ -140,10 +141,12 @@ export const BulkUploadFileUpload: React.FC<{ bulkUploadId: string }> = ({ bulkU
 
   const handleFiles = async (files: FileList) => {
     setUploading(true);
+    
+    // Convert FileList to Array to process sequentially
+    const fileArray = Array.from(files);
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const fileId = `${Date.now()}-${i}`;
+    for (const [index, file] of fileArray.entries()) {
+      const fileId = `${Date.now()}-${index}`;
 
       // Add to progress tracking
       setUploadProgress((prev) => [
@@ -154,14 +157,14 @@ export const BulkUploadFileUpload: React.FC<{ bulkUploadId: string }> = ({ bulkU
       // Upload file
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('upload_token', 'token123'); // Get actual token
+      formData.append('upload_token', 'bulk_upload_v1'); 
 
       try {
         const xhr = new XMLHttpRequest();
 
         xhr.upload.addEventListener('progress', (e) => {
           if (e.lengthComputable) {
-            const progress = (e.loaded / e.total) * 100;
+            const progress = Math.round((e.loaded / e.total) * 100);
             setUploadProgress((prev) =>
               prev.map((p) => (p.fileId === fileId ? { ...p, progress } : p))
             );
@@ -169,20 +172,27 @@ export const BulkUploadFileUpload: React.FC<{ bulkUploadId: string }> = ({ bulkU
         });
 
         xhr.addEventListener('load', () => {
-          if (xhr.status === 200) {
+          if (xhr.status === 200 || xhr.status === 201) {
+            const response = JSON.parse(xhr.responseText);
             setUploadProgress((prev) =>
               prev.map((p) =>
                 p.fileId === fileId
-                  ? { ...p, status: 'processing', progress: 100 }
+                  ? { ...p, status: response.status || 'queued', progress: 100 }
                   : p
               )
             );
             setAllUploadedCount((c) => c + 1);
           } else {
+            let errorMessage = 'Upload failed';
+            try {
+               const errData = JSON.parse(xhr.responseText);
+               errorMessage = errData.detail || errorMessage;
+            } catch {}
+            
             setUploadProgress((prev) =>
               prev.map((p) =>
                 p.fileId === fileId
-                  ? { ...p, status: 'failed', error: 'Upload failed' }
+                  ? { ...p, status: 'failed', error: errorMessage }
                   : p
               )
             );
@@ -193,19 +203,27 @@ export const BulkUploadFileUpload: React.FC<{ bulkUploadId: string }> = ({ bulkU
           setUploadProgress((prev) =>
             prev.map((p) =>
               p.fileId === fileId
-                ? { ...p, status: 'failed', error: 'Network error' }
+                ? { ...p, status: 'failed', error: 'Network Connection Error' }
                 : p
             )
           );
         });
 
-        xhr.open('POST', `/api/v1/bulk-upload/${bulkUploadId}/upload`);
+        const token = typeof window !== 'undefined' ? localStorage.getItem('tf_token') : '';
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8005';
+        xhr.open('POST', `${apiUrl}/api/v1/bulk-upload/${bulkUploadId}/upload`);
+        
+        // Set Authorization header
+        if (token) {
+          xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+        }
+        
         xhr.send(formData);
       } catch (error) {
         setUploadProgress((prev) =>
           prev.map((p) =>
             p.fileId === fileId
-              ? { ...p, status: 'failed', error: 'Upload error' }
+              ? { ...p, status: 'failed', error: 'Internal Error' }
               : p
           )
         );
@@ -290,6 +308,7 @@ export const BulkUploadFileUpload: React.FC<{ bulkUploadId: string }> = ({ bulkU
 
       {/* Next Button */}
       <button
+        onClick={() => onUploadComplete?.()}
         disabled={allUploadedCount === 0 || uploading}
         className="mt-8 px-6 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50 hover:bg-blue-700"
       >
@@ -313,20 +332,44 @@ interface DuplicateMatch {
   match_details: Record<string, any>;
 }
 
-export const BulkUploadDuplicateReview: React.FC<{ bulkUploadId: string }> = ({ bulkUploadId }) => {
+export const BulkUploadDuplicateReview: React.FC<{ bulkUploadId: string; onReviewComplete?: () => void }> = ({ bulkUploadId, onReviewComplete }) => {
   const [duplicates, setDuplicates] = useState<DuplicateMatch[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [decisions, setDecisions] = useState<Record<string, string>>({});
+  const [allReviewed, setAllReviewed] = useState(false);
 
   useEffect(() => {
     fetchDuplicates();
   }, [bulkUploadId]);
 
+  useEffect(() => {
+    if (duplicates.length > 0 && Object.keys(decisions).length === duplicates.length) {
+      setAllReviewed(true);
+      const timer = setTimeout(() => {
+        onReviewComplete?.();
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [decisions, duplicates.length, onReviewComplete]);
+
   const fetchDuplicates = async () => {
     try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('tf_token') : null;
+      if (!token) {
+        console.error('No auth token found');
+        setLoading(false);
+        return;
+      }
+
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8005';
       const response = await fetch(
-        `/api/v1/bulk-upload/${bulkUploadId}/duplicates-for-review`
+        `${apiUrl}/api/v1/bulk-upload/${bulkUploadId}/duplicates-for-review`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        }
       );
       if (response.ok) {
         const data = await response.json();
@@ -343,11 +386,21 @@ export const BulkUploadDuplicateReview: React.FC<{ bulkUploadId: string }> = ({ 
     setDecisions((prev) => ({ ...prev, [matchId]: decision }));
 
     try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('tf_token') : null;
+      if (!token) {
+        console.error('No auth token found');
+        return;
+      }
+
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8005';
       const response = await fetch(
-        `/api/v1/bulk-upload/${bulkUploadId}/duplicate/${matchId}/review`,
+        `${apiUrl}/api/v1/bulk-upload/${bulkUploadId}/duplicate/${matchId}/review`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
           body: JSON.stringify({
             admin_decision: decision,
             decision_reason: decision === 'approved_merge' ? 'Confirmed duplicate' : 'Not duplicate',
@@ -367,7 +420,22 @@ export const BulkUploadDuplicateReview: React.FC<{ bulkUploadId: string }> = ({ 
   if (duplicates.length === 0) {
     return (
       <div className="p-6 text-center">
-        <p className="text-lg">✓ No duplicates requiring review!</p>
+        <p className="text-lg mb-4">✓ No duplicates requiring review!</p>
+        <button
+          onClick={() => onReviewComplete?.()}
+          className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+        >
+          Proceed to Status Dashboard
+        </button>
+      </div>
+    );
+  }
+
+  if (allReviewed) {
+    return (
+      <div className="p-6 text-center">
+        <p className="text-2xl mb-4">✓ All duplicates reviewed!</p>
+        <p className="text-gray-600">Proceeding to status dashboard...</p>
       </div>
     );
   }
@@ -491,7 +559,19 @@ export const BulkUploadStatusDashboard: React.FC<{ bulkUploadId: string }> = ({ 
   useEffect(() => {
     const fetchStatus = async () => {
       try {
-        const response = await fetch(`/api/v1/bulk-upload/${bulkUploadId}/status`);
+        const token = typeof window !== 'undefined' ? localStorage.getItem('tf_token') : null;
+        if (!token) {
+          console.error('No auth token found');
+          setLoading(false);
+          return;
+        }
+
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8005';
+        const response = await fetch(`${apiUrl}/api/v1/bulk-upload/${bulkUploadId}/status`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
         if (response.ok) {
           setStatus(await response.json());
         }
@@ -554,7 +634,252 @@ export const BulkUploadStatusDashboard: React.FC<{ bulkUploadId: string }> = ({ 
   );
 };
 
-export default {
+// ============================================================================
+// Main Component: BulkUploadAdmin (Orchestrates the entire workflow)
+// ============================================================================
+
+interface BulkUploadAdminProps {
+  onBatchCreated?: (batchId: string) => void;
+  onUploadComplete?: () => void;
+}
+
+const BulkUploadAdmin: React.FC<BulkUploadAdminProps> = ({
+  onBatchCreated,
+  onUploadComplete,
+}) => {
+  const [currentStep, setCurrentStep] = useState<
+    'initialize' | 'upload' | 'duplicate_review' | 'status' | 'complete'
+  >('initialize');
+  const [bulkUploadId, setBulkUploadId] = useState<string | null>(null);
+
+  const handleBatchCreated = (batchId: string) => {
+    setBulkUploadId(batchId);
+    setCurrentStep('upload');
+    onBatchCreated?.(batchId);
+  };
+
+  const handleUploadComplete = () => {
+    if (bulkUploadId) {
+      setCurrentStep('duplicate_review');
+    }
+  };
+
+  const handleDuplicateReviewComplete = () => {
+    setCurrentStep('status');
+  };
+
+  const handleStatusComplete = () => {
+    setCurrentStep('complete');
+    onUploadComplete?.();
+  };
+
+  return (
+    <div>
+      {currentStep === 'initialize' && (
+        <BulkUploadInitializeWrapper onBatchCreated={handleBatchCreated} />
+      )}
+      {currentStep === 'upload' && bulkUploadId && (
+        <BulkUploadFileUploadWrapper
+          bulkUploadId={bulkUploadId}
+          onUploadComplete={handleUploadComplete}
+        />
+      )}
+      {currentStep === 'duplicate_review' && bulkUploadId && (
+        <BulkUploadDuplicateReviewWrapper
+          bulkUploadId={bulkUploadId}
+          onReviewComplete={handleDuplicateReviewComplete}
+        />
+      )}
+      {currentStep === 'status' && bulkUploadId && (
+        <BulkUploadStatusDashboardWrapper
+          bulkUploadId={bulkUploadId}
+          onStatusComplete={handleStatusComplete}
+        />
+      )}
+      {currentStep === 'complete' && (
+        <div className="p-6 text-center">
+          <div className="mb-4">
+            <span className="text-5xl">✓</span>
+          </div>
+          <h2 className="text-2xl font-bold text-green-700">Upload Complete!</h2>
+          <p className="text-gray-600 mt-2">Redirecting to dashboard...</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Wrapper components to handle onComplete callbacks
+const BulkUploadInitializeWrapper: React.FC<{
+  onBatchCreated: (batchId: string) => void;
+}> = ({ onBatchCreated }) => {
+  const [batchName, setBatchName] = useState('');
+  const [batchDescription, setBatchDescription] = useState('');
+  const [sourceSystem, setSourceSystem] = useState('internal_hr');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const router = useRouter();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+
+    try {
+      // Get authentication token
+      const token = typeof window !== 'undefined' ? localStorage.getItem('tf_token') : null;
+      if (!token) {
+        throw new Error('Authentication token not found. Please login.');
+      }
+
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8005';
+      const response = await fetch(`${apiUrl}/api/v1/bulk-upload/initialize`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          batch_name: batchName,
+          batch_description: batchDescription,
+          source_system: sourceSystem,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Failed to initialize upload');
+      }
+
+      const data = await response.json();
+      onBatchCreated(data.bulk_upload_id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto p-6">
+      <h1 className="text-3xl font-bold mb-6">Initiate Bulk Upload</h1>
+
+      <form onSubmit={handleSubmit} className="space-y-6 bg-white p-6 rounded-lg shadow">
+        <div>
+          <label className="block text-sm font-medium mb-2">Batch Name *</label>
+          <input
+            type="text"
+            value={batchName}
+            onChange={(e) => setBatchName(e.target.value)}
+            placeholder="e.g., Q1 2026 Campus Hire"
+            required
+            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-2">Description</label>
+          <textarea
+            value={batchDescription}
+            onChange={(e) => setBatchDescription(e.target.value)}
+            placeholder="e.g., Referral candidates from TechConf 2026"
+            rows={3}
+            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-2">Source System</label>
+          <select
+            value={sourceSystem}
+            onChange={(e) => setSourceSystem(e.target.value)}
+            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="internal_hr">Internal HR</option>
+            <option value="recruitment_agency">Recruitment Agency</option>
+            <option value="headhunter">Headhunter</option>
+          </select>
+        </div>
+
+        {error && (
+          <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+            {error}
+          </div>
+        )}
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
+        >
+          {loading ? 'Creating batch...' : 'Create Batch & Continue'}
+        </button>
+      </form>
+    </div>
+  );
+};
+
+const BulkUploadFileUploadWrapper: React.FC<{
+  bulkUploadId: string;
+  onUploadComplete: () => void;
+}> = ({ bulkUploadId, onUploadComplete }) => {
+  return <BulkUploadFileUpload bulkUploadId={bulkUploadId} onUploadComplete={onUploadComplete} />;
+};
+
+const BulkUploadDuplicateReviewWrapper: React.FC<{
+  bulkUploadId: string;
+  onReviewComplete: () => void;
+}> = ({ bulkUploadId, onReviewComplete }) => {
+  return <BulkUploadDuplicateReview bulkUploadId={bulkUploadId} onReviewComplete={onReviewComplete} />;
+};
+
+const BulkUploadStatusDashboardWrapper: React.FC<{
+  bulkUploadId: string;
+  onStatusComplete: () => void;
+}> = ({ bulkUploadId, onStatusComplete }) => {
+  const [isComplete, setIsComplete] = useState(false);
+
+  useEffect(() => {
+    const checkStatus = async () => {
+      try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('tf_token') : null;
+        if (!token) {
+          console.error('No auth token found');
+          return;
+        }
+
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8005';
+        const response = await fetch(`${apiUrl}/api/v1/bulk-upload/${bulkUploadId}/status`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data.upload_status !== 'processing') {
+            setIsComplete(true);
+            setTimeout(() => {
+              onStatusComplete();
+            }, 3000);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to check status:', error);
+      }
+    };
+
+    const interval = setInterval(checkStatus, 2000);
+    checkStatus();
+    return () => clearInterval(interval);
+  }, [bulkUploadId, onStatusComplete]);
+
+  return <BulkUploadStatusDashboard bulkUploadId={bulkUploadId} />;
+};
+
+export default BulkUploadAdmin;
+
+// Also export named components for direct usage if needed
+export {
   BulkUploadInitialize,
   BulkUploadFileUpload,
   BulkUploadDuplicateReview,

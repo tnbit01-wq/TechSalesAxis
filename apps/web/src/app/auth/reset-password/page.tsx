@@ -60,13 +60,13 @@ export default function ResetPasswordPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-      <div className="max-w-md w-full bg-white rounded-[2.5rem] p-10 border border-slate-100 shadow-2xl shadow-indigo-100/50">
+      <div className="max-w-md w-full bg-white rounded-[2.5rem] p-10 border border-slate-100 shadow-2xl shadow-primary-light/50">
         <div className="text-center mb-10">
-          <div className="h-20 w-20 bg-indigo-600 rounded-3xl mx-auto flex items-center justify-center shadow-lg shadow-indigo-200 mb-6 rotate-3 hover:rotate-0 transition-transform">
+          <div className="h-20 w-20 bg-primary rounded-3xl mx-auto flex items-center justify-center shadow-lg shadow-primary-light mb-6 rotate-3 hover:rotate-0 transition-transform">
             <Shield className="text-white" size={40} />
           </div>
           <h1 className="text-3xl font-black text-slate-900 uppercase italic tracking-tight">
-            Reset <span className="text-indigo-600">Access</span>
+            Reset <span className="text-primary">Access</span>
           </h1>
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.3em] mt-2">
             Protocol: Credential Synchronization
@@ -103,7 +103,7 @@ export default function ResetPasswordPage() {
                   placeholder="Minimum 8 characters"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-14 pr-6 py-4 text-xs font-black text-slate-900 focus:outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all"
+                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-14 pr-6 py-4 text-xs font-black text-slate-900 focus:outline-none focus:ring-4 focus:ring-primary/5 transition-all"
                 />
               </div>
             </div>
@@ -118,7 +118,7 @@ export default function ResetPasswordPage() {
                   placeholder="Repeat protocol password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-14 pr-6 py-4 text-xs font-black text-slate-900 focus:outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all"
+                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-14 pr-6 py-4 text-xs font-black text-slate-900 focus:outline-none focus:ring-4 focus:ring-primary/5 transition-all"
                 />
               </div>
             </div>
@@ -133,7 +133,7 @@ export default function ResetPasswordPage() {
             <button 
               type="submit"
               disabled={loading}
-              className="w-full bg-indigo-600 text-white py-5 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-indigo-100 hover:bg-slate-900 transition-all flex items-center justify-center gap-3"
+              className="w-full bg-primary text-white py-5 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-primary-light hover:bg-slate-900 transition-all flex items-center justify-center gap-3"
             >
               {loading ? "Synchronizing..." : "Update Credentials"}
               <Save size={16} />
@@ -144,3 +144,4 @@ export default function ResetPasswordPage() {
     </div>
   );
 }
+

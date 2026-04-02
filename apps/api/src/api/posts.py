@@ -156,14 +156,16 @@ def get_feed(
 
             # Sign media URLs
             media_urls = getattr(post, "media_urls", []) or []
-            signed_media_urls = [s3.get_signed_url(url) for url in media_urls]
+            # Filter out None or empty values before signing to avoid validation errors
+            valid_media_urls = [url for url in media_urls if url]
+            signed_media_urls = [s3.get_signed_url(url) for url in valid_media_urls]
             
             post_dict = {
                 "id": post.id,
                 "user_id": post.user_id,
                 "content": getattr(post, "content", ""),
-                "media_urls": signed_media_urls,
-                "type": getattr(post, "type", "general"),
+                "media_urls": signed_media_urls or [],
+                "type": getattr(post, "type", "post"),
                 "created_at": post.created_at,
                 "author": author_info,
                 "is_following": author_id in followed_ids,

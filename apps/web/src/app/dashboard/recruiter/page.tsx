@@ -104,12 +104,20 @@ export default function RecruiterDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="flex flex-col items-center gap-4">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
-          <p className="text-slate-500 font-bold text-xs uppercase tracking-widest">
-            Loading Dashboard...
-          </p>
+      <div className="min-h-screen flex items-center justify-center bg-black">
+        <div className="flex flex-col items-center gap-6">
+          <div className="relative h-16 w-16">
+            <div className="absolute inset-0 rounded-full border-2 border-white/5"></div>
+            <div className="absolute inset-0 rounded-full border-t-2 border-primary animate-spin shadow-[0_0_15px_rgba(255,152,0,0.5)]"></div>
+          </div>
+          <div className="space-y-1 text-center">
+            <p className="text-white font-black text-xs uppercase tracking-[0.3em] animate-pulse">
+              Initializing
+            </p>
+            <p className="text-white/40 font-bold text-[10px] uppercase tracking-widest">
+              TechSales Axis Intelligence
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -117,11 +125,11 @@ export default function RecruiterDashboard() {
 
   if (error || !profile) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
-        <div className="bg-white p-8 rounded-3xl border border-red-100 shadow-xl max-w-sm text-center">
-          <div className="h-16 w-16 bg-red-50 rounded-2xl flex items-center justify-center mx-auto mb-6">
+      <div className="min-h-screen flex items-center justify-center bg-black p-6">
+        <div className="glass-card p-10 rounded-[2.5rem] border-red-500/20 max-w-sm text-center">
+          <div className="h-20 w-20 bg-red-500/10 rounded-3xl flex items-center justify-center mx-auto mb-8 border border-red-500/20">
             <svg
-              className="h-8 w-8 text-red-500"
+              className="h-10 w-10 text-red-500"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -134,15 +142,15 @@ export default function RecruiterDashboard() {
               />
             </svg>
           </div>
-          <h2 className="text-lg font-bold text-slate-900 mb-2 uppercase tracking-tight">
-            Sync Offline
+          <h2 className="text-2xl font-black text-white mb-3 uppercase tracking-tighter">
+            Sync <span className="text-red-500">Offline</span>
           </h2>
-          <p className="text-slate-500 text-sm mb-6 leading-relaxed">
-            {error || "Server disconnected"}
+          <p className="text-white/60 text-sm mb-8 leading-relaxed font-medium">
+            {error || "Cloud synchronization interrupted"}
           </p>
           <button
             onClick={() => window.location.reload()}
-            className="w-full py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition"
+            className="btn-primary w-full py-4 text-xs tracking-[0.2em]"
           >
             RETRY CONNECTION
           </button>
@@ -156,172 +164,147 @@ export default function RecruiterDashboard() {
     (profile?.companies?.profile_score ?? 0) > 0;
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-700">
-      <div className="max-w-6xl mx-auto space-y-10">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 animate-in fade-in duration-700">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         {!isAssessmentCompleted && (
-          <div className="bg-amber-500/10 border border-amber-500/20 rounded-3xl p-6 flex items-center justify-between backdrop-blur-md">
-            <div className="flex items-center gap-5">
-              <div className="h-12 w-12 bg-amber-500 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-amber-500/20">
+          <div className="bg-gradient-to-r from-amber-500/10 to-orange-500/5 border border-amber-500/30 rounded-2xl p-6 flex items-center justify-between backdrop-blur-sm shadow-sm hover:shadow-md transition-shadow">
+            <div className="flex items-center gap-4">
+              <div className="h-12 w-12 bg-amber-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-amber-500/30 flex-shrink-0">
                 <ShieldCheck className="h-6 w-6" />
               </div>
               <div>
-                <h3 className="text-amber-900 font-bold text-lg tracking-tight">
-                  Incomplete Profile
+                <h3 className="text-amber-900 font-bold text-base tracking-tight">
+                  Complete Your Profile
                 </h3>
-                <p className="text-amber-800/70 text-sm font-medium">
-                  Complete your assessment to find top matching candidates
-                  and access the verified talent pool.
+                <p className="text-amber-800/70 text-xs font-medium mt-0.5">
+                  Finish your company profile to access verified candidates and premium features.
                 </p>
               </div>
             </div>
             <button
               onClick={() => router.push("/onboarding/recruiter")}
-              className="px-6 py-2.5 bg-amber-600 text-white rounded-xl font-bold text-sm hover:bg-amber-700 transition shadow-lg shadow-amber-600/10 active:scale-95"
+              className="px-5 py-2 bg-amber-600 text-white rounded-lg font-bold text-sm hover:bg-amber-700 hover:shadow-lg hover:shadow-amber-600/20 transition active:scale-95 flex-shrink-0"
             >
-              Complete Now
+              Complete Profile
             </button>
           </div>
         )}
 
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-1">
-            <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-bold text-slate-900 tracking-tight">
-                Recruiter <span className="text-indigo-600">Overview</span>
+        <header className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-4 border-b border-slate-100">
+          <div className="space-y-2">
+            <div className="flex items-center gap-3 flex-wrap">
+              <h1 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight">
+                Recruiter <span className="text-primary">Command Center</span>
               </h1>
-              <div className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-widest rounded-md border border-indigo-200">
-                Admin
-              </div>
+              {profile?.is_admin && (
+                <div className="px-3 py-1 bg-primary-light text-primary text-[11px] font-black uppercase tracking-widest rounded-lg border border-primary/20">
+                  Admin Access
+                </div>
+              )}
             </div>
-            <p className="text-slate-500 font-medium flex items-center gap-2">
-              <Building2 className="h-4 w-4 text-slate-400" />
-              {profile?.companies?.name || "TechSales Axis Partner"} &bull; Real-time
-              updates
+            <p className="text-slate-500 text-sm font-medium flex items-center gap-2 flex-wrap">
+              <Building2 className="h-4 w-4 text-slate-400 flex-shrink-0" />
+              {profile?.companies?.name || "Company"} • {stats?.active_jobs_count || 0} active positions
             </p>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="text-right hidden sm:block">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">
-                System Status
-              </span>
-              <div className="flex items-center gap-2 text-emerald-600 font-bold text-xs bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100">
-                <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                OPERATIONAL
-              </div>
-            </div>
-            <div className="h-10 w-px bg-slate-200 mx-2 hidden md:block" />
-            <button
-              onClick={handleLogout}
-              className="px-4 py-2 bg-slate-100 hover:bg-red-100 text-slate-600 hover:text-red-600 rounded-xl text-xs font-bold transition-all border border-slate-200"
-            >
-              Logout
-            </button>
-          </div>
+          <button
+            onClick={handleLogout}
+            className="px-4 py-2 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg text-sm font-bold transition-all border border-slate-200 hover:border-red-200 flex-shrink-0"
+          >
+            Logout
+          </button>
         </header>
 
         {/* Company Profile Score Card - Premium Version */}
-        <div className="bg-slate-900 rounded-4xl p-10 md:p-12 mb-10 relative overflow-hidden group shadow-2xl shadow-indigo-900/20 border border-white/5">
-          <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-600/10 rounded-full blur-[100px] -mr-48 -mt-48 group-hover:bg-indigo-600/20 transition-all duration-1000" />
+        <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800 rounded-3xl p-8 md:p-12 mb-6 relative overflow-hidden shadow-2xl shadow-indigo-900/20 border border-white/5">
+          <div className="absolute top-0 right-0 w-96 h-96 bg-primary/10 rounded-full blur-[100px] -mr-48 -mt-48 opacity-40" />
           <div className="absolute bottom-0 left-0 w-72 h-72 bg-purple-600/5 rounded-full blur-[80px] -ml-36 -mb-36" />
 
-          <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-            <div className="space-y-8">
+          <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-8 md:gap-12 items-center">
+            <div className="space-y-6">
               <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="px-3 py-1 bg-white/10 backdrop-blur-md rounded-full border border-white/10 flex items-center gap-2">
-                    <ShieldCheck className="h-3 w-3 text-indigo-400" />
-                    <span className="text-[9px] font-black uppercase tracking-[0.2em] text-indigo-400">
-                      Profile Analysis
+                <div className="flex items-center gap-2">
+                  <div className="px-2.5 py-1 bg-white/10 backdrop-blur-md rounded-full border border-white/10 flex items-center gap-2">
+                    <ShieldCheck className="h-3 w-3 text-primary" />
+                    <span className="text-[8px] font-black uppercase tracking-[0.15em] text-primary">
+                      Verified Company
                     </span>
                   </div>
                 </div>
-                <h2 className="text-4xl md:text-5xl font-black text-white tracking-tighter leading-tight">
-                  Company{" "}
-                  <span className="text-transparent bg-clip-text bg-linear-to-r from-indigo-400 to-purple-400">
-                    Trust score
+                <h2 className="text-3xl md:text-4xl font-black text-white tracking-tight leading-tight">
+                  Company<br />
+                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-purple-400">
+                    Trust Score
                   </span>
                 </h2>
-                <p className="text-slate-400 text-sm md:text-base font-medium leading-relaxed max-w-md opacity-80">
-                  Your trust score is based on company verification, culture details, and job quality.
+                <p className="text-slate-300 text-sm font-medium leading-relaxed max-w-md opacity-90">
+                  Ranked on profile completeness, company culture, job quality, and recruiter engagement.
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-5 rounded-3xl bg-white/5 border border-white/10 backdrop-blur-md hover:bg-white/10 transition-colors">
-                  <div className="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">
-                    Ranking
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md hover:bg-white/10 transition-all group cursor-default">
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                    Tier
                   </div>
-                  <div className="flex items-end gap-2">
-                    <div className="text-3xl font-black text-white leading-none">
-                      {(profile?.companies?.profile_score ?? 0) >= 85
-                        ? "Elite"
-                        : (profile?.companies?.profile_score ?? 0) >= 70
-                          ? "Prime"
-                          : "Growth"}
-                    </div>
+                  <div className="text-2xl font-black text-white leading-none mb-1">
+                    {(profile?.companies?.profile_score ?? 0) >= 85
+                      ? "⭐ Elite"
+                      : (profile?.companies?.profile_score ?? 0) >= 70
+                        ? "✓ Prime"
+                        : "→ Growth"}
                   </div>
-                  <div className="mt-2 text-[8px] font-bold text-slate-500 uppercase tracking-widest leading-normal">
+                  <div className="text-[7px] font-bold text-slate-500 uppercase tracking-widest leading-normal">
                     Based on profile quality
                   </div>
                 </div>
-                <div className="p-5 rounded-3xl bg-white/5 border border-white/10 backdrop-blur-md hover:bg-white/10 transition-colors">
-                  <div className="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">
-                    Completion
+                <div className="p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md hover:bg-white/10 transition-all group cursor-default">
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                    Visibility
                   </div>
-                  <div className="flex items-end gap-2">
-                    <div className="text-3xl font-black text-white leading-none">
-                      {profile?.completion_score}%
-                    </div>
+                  <div className="text-2xl font-black text-white leading-none mb-1">
+                    {profile?.completion_score}%
                   </div>
-                  <div className="mt-2 text-[8px] font-bold text-slate-500 uppercase tracking-widest leading-normal">
-                    Data transparency
+                  <div className="text-[7px] font-bold text-slate-500 uppercase tracking-widest leading-normal">
+                    Search ranking
                   </div>
                 </div>
               </div>
             </div>
 
             <div className="flex justify-center lg:justify-end">
-              <div className="relative h-64 w-64 md:h-72 md:w-72 group/shield">
-                {/* Visual Glow */}
-                <div className="absolute inset-x-0 bottom-0 top-0 m-auto h-48 w-48 bg-indigo-600/20 rounded-full blur-3xl group-hover/shield:bg-indigo-500/30 transition-all duration-700" />
+              <div className="relative h-80 w-80 group/shield">
+                <div className="absolute inset-x-0 bottom-0 top-0 m-auto h-56 w-56 bg-primary/20 rounded-full blur-3xl group-hover/shield:bg-primary/40 transition-all duration-700" />
 
                 <div className="absolute inset-0 rounded-full flex flex-col items-center justify-center z-10 text-center">
-                  <div className="bg-slate-800/60 p-10 rounded-full border border-white/10 shadow-3xl backdrop-blur-2xl group-hover/shield:scale-105 transition-transform duration-500">
-                    <div className="text-5xl font-black text-white tracking-tighter leading-none mb-1">
+                  <div className="bg-slate-800/80 p-12 rounded-full border border-white/10 shadow-2xl backdrop-blur-2xl group-hover/shield:scale-105 transition-transform duration-500">
+                    <div className="text-6xl font-black text-white tracking-tighter leading-none mb-2">
                       {profile?.companies?.profile_score ?? 0}
                     </div>
-                    <div className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-400">
+                    <div className="text-[11px] font-black uppercase tracking-[0.3em] text-primary">
                       Trust Index
                     </div>
-                    <div className="mt-4 flex items-center justify-center gap-1.5 px-3 py-1 bg-white/5 rounded-full border border-white/5">
-                      <div className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-pulse" />
-                      <span className="text-[8px] font-black text-white/50 uppercase tracking-widest">
-                        Verified
+                    <div className="mt-3 flex items-center justify-center gap-1.5 px-3 py-1 bg-white/5 rounded-full border border-white/10">
+                      <div className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      <span className="text-[8px] font-black text-white/70 uppercase tracking-widest">
+                        Active
                       </span>
                     </div>
                   </div>
                 </div>
 
-                {/* Circular Progress SVG */}
                 <svg
-                  className="absolute inset-0 h-full w-full -rotate-90 drop-shadow-[0_0_25px_rgba(99,102,241,0.4)] z-20"
+                  className="absolute inset-0 h-full w-full -rotate-90 drop-shadow-[0_0_30px_rgba(99,102,241,0.3)] z-20"
                   viewBox="0 0 100 100"
                 >
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="46"
-                    fill="transparent"
-                    stroke="rgba(255,255,255,0.05)"
-                    strokeWidth="2"
-                  />
+                  <circle cx="50" cy="50" r="46" fill="transparent" stroke="rgba(255,255,255,0.08)" strokeWidth="2" />
                   <circle
                     cx="50"
                     cy="50"
                     r="46"
                     fill="transparent"
                     stroke="url(#shieldGradient)"
-                    strokeWidth="5"
+                    strokeWidth="6"
                     strokeDasharray="289"
                     strokeDashoffset={
                       289 -
@@ -338,7 +321,7 @@ export default function RecruiterDashboard() {
                       x2="100%"
                       y2="0%"
                     >
-                      <stop offset="0%" stopColor="#818cf8" />
+                      <stop offset="0%" stopColor="#6366f1" />
                       <stop offset="100%" stopColor="#c084fc" />
                     </linearGradient>
                   </defs>
@@ -353,30 +336,31 @@ export default function RecruiterDashboard() {
           <StatCard
             label="Active Jobs"
             value={stats?.active_jobs_count?.toString() || "0"}
-            sub="Openings"
+            sub="Open positions"
             icon={Briefcase}
-            trend="+2 this week"
+            trend={stats?.active_jobs_count || 0 > 0 ? "Hiring" : "No jobs"}
+            color="indigo"
           />
           <StatCard
-            label="Talent Reach"
+            label="Total Reach"
             value={stats?.total_views?.toLocaleString() || "0"}
-            sub="Viewed by candidates"
+            sub="Candidates viewed"
             icon={Users}
-            color="indigo"
+            color="emerald"
           />
           <StatCard
             label="Success Rate"
             value={`${stats?.conversion_rate || 0}%`}
-            sub="Hiring efficiency"
-            icon={Zap}
+            sub="Hiring conversion"
+            icon={TrendingUp}
             color="amber"
           />
           <StatCard
-            label="Visibility Score"
+            label="Tier Status"
             value={stats?.visibility_tier || "Growth"}
             sub="Search ranking"
             icon={Award}
-            color="emerald"
+            color="purple"
           />
         </div>
 
@@ -387,7 +371,7 @@ export default function RecruiterDashboard() {
               <div className="flex items-center justify-between">
                 <div className="space-y-1">
                   <h3 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
-                    <TrendingUp className="h-5 w-5 text-indigo-500" />
+                    <TrendingUp className="h-5 w-5 text-primary" />
                     Hiring Progress
                   </h3>
                   <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest opacity-80">
@@ -416,7 +400,7 @@ export default function RecruiterDashboard() {
 
             {/* Optimization Hub - Integrated Below Momentum */}
             <div className="bg-white rounded-2xl border border-slate-100 p-8 shadow-sm relative overflow-hidden group">
-              <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-50 rounded-full blur-3xl -mr-32 -mt-32 opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
+              <div className="absolute top-0 right-0 w-64 h-64 bg-primary-light rounded-full blur-3xl -mr-32 -mt-32 opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
 
               <div className="flex items-center justify-between mb-8 relative z-10">
                 <div>
@@ -432,11 +416,11 @@ export default function RecruiterDashboard() {
                     <div className="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">
                       Profile Strength
                     </div>
-                    <div className="text-xl font-black text-indigo-600 leading-none">
+                    <div className="text-xl font-black text-primary leading-none">
                       {profile?.completion_score}%
                     </div>
                   </div>
-                  <div className="h-8 w-8 rounded-full border-4 border-slate-200 border-t-indigo-500" />
+                  <div className="h-8 w-8 rounded-full border-4 border-slate-200 border-t-primary" />
                 </div>
               </div>
 
@@ -444,7 +428,7 @@ export default function RecruiterDashboard() {
                 <CompletionItem
                   label="Company Branding"
                   done={!!profile?.companies?.logo_url}
-                  href="/dashboard/recruiter/organization/branding"
+                  href="/dashboard/recruiter/account/settings"
                   icon={<Building2 className="h-3.5 w-3.5" />}
                 />
                 <CompletionItem
@@ -472,14 +456,14 @@ export default function RecruiterDashboard() {
           <div className="space-y-6">
             {/* AI Insights / Market Position */}
             <div className="bg-slate-900 rounded-2xl p-6 text-white shadow-xl shadow-indigo-900/10 flex flex-col items-center text-center justify-between min-h-[300px] relative overflow-hidden group border border-white/5">
-              <div className="absolute top-0 right-0 w-40 h-40 bg-indigo-500/10 rounded-full blur-3xl -mr-20 -mt-20 transition-all duration-700 pointer-events-none" />
+              <div className="absolute top-0 right-0 w-40 h-40 bg-primary/10 rounded-full blur-3xl -mr-20 -mt-20 transition-all duration-700 pointer-events-none" />
 
               <div className="space-y-4 relative z-10 w-full">
                 <div className="p-3 bg-white/5 border border-white/10 rounded-xl w-fit mx-auto backdrop-blur-xl">
-                  <Compass className="h-5 w-5 text-indigo-400" />
+                  <Compass className="h-5 w-5 text-primary" />
                 </div>
                 <div className="space-y-2">
-                  <div className="text-[9px] font-black uppercase tracking-[0.2em] text-indigo-400">
+                  <div className="text-[9px] font-black uppercase tracking-[0.2em] text-primary">
                     Market Insights
                   </div>
                   <h3 className="text-xl font-black tracking-tighter leading-tight">
@@ -501,7 +485,7 @@ export default function RecruiterDashboard() {
                   </span>
                 </div>
                 <button 
-                  onClick={() => router.push("/dashboard/recruiter/intelligence/gps")}
+                  onClick={() => router.push("/dashboard/recruiter/intelligence/recommendations")}
                   className="w-full py-2 bg-white/5 border border-white/10 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-white/10 transition-all hover:scale-[1.02] active:scale-95"
                 >
                   Deep Insights
@@ -512,7 +496,7 @@ export default function RecruiterDashboard() {
             {/* Tiers Card */}
             <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm flex-1">
               <div className="h-full flex flex-col">
-                <div className="h-8 w-8 bg-indigo-50 rounded-lg flex items-center justify-center text-indigo-600 mb-4 shrink-0">
+                <div className="h-8 w-8 bg-primary-light rounded-lg flex items-center justify-center text-primary mb-4 shrink-0">
                   <Award className="h-4 w-4" />
                 </div>
                 <h4 className="text-[13px] font-black text-slate-900 tracking-tight mb-3 shrink-0">
@@ -521,7 +505,7 @@ export default function RecruiterDashboard() {
                 <div className="flex-1 flex flex-col justify-around gap-2">
                   {[
                     { l: "Elite", d: "Premium visibility", c: "bg-emerald-400" },
-                    { l: "Prime", d: "Brand strength", c: "bg-indigo-400" },
+                    { l: "Prime", d: "Brand strength", c: "bg-primary" },
                     { l: "Growth", d: "Building signals", c: "bg-slate-300" }
                   ].map(t => (
                     <div key={t.l} className="flex items-center justify-between group cursor-default">
@@ -555,11 +539,11 @@ function CompletionItem({
 }) {
   return (
     <div
-      className={`flex items-center justify-between p-5 rounded-2xl border transition-all duration-500 group ${done ? "bg-slate-50 border-slate-100 shadow-sm" : "bg-white border-slate-200 hover:border-indigo-200 hover:shadow-2xl hover:shadow-indigo-500/10"}`}
+      className={`flex items-center justify-between p-5 rounded-2xl border transition-all duration-500 group ${done ? "bg-slate-50 border-slate-100 shadow-sm" : "bg-white border-slate-200 hover:border-primary-light hover:shadow-2xl hover:shadow-primary/10"}`}
     >
       <div className="flex items-center gap-4">
         <div
-          className={`h-9 w-9 rounded-xl flex items-center justify-center transition-all duration-500 ${done ? "bg-emerald-100 text-emerald-600 scale-90" : "bg-slate-100 text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-500 group-hover:rotate-6"}`}
+          className={`h-9 w-9 rounded-xl flex items-center justify-center transition-all duration-500 ${done ? "bg-emerald-100 text-emerald-600 scale-90" : "bg-slate-100 text-slate-400 group-hover:bg-primary-light group-hover:text-primary group-hover:rotate-6"}`}
         >
           {icon}
         </div>
@@ -577,7 +561,7 @@ function CompletionItem({
         href && (
           <Link
             href={href}
-            className="px-4 py-1.5 bg-indigo-50 text-[9px] font-black uppercase tracking-widest text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white transition-all transform active:scale-90"
+            className="px-4 py-1.5 bg-primary-light text-[9px] font-black uppercase tracking-widest text-primary rounded-lg hover:bg-primary hover:text-white transition-all transform active:scale-90"
           >
             Optimize
           </Link>
@@ -600,43 +584,39 @@ function StatCard({
   sub: string;
   icon?: React.ElementType;
   trend?: string;
-  color?: "slate" | "indigo" | "emerald" | "amber";
+  color?: "slate" | "indigo" | "emerald" | "amber" | "purple";
 }) {
   const colorMap = {
     slate: "text-slate-500 bg-slate-50",
-    indigo: "text-indigo-600 bg-indigo-50",
+    indigo: "text-primary bg-primary-light",
     emerald: "text-emerald-600 bg-emerald-50",
     amber: "text-amber-600 bg-amber-50",
+    purple: "text-purple-600 bg-purple-50",
   };
 
   return (
-    <div className="bg-white px-6 py-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all duration-300 group flex items-start gap-4">
+    <div className="bg-white px-5 py-4 rounded-2xl border border-slate-100 shadow-sm hover:shadow-lg hover:border-slate-200 transition-all duration-300 group flex items-start gap-3">
       <div
-        className={`p-3 rounded-xl transition-all duration-500 ${colorMap[color]} group-hover:scale-110 shadow-sm shrink-0`}
+        className={`p-3 rounded-lg transition-all duration-500 ${colorMap[color]} group-hover:scale-110 shadow-sm shrink-0`}
       >
         {Icon && <Icon className="h-5 w-5" />}
       </div>
 
       <div className="flex-1 min-w-0">
-        <div className="flex items-start justify-between">
-          <div className="space-y-0.5">
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">
-              {label}
-            </div>
-            <div className="text-2xl font-black text-slate-900 tracking-tighter">
-              {value}
-            </div>
-          </div>
-          {trend && (
-            <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100 uppercase translate-y-1">
-              {trend}
-            </span>
-          )}
+        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">
+          {label}
         </div>
-        <div className="text-[9px] font-medium text-slate-400 mt-1 truncate opacity-70 group-hover:opacity-100 transition-opacity">
+        <div className="text-xl font-black text-slate-900 tracking-tight">{value}</div>
+        <div className="text-[9px] font-medium text-slate-400 mt-1 opacity-70 group-hover:opacity-100 transition-opacity">
           {sub}
         </div>
+        {trend && (
+          <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded mt-2 inline-block border border-emerald-100 uppercase">
+            {trend}
+          </span>
+        )}
       </div>
     </div>
   );
 }
+

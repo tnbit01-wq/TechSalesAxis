@@ -146,7 +146,24 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
 
     // Role is Recruiter - Open Modal
     if (active.candidate_id) {
-       try {
+      // Track profile view
+      try {
+        const token = awsAuth.getToken();
+        if (token) {
+          console.log("[TRACKING] Starting profile view tracking for:", active.candidate_id);
+          await apiClient.post(
+            `/analytics/profile/${active.candidate_id}/view`,
+            {},
+            token,
+          );
+          console.log("[TRACKING] ✓ Profile view tracked:", active.candidate_id);
+        }
+      } catch (err) {
+        console.error("[TRACKING] Failed to track profile view:", err);
+      }
+
+      // Fetch and display profile
+      try {
         const token = awsAuth.getToken();
         if (!token) return;
 
@@ -177,7 +194,7 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
         const token = awsAuth.getToken();
         if (!token) return;
 
-        const data = await apiClient.get("/chat/threads", token);
+        const data = await apiClient.get(`/chat/threads?show_archived=${showArchived}`, token);
         if (data) setThreads(data as Thread[]);
       } catch (err) {
         console.error("Fetch threads error:", err);
@@ -187,9 +204,9 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
     };
 
     fetchThreads();
-  }, [userId, role]);
+  }, [userId, role, showArchived]);
 
-  const filteredThreads = threads.filter(t => t.is_active === !showArchived);
+  const filteredThreads = threads;
 
   // Fetch Messages when active thread changes
   useEffect(() => {
@@ -251,7 +268,7 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
   if (loading)
     return (
       <div className="p-12 flex flex-col items-center justify-center h-96">
-        <div className="h-12 w-12 border-4 border-indigo-500/10 border-t-indigo-500 rounded-full animate-spin mb-4" />
+        <div className="h-12 w-12 border-4 border-primary/10 border-t-primary rounded-full animate-spin mb-4" />
         <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">
           Loading Messages
         </p>
@@ -271,13 +288,13 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
           <div className="flex gap-2 p-1 bg-slate-100 rounded-xl">
             <button
               onClick={() => { setShowArchived(false); setActiveThreadId(null); }}
-              className={`flex-1 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${!showArchived ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+              className={`flex-1 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${!showArchived ? 'bg-white text-primary shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
             >
               Active
             </button>
             <button
               onClick={() => { setShowArchived(true); setActiveThreadId(null); }}
-              className={`flex-1 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${showArchived ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+              className={`flex-1 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${showArchived ? 'bg-white text-primary shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
             >
               Archived
             </button>
@@ -300,12 +317,12 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
                 onClick={() => setActiveThreadId(thread.id)}
                 className={`w-full p-6 flex items-center gap-4 transition-all relative group border-b border-slate-50 ${
                   activeThreadId === thread.id
-                    ? "bg-indigo-50/50"
+                    ? "bg-primary-light/50"
                     : "hover:bg-slate-50/80"
                 }`}
               >
                 {activeThreadId === thread.id && (
-                  <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-indigo-600 rounded-r-full shadow-[2px_0_10px_rgba(79,70,229,0.2)]" />
+                  <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-primary rounded-r-full shadow-[2px_0_10px_rgba(79,70,229,0.2)]" />
                 )}
 
                 <div className="h-12 w-12 rounded-full overflow-hidden shrink-0 border-2 border-slate-100 shadow-sm transition-transform group-hover:scale-105">
@@ -317,7 +334,7 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
                       className="h-full w-full object-cover"
                     />
                   ) : (
-                    <div className="h-full w-full flex items-center justify-center bg-indigo-50 text-indigo-500 font-black text-xs">
+                    <div className="h-full w-full flex items-center justify-center bg-primary-light text-primary font-black text-xs">
                       {(role === "recruiter"
                         ? thread.candidate_profiles?.full_name
                         : thread.recruiter_profiles?.full_name)?.[0] || "?"}
@@ -328,7 +345,7 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
                 <div className="flex-1 text-left min-w-0">
                   <div className="flex justify-between items-start">
                     <p
-                      className={`font-black text-sm tracking-tight truncate ${activeThreadId === thread.id ? "text-indigo-600" : "text-slate-900"}`}
+                      className={`font-black text-sm tracking-tight truncate ${activeThreadId === thread.id ? "text-primary" : "text-slate-900"}`}
                     >
                       {role === "recruiter"
                         ? thread.candidate_profiles?.full_name ||
@@ -366,7 +383,7 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
                           ?.candidate_profiles?.full_name || "Candidate"
                       : "Recruitment Lead"}
                   </h3>
-                  <p className="text-[10px] text-indigo-500 font-bold uppercase tracking-[0.2em] mt-0.5">
+                  <p className="text-[10px] text-primary font-bold uppercase tracking-[0.2em] mt-0.5">
                     Online
                   </p>
                 </div>
@@ -374,7 +391,7 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
               <div className="flex items-center gap-3 shrink-0 ml-4">
                 <button 
                   onClick={handleViewProfile}
-                  className="p-2.5 bg-slate-50 text-slate-400 rounded-xl hover:text-indigo-600 hover:bg-indigo-50 transition-all border border-slate-100"
+                  className="p-2.5 bg-slate-50 text-slate-400 rounded-xl hover:text-primary hover:bg-primary-light transition-all border border-slate-100"
                   title={role === "recruiter" ? "View Profile" : "My Profile"}
                 >
                   <User className="w-4 h-4" />
@@ -393,7 +410,7 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
                       setActiveThreadId(null);
                       toast.success("Intelligence Link Restored.");
                     }}
-                    className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-600 hover:text-white transition-all border border-indigo-100"
+                    className="p-2.5 bg-primary-light text-primary rounded-xl hover:bg-primary hover:text-white transition-all border border-primary-light"
                     title="Restore Chat"
                   >
                     <RotateCcw className="w-4 h-4" />
@@ -475,7 +492,7 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
                   placeholder="Type a message..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 pr-28 text-sm text-slate-900 focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500/50 transition-all placeholder:text-slate-400 font-medium"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 pr-28 text-sm text-slate-900 focus:outline-none focus:ring-4 focus:ring-primary/5 focus:border-primary/50 transition-all placeholder:text-slate-400 font-medium"
                 />
                 <div className="absolute right-2 top-2 bottom-2">
                   <button
@@ -502,7 +519,7 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
                   />
                   <button 
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center gap-1.5 text-[9px] font-black text-slate-500 uppercase tracking-widest hover:text-indigo-600 transition-all"
+                    className="flex items-center gap-1.5 text-[9px] font-black text-slate-500 uppercase tracking-widest hover:text-primary transition-all"
                   >
                     <Paperclip className="w-3.5 h-3.5" />
                     Attach
@@ -514,7 +531,7 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
                     <button
                       key={idx}
                       onClick={() => applyTemplate(tmpl.text)}
-                      className="whitespace-nowrap px-3 py-1.5 bg-indigo-50/30 border border-indigo-100/50 rounded-xl text-[8px] font-black text-indigo-600 uppercase tracking-widest hover:bg-indigo-600 hover:text-white transition-all flex items-center gap-1.5 shrink-0 shadow-xs"
+                      className="whitespace-nowrap px-3 py-1.5 bg-primary-light/30 border border-primary-light/50 rounded-xl text-[8px] font-black text-primary uppercase tracking-widest hover:bg-primary hover:text-white transition-all flex items-center gap-1.5 shrink-0 shadow-xs"
                     >
                       <ClipboardList className="w-3 h-3 opacity-50" />
                       {tmpl.label}
@@ -527,10 +544,10 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center p-20 text-center animate-in fade-in zoom-in duration-700">
             <div className="relative mb-10 group cursor-default">
-              <div className="absolute inset-0 bg-indigo-500/10 blur-[80px] rounded-full scale-150 group-hover:bg-indigo-500/20 transition-all duration-700" />
+              <div className="absolute inset-0 bg-primary/10 blur-[80px] rounded-full scale-150 group-hover:bg-primary/20 transition-all duration-700" />
               <div className="relative h-32 w-32 rounded-[3.5rem] bg-white border border-slate-100 flex items-center justify-center shadow-xl transition-all duration-700 hover:rotate-12">
                 <svg
-                  className="h-14 w-14 text-indigo-500/50"
+                  className="h-14 w-14 text-primary/50"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -551,7 +568,7 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
               Select a conversation to start chatting. Your messages are private
               and secure.
             </p>
-            <div className="mt-12 h-1.5 w-12 bg-indigo-100 rounded-full" />
+            <div className="mt-12 h-1.5 w-12 bg-primary-light rounded-full" />
           </div>
         )}
       </div>
@@ -580,3 +597,4 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
     </div>
   );
 }
+

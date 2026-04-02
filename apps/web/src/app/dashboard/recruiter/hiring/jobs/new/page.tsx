@@ -147,7 +147,10 @@ export default function NewJobPage() {
   };
 
   const handleCheckMatchPotential = async () => {
-    if (!formData.skills_required.length) return;
+    if (!formData.skills_required.length && !formData.title) {
+      alert("Please add at least a job title or skills before checking match potential");
+      return;
+    }
     setCheckingPotential(true);
     setMatchPotential(null);
     try {
@@ -161,20 +164,53 @@ export default function NewJobPage() {
         'leadership': 12
       };
 
+      console.log("🎯 Checking job potential with data:", {
+        skills: formData.skills_required,
+        experience_years: bandToYears[formData.experience_band],
+        location: formData.location,
+        title: formData.title
+      });
+
       const result = await apiClient.post(
         "/recruiter/check-job-potential",
         {
           skills: formData.skills_required,
           experience_years: bandToYears[formData.experience_band] || 2,
           location: formData.location,
-          salary_range: formData.salary_range
+          salary_range: formData.salary_range,
+          title: formData.title
         },
         token
       );
 
-      setMatchPotential(result);
+      console.log("✅ Match potential result:", result);
+
+      // Generate appropriate message based on count
+      let message = "";
+      if (result.count === 0) {
+        message = "No candidates found yet. Consider broadening your criteria or adjusting requirements.";
+      } else if (result.count === 1) {
+        message = `Perfect match! Found 1 candidate with your exact requirements.`;
+      } else if (result.count <= 5) {
+        message = `Great talent pool! Found ${result.count} highly qualified candidates.`;
+      } else if (result.count <= 10) {
+        message = `Excellent response! Found ${result.count} matching candidates in talent pool.`;
+      } else {
+        message = `Strong talent pool! Found ${result.count}+ candidates matching your requirements.`;
+      }
+
+      setMatchPotential({
+        ...result,
+        message: message,
+        timestamp: new Date().toISOString()
+      });
     } catch (err) {
       console.error("Match potential check failed:", err);
+      setMatchPotential({
+        count: 0,
+        message: "Unable to check match potential. Please try again.",
+        error: true
+      });
     } finally {
       setCheckingPotential(false);
     }
@@ -183,7 +219,7 @@ export default function NewJobPage() {
   if (checkingLock) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50/50">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
       </div>
     );
   }
@@ -217,8 +253,8 @@ export default function NewJobPage() {
             onClick={() => setShowAiAssistant(!showAiAssistant)}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
               showAiAssistant
-                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200"
-                : "bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-100"
+                ? "bg-primary text-white shadow-lg shadow-primary-light"
+                : "bg-primary-light text-primary hover:bg-primary-light border border-primary-light"
             }`}
           >
             <Sparkles className="w-3.5 h-3.5" />
@@ -260,13 +296,13 @@ export default function NewJobPage() {
           <div className="max-w-4xl mx-auto p-4">
             <div className="bg-white rounded-2xl shadow-2xl p-6 border border-slate-200 relative overflow-hidden ring-1 ring-slate-200/50">
               <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none">
-                <Sparkles className="w-32 h-32 text-indigo-600" />
+                <Sparkles className="w-32 h-32 text-primary" />
               </div>
               <div className="relative z-10">
                 <div className="flex justify-between items-start mb-4">
                   <div>
                     <h2 className="text-slate-900 font-black text-sm uppercase tracking-widest flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-indigo-600" />
+                      <Sparkles className="w-4 h-4 text-primary" />
                       Smart Role Architect
                     </h2>
                     <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest opacity-80 mt-1">
@@ -286,12 +322,12 @@ export default function NewJobPage() {
                     value={aiPrompt}
                     onChange={(e) => setAiPrompt(e.target.value)}
                     placeholder="e.g. Senior Frontend Engineer for our DeFi platform. Expertise in React and Web3..."
-                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-4 text-slate-900 placeholder:text-slate-400 text-sm font-medium focus:ring-2 focus:ring-indigo-500/20 outline-none resize-none h-24"
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-4 text-slate-900 placeholder:text-slate-400 text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none resize-none h-24"
                   />
                   <button
                     onClick={handleAIGenerate}
                     disabled={aiLoading || !aiPrompt}
-                    className="bg-indigo-600 text-white px-8 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-indigo-700 transition-all active:scale-95 disabled:opacity-50 shadow-lg shadow-indigo-100 self-end h-16"
+                    className="bg-primary text-white px-8 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-primary-dark transition-all active:scale-95 disabled:opacity-50 shadow-lg shadow-primary-light self-end h-16"
                   >
                     {aiLoading ? (
                       <div className="flex items-center gap-2">
@@ -312,27 +348,85 @@ export default function NewJobPage() {
       {/* Main Content */}
       <main className="p-8 max-w-4xl mx-auto w-full pb-20">
         {matchPotential && (
-          <div className="mb-8 bg-emerald-50 border border-emerald-100 rounded-2xl p-6 flex flex-col md:flex-row items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-white rounded-xl text-emerald-600 shadow-sm border border-emerald-50">
-                <Users className="w-6 h-6" />
+          <div className={`mb-8 rounded-2xl p-6 flex flex-col gap-4 animate-in fade-in slide-in-from-top-4 border ${
+            matchPotential.error 
+              ? "bg-red-50 border-red-100" 
+              : matchPotential.count === 0 
+              ? "bg-amber-50 border-amber-100"
+              : "bg-emerald-50 border-emerald-100"
+          }`}>
+            {/* Header Section */}
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className={`p-3 rounded-xl shadow-sm border ${
+                  matchPotential.error 
+                    ? "bg-white text-red-600 border-red-50" 
+                    : matchPotential.count === 0 
+                    ? "bg-white text-amber-600 border-amber-50"
+                    : "bg-white text-emerald-600 border-emerald-50"
+                }`}>
+                  <Users className="w-6 h-6" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-slate-900">{matchPotential.message}</p>
+                  <div className="flex items-center gap-4 mt-2">
+                    <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">
+                      {matchPotential.error ? "⚠️ Check Connection" : "✓ AI Assessment Complete"}
+                    </p>
+                    {matchPotential.count > 0 && (
+                      <span className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full ${
+                        matchPotential.count >= 10
+                          ? "bg-emerald-600 text-white"
+                          : matchPotential.count >= 5
+                          ? "bg-emerald-500 text-white"
+                          : "bg-emerald-400 text-white"
+                      }`}>
+                        {matchPotential.count} Total Candidates
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
-              <div>
-                <p className="text-sm font-bold text-slate-900">{matchPotential.message}</p>
-                <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest mt-0.5">Verified via AI Assessment</p>
-              </div>
+              {!matchPotential.error && matchPotential.count > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const skillsParam = encodeURIComponent(formData.skills_required.join(","));
+                    const locParam = encodeURIComponent(formData.location || "");
+                    router.push(`/dashboard/recruiter/talent-pool?filter=skill_match&skills=${skillsParam}&location=${locParam}`);
+                  }}
+                  className="px-6 py-2.5 bg-white border border-emerald-200 text-emerald-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-50 transition-all shadow-sm flex items-center gap-2 whitespace-nowrap"
+                >
+                  View All in Talent Pool
+                  <ArrowLeft className="w-3 h-3 rotate-180" />
+                </button>
+              )}
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                const skillsParam = encodeURIComponent(formData.skills_required.join(","));
-                router.push(`/dashboard/recruiter/intelligence/recommendations?filter=skill_match&skills=${skillsParam}`);
-              }}
-              className="px-6 py-2.5 bg-white border border-emerald-200 text-emerald-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-50 transition-all shadow-sm flex items-center gap-2"
-            >
-              Exposed Candidates
-              <ArrowLeft className="w-3 h-3 rotate-180" />
-            </button>
+
+            {/* Top Candidates Preview */}
+            {!matchPotential.error && matchPotential.data && matchPotential.data.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-emerald-200">
+                <p className="text-[10px] text-slate-600 uppercase font-black tracking-widest mb-3">📌 Top Matching Candidates</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {matchPotential.data.slice(0, 3).map((candidate: any, idx: number) => (
+                    <div key={idx} className="bg-white rounded-lg p-3 border border-emerald-100 hover:shadow-md transition-all">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold text-slate-900 truncate">{candidate.full_name || 'Candidate'}</p>
+                          <p className="text-[10px] text-slate-500 truncate">{candidate.current_role || 'Professional'}</p>
+                        </div>
+                        <span className="text-xs font-bold text-white bg-emerald-600 px-2 py-1 rounded whitespace-nowrap">
+                          {Math.round(candidate.culture_match_score || 0)}%
+                        </span>
+                      </div>
+                      <div className="mt-2 flex items-center gap-3 text-[9px] text-slate-600">
+                        <span>📍 {candidate.years_of_experience || 0}y exp</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
         <form onSubmit={handleCreateJob} className="space-y-8">
@@ -346,7 +440,7 @@ export default function NewJobPage() {
                   onChange={(e) =>
                     setFormData({ ...formData, title: e.target.value })
                   }
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-bold focus:ring-2 focus:ring-indigo-500 transition-all outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-bold focus:ring-2 focus:ring-primary transition-all outline-none"
                   placeholder="e.g. Lead Software Architect"
                 />
               </Field>
@@ -359,7 +453,7 @@ export default function NewJobPage() {
                       experience_band: e.target.value,
                     })
                   }
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-bold focus:ring-2 focus:ring-indigo-500 transition-all outline-none appearance-none cursor-pointer"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-bold focus:ring-2 focus:ring-primary transition-all outline-none appearance-none cursor-pointer"
                 >
                   <option value="fresher">Fresher (0-1y)</option>
                   <option value="mid">Mid-Level (1-5y)</option>
@@ -373,7 +467,7 @@ export default function NewJobPage() {
                   onChange={(e) =>
                     setFormData({ ...formData, job_type: e.target.value })
                   }
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-bold focus:ring-2 focus:ring-indigo-500 transition-all outline-none appearance-none cursor-pointer"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-bold focus:ring-2 focus:ring-primary transition-all outline-none appearance-none cursor-pointer"
                 >
                   <option value="onsite">On-site</option>
                   <option value="hybrid">Hybrid</option>
@@ -393,7 +487,7 @@ export default function NewJobPage() {
                 onChange={(e) =>
                   setFormData({ ...formData, description: e.target.value })
                 }
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-indigo-500 transition-all outline-none resize-none"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-primary transition-all outline-none resize-none"
                 placeholder="Describe the mission and daily impact of this role..."
               />
             </Field>
@@ -412,7 +506,7 @@ export default function NewJobPage() {
                       requirements: e.target.value.split("\n").filter(Boolean),
                     })
                   }
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-indigo-500 transition-all outline-none resize-none"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-primary transition-all outline-none resize-none"
                   placeholder="Define technical or professional prerequisites (one per line)..."
                 />
               </Field>
@@ -428,7 +522,7 @@ export default function NewJobPage() {
                         .filter(Boolean),
                     })
                   }
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-indigo-500 transition-all outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-primary transition-all outline-none"
                   placeholder="e.g. Next.js, TypeScript, PostgreSQL (comma separated)"
                 />
               </Field>
@@ -444,7 +538,7 @@ export default function NewJobPage() {
                   onChange={(e) =>
                     setFormData({ ...formData, location: e.target.value })
                   }
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-indigo-500 transition-all outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-primary transition-all outline-none"
                   placeholder="City, Country"
                 />
               </Field>
@@ -459,7 +553,7 @@ export default function NewJobPage() {
                       number_of_positions: parseInt(e.target.value) || 1,
                     })
                   }
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-indigo-500 transition-all outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-primary transition-all outline-none"
                 />
               </Field>
               <Field label="Salary Range" icon={DollarSign}>
@@ -469,14 +563,14 @@ export default function NewJobPage() {
                     onChange={(e) =>
                       setFormData({ ...formData, salary_range: e.target.value })
                     }
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-bold focus:ring-2 focus:ring-indigo-500 transition-all outline-none pr-10"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-bold focus:ring-2 focus:ring-primary transition-all outline-none pr-10"
                     placeholder="e.g. $120k - $160k"
                   />
                   <button
                     type="button"
                     onClick={handleRecalculateSalary}
                     disabled={salaryLoading || !formData.location}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-indigo-400 hover:text-indigo-600 hover:bg-white rounded-md transition-all shadow-sm disabled:opacity-30 disabled:grayscale group-hover:scale-110 active:scale-95 border border-transparent hover:border-slate-100"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-primary hover:text-primary hover:bg-white rounded-md transition-all shadow-sm disabled:opacity-30 disabled:grayscale group-hover:scale-110 active:scale-95 border border-transparent hover:border-slate-100"
                     title="Recalculate salary based on location & experience"
                   >
                     <Sparkles className={`w-3.5 h-3.5 ${salaryLoading ? "animate-spin" : ""}`} />
@@ -504,7 +598,7 @@ function Section({
   return (
     <div className="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm hover:shadow-md transition-shadow">
       <h2 className="text-sm font-black text-slate-900 mb-8 flex items-center gap-3 uppercase tracking-widest">
-        <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
+        <div className="p-2 bg-primary-light rounded-lg text-primary">
           <Icon className="w-4 h-4" />
         </div>
         {title}
@@ -535,3 +629,4 @@ function Field({
     </div>
   );
 }
+

@@ -1,4 +1,6 @@
 import os
+import json
+import asyncio
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Body
 from src.core.dependencies import get_current_user
@@ -48,75 +50,133 @@ async def process_intent(
 ):
     """
     The Brain: Specializing in IT Tech Sales & High-Trust Psychometrics.
+    Supports Unified Talent Search (Verified + Shadow Profiles).
+    IMPORTANT: Only recruiters can search for candidates.
     """
-    user_role = current_user.get("role")
-    
-    # 1. SPECIALIZED SYSTEM PROMPT for IT SALES & PSYCHOMETRICS
-    system_prompt = f"""
-    You are the IT Tech Sales Intelligence Core. 
-    Focus: SaaS, Cloud, Cybersecurity, Fintech Sales roles.
-    Metric pillars: 
-    1. Psychometrics (Resilience, Hunter DNA from 810-question bank)
-    2. Market Standards (Location-based salary prediction)
-    3. Interview Automation (Reducing friction)
-    4. Nuclear Ban Integrity (High-Trust factor)
-    """
-
-    response_payload = {
-        "text": "",
-        "data_type": "none",
-        "data_results": [],
-        "intelligence_metrics": {} # Added for psychometric visualization
-    }
-
-    prompt_low = prompt.lower()
-
-    # SCENARIO: Psychometric / Behavior Analysis
-    if any(word in prompt_low for word in ["behavior", "personality", "sales dna", "resilience"]):
-        response_payload["text"] = "Accessing psychometric drivers from our 810-question behavioral bank. Candidate shows high 'Hunter' DNA but requires resilience coaching for long-cycle SaaS sales."
-        response_payload["data_type"] = "behavioral_report"
-        response_payload["intelligence_metrics"] = {
-            "resilience": 88,
-            "sales_dna": 94,
-            "adaptability": 72,
-            "trust_index": 98 # Based on Nuclear Ban status
+    try:
+        user_role = current_user.get("role")
+        user_id = current_user.get("sub")
+        
+        print(f"🔍 AI Intent - User ID: {user_id}, Role: {user_role}")
+        print(f"🔍 Prompt: {prompt}")
+        
+        # ROLE CHECK: Only recruiters can query candidates
+        if user_role != "recruiter":
+            print(f"❌ Non-recruiter access attempt: {user_role}")
+            return {
+                "text": "🔒 Access Denied: Only recruiters can search for candidates. Please switch to recruiter mode.",
+                "data_type": "error",
+                "data_results": []
+            }
+        
+        # Check if this is a search request
+        search_keywords = ["find", "search", "looking for", "candidates", "talent", "developers", "sales", "experience"]
+        prompt_low = prompt.lower()
+        
+        if any(keyword in prompt_low for keyword in search_keywords):
+            print(f"🔍 Detected search query")
+            
+            # 1. Extract Intent using RecruiterService
+            from src.services.recruiter_service import recruiter_service
+            
+            # Enhanced extraction prompt with better parsing
+            intent_prompt = f"""
+            Extract search criteria from this recruiter query: "{prompt}"
+            
+            Return ONLY valid JSON (NO markdown, NO code blocks):
+            {{
+                "skills": ["skill1", "skill2"],
+                "location": "city or region",
+                "experience_band": "fresher|mid|senior|leadership",
+                "keywords": ["additional search terms"]
+            }}
+            
+            Rules:
+            - For experience: < 2 years = "fresher", 2-5 years = "mid", 5-10 years = "senior", > 10 years = "leadership"
+            - Extract location from any mention of cities
+            - Extract all skills related to roles mentioned
+            - Skills can be empty list if not explicitly mentioned
+            """
+            
+            criteria = await recruiter_service._call_ai_json(intent_prompt, "Search Intent Extractor")
+            print(f"📋 Extracted criteria: {criteria}")
+            
+            if not criteria:
+                criteria = {"skills": [], "location": "", "experience_band": "mid", "keywords": []}
+            
+            # 2. Map experience years mentioned to bands if not extracted
+            if not criteria.get("experience_band") or criteria.get("experience_band") == "mid":
+                if any(word in prompt_low for word in ["entry", "fresher", "0-1", "junior"]):
+                    criteria["experience_band"] = "fresher"
+                elif any(word in prompt_low for word in ["senior", "10+", "leadership", "10 year", "more than 8", "more than 9", "more than 10"]):
+                    criteria["experience_band"] = "leadership"
+                elif any(word in prompt_low for word in ["5-10", "intermediate"]):
+                    criteria["experience_band"] = "senior"
+            
+            print(f"🎯 Final criteria: {criteria}")
+            
+            # 3. Search talent pool (Shadow + Verified)
+            print(f"🔎 Searching recommendations with params: {criteria}")
+            
+            recommendations = await recruiter_service.get_recommended_candidates(
+                user_id=user_id,
+                filter_type="skill_match",  # Use skill matching for better accuracy
+                params={
+                    "required_skills": criteria.get("skills", []),
+                    "location": criteria.get("location"),
+                    "experience_band": criteria.get("experience_band", "mid")
+                }
+            )
+            
+            print(f"✅ Found {len(recommendations)} candidates")
+            
+            if not recommendations:
+                return {
+                    "text": f"No candidates found matching: {', '.join(criteria.get('skills', []))} in {criteria.get('location', 'any location')} with {criteria.get('experience_band', 'mid')} level experience. Try broader search criteria.",
+                    "data_type": "candidate_list",
+                    "data_results": [],
+                    "criteria": criteria
+                }
+            
+            # 4. AI Summary of top results
+            top_results = recommendations[:5]
+            summary_prompt = f"""
+            Summarize concisely why these {len(top_results)} candidates match the recruiter's query: "{prompt}"
+            Keep it to 2-3 sentences max. Highlight the best matches first.
+            Data: {json.dumps(top_results, default=str)}
+            """
+            
+            ai_summary = await recruiter_service._call_ai(summary_prompt, "Explain candidate matches concisely.")
+            
+            if not ai_summary:
+                ai_summary = f"Found {len(recommendations)} qualified candidates matching your criteria."
+            
+            print(f"✅ AI Summary: {ai_summary}")
+            
+            return {
+                "text": ai_summary,
+                "data_type": "candidate_list",
+                "data_results": recommendations[:10],  # Return top 10
+                "criteria": criteria,
+                "total_count": len(recommendations)
+            }
+        
+        # Non-search queries
+        print(f"⚠️ Non-search query detected")
+        return {
+            "text": "🤖 I can help you search for candidates. Try queries like: 'Find sales candidates in Mumbai' or 'Show me developers in Bangalore with 5+ years'",
+            "data_type": "none",
+            "data_results": []
         }
 
-    # SCENARIO: Market Standards / Salary Prediction
-    elif any(word in prompt_low for word in ["market", "salary", "standard", "expect"]):
-        response_payload["text"] = "Based on current market markers for IT Tech Sales in this region, the median salary is $110k + 40% OTE. Candidates with Cloud-SaaS exposure are fetching a 15% trust-premium."
-        response_payload["data_type"] = "market_data"
-        response_payload["data_results"] = [
-            {"label": "Market Avg", "value": "110k"},
-            {"label": "High Performer", "value": "145k"},
-            {"label": "Trust Premium", "value": "+15%"}
-        ]
-
-    # SCENARIO: Reducing Interview Process (Direct Matching)
-    elif any(word in prompt_low for word in ["interview", "reduce", "fast", "top"]):
-        response_payload["text"] = "To accelerate the process, I've curated 3 'Verified-High-Trust' candidates who passed the 125-question strategic auditor. They are ready for immediate team-fit calls."
+    except Exception as e:
+        error_msg = str(e)
+        print(f"❌ ERROR in AI Intent: {error_msg}")
+        import traceback
+        traceback.print_exc()
         
-        db = SessionLocal()
-        try:
-            candidates = db.query(CandidateProfile)\
-                .order_by(CandidateProfile.final_profile_score.desc())\
-                .limit(3)\
-                .all()
-            
-            response_payload["data_results"] = [
-                {
-                    "id": str(c.user_id),
-                    "full_name": c.full_name,
-                    "profile_score": float(c.final_profile_score) if c.final_profile_score else 0,
-                    "current_role": c.current_role
-                } for c in candidates
-            ]
-        finally:
-            db.close()
-
-        response_payload["data_type"] = "candidate_list"
-    
-    else:
-        response_payload["text"] = "TalentCore Synced. Awaiting specific IT Sales or Behavioral inquiry."
-
-    return response_payload
+        return {
+            "text": f"⚠️ Processing error: {error_msg}. Please try again or rephrase your query.",
+            "data_type": "error",
+            "data_results": []
+        }

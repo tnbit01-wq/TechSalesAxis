@@ -1,0 +1,238 @@
+TALENTFLOW DATABASE AUDIT REPORT
+Generated: 2026-04-01T15:05:11.478368
+Database: postgres
+
+Total Tables: 44
+Tables with Data: 32
+Empty Tables: 12
+Total Rows: 2,883
+
+CRITICAL TABLES (Schema exists, no data):
+  - candidate_job_sync
+  - chat_reports
+  - job_views
+  - post_interactions
+  - profile_analytics
+  - profile_matches
+
+TABLE DETAILS:
+
+assessment_questions:
+  Rows: 2444
+  Columns: 8
+  Columns requiring data but empty:
+
+assessment_responses:
+  Rows: 9
+  Columns: 14
+  Columns requiring data but empty:
+
+assessment_sessions:
+  Rows: 5
+  Columns: 12
+  Columns requiring data but empty:
+
+blocked_users:
+  Rows: 0
+  Columns: 3
+  Columns requiring data but empty:
+
+bulk_upload_audit_log:
+  Rows: 0
+  Columns: 13
+  Columns requiring data but empty:
+
+bulk_upload_candidate_accounts:
+  Rows: 0
+  Columns: 16
+  Columns requiring data but empty:
+
+bulk_upload_candidate_matches:
+  Rows: 0
+  Columns: 19
+  Columns requiring data but empty:
+
+bulk_upload_files:
+  Rows: 26
+  Columns: 28
+  Columns requiring data but empty:
+
+bulk_upload_processing_queue:
+  Rows: 0
+  Columns: 17
+  Columns requiring data but empty:
+
+bulk_uploads:
+  Rows: 4
+  Columns: 32
+  Columns requiring data but empty:
+
+candidate_job_sync:
+  Rows: 0
+  Columns: 7
+  Columns requiring data but empty:
+
+candidate_profiles:
+  Rows: 43
+  Columns: 64
+  Columns requiring data but empty:
+
+candidate_settings:
+  Rows: 4
+  Columns: 11
+  Columns requiring data but empty:
+
+career_gps:
+  Rows: 2
+  Columns: 6
+  Columns requiring data but empty:
+
+career_milestones:
+  Rows: 8
+  Columns: 10
+  Columns requiring data but empty:
+
+chat_messages:
+  Rows: 1
+  Columns: 6
+  Columns requiring data but empty:
+
+chat_reports:
+  Rows: 0
+  Columns: 8
+  Columns requiring data but empty:
+
+chat_threads:
+  Rows: 1
+  Columns: 8
+  Columns requiring data but empty:
+
+companies:
+  Rows: 3
+  Columns: 23
+  Columns requiring data but empty:
+
+follows:
+  Rows: 1
+  Columns: 4
+  Columns requiring data but empty:
+
+interview_slots:
+  Rows: 2
+  Columns: 7
+  Columns requiring data but empty:
+
+interviews:
+  Rows: 2
+  Columns: 18
+  Columns requiring data but empty:
+
+job_application_status_history:
+  Rows: 9
+  Columns: 7
+  Columns requiring data but empty:
+
+job_applications:
+  Rows: 3
+  Columns: 8
+  Columns requiring data but empty:
+
+job_views:
+  Rows: 0
+  Columns: 6
+  Columns requiring data but empty:
+
+jobs:
+  Rows: 10
+  Columns: 18
+  Columns requiring data but empty:
+
+notifications:
+  Rows: 30
+  Columns: 8
+  Columns requiring data but empty:
+
+post_comments:
+  Rows: 2
+  Columns: 5
+  Columns requiring data but empty:
+
+post_interactions:
+  Rows: 0
+  Columns: 6
+  Columns requiring data but empty:
+
+post_likes:
+  Rows: 4
+  Columns: 4
+  Columns requiring data but empty:
+
+posts:
+  Rows: 2
+  Columns: 8
+  Columns requiring data but empty:
+
+profile_analytics:
+  Rows: 0
+  Columns: 7
+  Columns requiring data but empty:
+
+profile_matches:
+  Rows: 0
+  Columns: 10
+  Columns requiring data but empty:
+
+profile_scores:
+  Rows: 4
+  Columns: 8
+  Columns requiring data but empty:
+
+recruiter_assessment_questions:
+  Rows: 125
+  Columns: 5
+  Columns requiring data but empty:
+
+recruiter_assessment_responses:
+  Rows: 15
+  Columns: 12
+  Columns requiring data but empty:
+
+recruiter_profiles:
+  Rows: 3
+  Columns: 22
+  Columns requiring data but empty:
+
+recruiter_settings:
+  Rows: 3
+  Columns: 9
+  Columns requiring data but empty:
+
+resume_data:
+  Rows: 4
+  Columns: 11
+  Columns requiring data but empty:
+
+saved_jobs:
+  Rows: 1
+  Columns: 4
+  Columns requiring data but empty:
+
+skill_catalog:
+  Rows: 60
+  Columns: 7
+  Columns requiring data but empty:
+
+team_invitations:
+  Rows: 0
+  Columns: 7
+  Columns requiring data but empty:
+
+user_pinned_posts:
+  Rows: 2
+  Columns: 3
+  Columns requiring data but empty:
+
+users:
+  Rows: 51
+  Columns: 10
+  Columns requiring data but empty:

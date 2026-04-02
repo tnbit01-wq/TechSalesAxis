@@ -103,10 +103,10 @@ export default function CandidateProfileModal({
   const [showFeedbackModal, setShowFeedbackModal] = useState(initialFeedbackOpen);
 
   // Find the active (scheduled or pending) interview
-  const activeInterview = interviews.find(i => 
+  const activeInterview = (interviews || []).find(i => 
     i.status === "scheduled" || i.status === "pending_confirmation" || i.status === "in_progress"
   );
-  const completedInterviews = interviews.filter(i => i.status === "completed")
+  const completedInterviews = (interviews || []).filter(i => i.status === "completed")
     .sort((a, b) => b.round_number - a.round_number);
   
   // SUPPORT BOTH interview_slots AND slots (API Parity)
@@ -135,6 +135,12 @@ export default function CandidateProfileModal({
       icon: ClipboardList,
       hidden: isDiscovery,
     },
+    {
+      id: "interview",
+      label: "Interview Info",
+      icon: Video,
+      hidden: !activeInterview && completedInterviews.length === 0,
+    },
     { id: "resume", label: "Generated CV", icon: FileText },
     {
       id: "original_resume",
@@ -142,17 +148,11 @@ export default function CandidateProfileModal({
       icon: Download,
       hidden: !candidate.resume_path,
     },
-    {
-      id: "form",
-      label: "Form Submission",
-      icon: ClipboardList,
-      hidden: isDiscovery,
-    },
-    { id: "interview", label: "Interview", icon: Video, hidden: isDiscovery },
   ].filter((t) => !t.hidden);
 
   const normalizedResume = (
-    Array.isArray(resumeData) ? resumeData[0] : resumeData
+    resumeData ? (Array.isArray(resumeData) ? resumeData[0] : resumeData) : 
+    (candidate as any).resume_data
   ) as Record<string, unknown> | undefined;
 
   // Extraction logic with fallbacks to parsed resume details
@@ -232,7 +232,7 @@ export default function CandidateProfileModal({
                 <div
                   className={`px-2 py-0.5 rounded-full text-[9px] font-black flex items-center gap-0.5 border shadow-sm ${
                     isDiscovery && score
-                      ? "bg-indigo-600 text-white border-indigo-500"
+                      ? "bg-primary text-white border-primary"
                       : "bg-amber-50 text-amber-700 border-amber-100"
                   }`}
                 >
@@ -303,12 +303,12 @@ export default function CandidateProfileModal({
                   onClick={() => setActiveTab(tab.id)}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
                     activeTab === tab.id
-                      ? "bg-white text-indigo-600 shadow-sm"
+                      ? "bg-white text-primary shadow-sm"
                       : "text-slate-500 hover:bg-slate-300/50"
                   }`}
                 >
                   <tab.icon
-                    className={`w-3 h-3 ${activeTab === tab.id ? "text-indigo-600" : "text-slate-400"}`}
+                    className={`w-3 h-3 ${activeTab === tab.id ? "text-primary" : "text-slate-400"}`}
                   />
                   {tab.label}
                 </button>
@@ -364,9 +364,9 @@ export default function CandidateProfileModal({
                                     key={idx}
                                     className="relative pl-4 border-l-2 border-slate-100 pb-1 group"
                                   >
-                                    <div className="absolute -left-1.25 top-1 w-2 h-2 rounded-full bg-slate-200 group-hover:bg-indigo-500 transition-colors" />
+                                    <div className="absolute -left-1.25 top-1 w-2 h-2 rounded-full bg-slate-200 group-hover:bg-primary transition-colors" />
                                     <div className="flex justify-between items-start mb-0.5">
-                                      <h4 className="font-black text-slate-900 text-[11px] tracking-tight group-hover:text-indigo-600 transition-colors">
+                                      <h4 className="font-black text-slate-900 text-[11px] tracking-tight group-hover:text-primary transition-colors">
                                         {exp.role || exp.title}
                                       </h4>
                                       <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest">
@@ -409,7 +409,7 @@ export default function CandidateProfileModal({
                               ).map((skill: string, i: number) => (
                                 <span
                                   key={i}
-                                  className="px-2.5 py-1 bg-white text-indigo-600 text-[8px] font-black rounded-lg border border-indigo-100 uppercase tracking-tighter hover:bg-indigo-600 hover:text-white transition-colors cursor-default"
+                                  className="px-2.5 py-1 bg-white text-primary text-[8px] font-black rounded-lg border border-primary-light uppercase tracking-tighter hover:bg-primary hover:text-white transition-colors cursor-default"
                                 >
                                   {skill}
                                 </span>
@@ -433,7 +433,7 @@ export default function CandidateProfileModal({
                         href={candidate.resume_path || "#"}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest flex items-center gap-2 shadow-lg transition-all active:scale-95"
+                        className="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest flex items-center gap-2 shadow-lg transition-all active:scale-95"
                       >
                         <Download className="w-3 h-3" />
                         Download Original
@@ -456,8 +456,8 @@ export default function CandidateProfileModal({
                   <div className="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm">
                     <div className="flex items-center justify-between mb-8">
                       <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center">
-                          <ClipboardList className="w-6 h-6 text-indigo-600" />
+                        <div className="w-12 h-12 bg-primary-light rounded-xl flex items-center justify-center">
+                          <ClipboardList className="w-6 h-6 text-primary" />
                         </div>
                         <div>
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">
@@ -483,7 +483,7 @@ export default function CandidateProfileModal({
                         <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
                           Match Score
                         </span>
-                        <span className="text-sm font-black text-indigo-600">
+                        <span className="text-sm font-black text-primary">
                           {(score / 20).toFixed(1)} / 5.0
                         </span>
                       </div>
@@ -558,8 +558,8 @@ export default function CandidateProfileModal({
 
               {activeTab === "interview" && (
                 <div className="p-12 text-center flex flex-col items-center">
-                  <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center mb-6">
-                    <Video className="w-8 h-8 text-indigo-600" />
+                  <div className="w-16 h-16 bg-primary-light rounded-2xl flex items-center justify-center mb-6">
+                    <Video className="w-8 h-8 text-primary" />
                   </div>
                   <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight mb-2">
                     Interview Intelligence
@@ -586,20 +586,20 @@ export default function CandidateProfileModal({
                         activeInterview.status === "in_progress"
                           ? "bg-emerald-50 border-emerald-100/50"
                           : activeInterview.status === "scheduled" 
-                            ? "bg-indigo-50 border-indigo-100/50" 
+                            ? "bg-primary-light border-primary-light/50" 
                             : "bg-slate-50 border-slate-100"
                       }`}>
                         <div className="flex items-center gap-3 mb-2">
                           {activeInterview.status === "in_progress" ? (
                             <div className="h-4 w-4 rounded-full bg-emerald-500 animate-pulse" />
                           ) : (
-                            <Clock className={`h-4 w-4 ${activeInterview.status === "scheduled" ? "text-indigo-600" : "text-slate-400"}`} />
+                            <Clock className={`h-4 w-4 ${activeInterview.status === "scheduled" ? "text-primary" : "text-slate-400"}`} />
                           )}
                           <p className={`text-[9px] font-black uppercase tracking-widest ${
                             activeInterview.status === "in_progress" 
                               ? "text-emerald-700" 
                               : activeInterview.status === "scheduled" 
-                                ? "text-indigo-700" 
+                                ? "text-primary-dark" 
                                 : "text-slate-500"
                           }`}>
                             {activeInterview.status === "in_progress" ? "Live: Interview in Progress" : activeInterview.status === "scheduled" ? "Scheduled Transmission" : "Proposed Slots"}
@@ -626,10 +626,16 @@ export default function CandidateProfileModal({
                         {(activeInterview.status === "scheduled" || activeInterview.status === "in_progress") && activeInterview.meeting_link && (() => {
                           const nowInBrowser = currentTime;
                           const start = new Date(confirmedSlot?.start_time || "");
+                          const end = new Date(confirmedSlot?.end_time || "");
                           
-                          // Protocol: Join opens 15m before START until 10m AFTER start
+                          // NEW PROTOCOL: Join opens 15m before START 
+                          // Closed 5m AFTER start OR after the meeting END TIME
                           const allowedStart = new Date(start.getTime() - 15 * 60000);
-                          const allowedEnd = new Date(start.getTime() + 10 * 60000);
+                          const fiveAfterStart = new Date(start.getTime() + 5 * 60000);
+                          
+                          // Cannot join after end time
+                          const allowedEnd = fiveAfterStart < end ? fiveAfterStart : end;
+                          
                           const isActive = nowInBrowser >= allowedStart && nowInBrowser <= allowedEnd;
 
                           return (
@@ -656,8 +662,10 @@ export default function CandidateProfileModal({
                               {isActive 
                                 ? activeInterview.status === "in_progress" ? "Return to Live Session" : "Join Session"
                                 : nowInBrowser < allowedStart 
-                                  ? "Locked: Opens 15m Early" 
-                                  : "Window Closed (10m Late)"}
+                                  ? `Locked: Opens ${Math.round((allowedStart.getTime() - nowInBrowser.getTime()) / 60000)}m Early` 
+                                  : nowInBrowser > end
+                                    ? "Meeting Expired (End Time Passed)"
+                                    : "Late: Window Closed (5m Limit)"}
                             </button>
                           );
                         })()}
@@ -680,7 +688,7 @@ export default function CandidateProfileModal({
                       </p>
                       <button
                         onClick={() => setShowScheduler(true)}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] shadow-lg shadow-indigo-600/20 transition-all active:scale-95"
+                        className="bg-primary hover:bg-primary-dark text-white px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] shadow-lg shadow-primary/20 transition-all active:scale-95"
                       >
                         Schedule New Session
                       </button>
@@ -700,10 +708,10 @@ export default function CandidateProfileModal({
                         {completedInterviews.map((int) => (
                           <div 
                             key={int.id}
-                            className="p-5 bg-slate-50/50 border border-slate-100/50 rounded-2xl relative overflow-hidden group hover:bg-white hover:border-indigo-100 transition-all"
+                            className="p-5 bg-slate-50/50 border border-slate-100/50 rounded-2xl relative overflow-hidden group hover:bg-white hover:border-primary-light transition-all"
                           >
                             <div className="flex items-center justify-between mb-3">
-                              <span className="text-[8px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full uppercase tracking-widest">
+                              <span className="text-[8px] font-black text-primary bg-primary-light px-2 py-0.5 rounded-full uppercase tracking-widest">
                                 Round {int.round_number}
                               </span>
                               <span className="text-[8px] font-bold text-slate-400 uppercase">
@@ -741,7 +749,7 @@ export default function CandidateProfileModal({
                   label="Candidate Email"
                   value={candidate.email?.toLowerCase() || "Not Available"}
                   icon={Mail}
-                  color="text-indigo-600 bg-indigo-50"
+                  color="text-primary bg-primary-light"
                 />
                 <MiniInfoItem
                   label="Verified Phone"
@@ -813,7 +821,7 @@ export default function CandidateProfileModal({
               <div className="relative">
                 <textarea
                   placeholder="Add recruiter context..."
-                  className="w-full h-20 bg-slate-50 border border-slate-200/50 rounded-xl p-3 text-[9px] font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all placeholder:text-slate-300 resize-none"
+                  className="w-full h-20 bg-slate-50 border border-slate-200/50 rounded-xl p-3 text-[9px] font-bold focus:outline-none focus:ring-2 focus:ring-primary/10 transition-all placeholder:text-slate-300 resize-none"
                 />
               </div>
             </div>
@@ -879,3 +887,4 @@ function MiniInfoItem({
     </div>
   );
 }
+

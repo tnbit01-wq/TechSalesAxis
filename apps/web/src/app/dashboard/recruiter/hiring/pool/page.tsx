@@ -135,7 +135,9 @@ export default function CandidatePoolPage() {
         token,
       );
 
-      toast.success(`Elite Invite sent to ${inviteModal.candidate.full_name}`);
+      toast.success(
+        `Elite Invite sent to ${inviteModal.candidate.full_name}. You can now message them.`,
+      );
       setInviteModal({ isOpen: false, candidate: null });
     } catch (err: any) {
       console.error("Failed to invite candidate:", err);
@@ -172,23 +174,53 @@ export default function CandidatePoolPage() {
     }
   };
 
+  const trackProfileView = async (candidateId: string) => {
+    try {
+      console.log("[TRACKING] Starting profile view tracking for:", candidateId);
+      const token = awsAuth.getToken();
+      console.log("[TRACKING] Token exists:", !!token);
+      if (!token) {
+        console.log("[TRACKING] No token, skipping");
+        return;
+      }
+      console.log("[TRACKING] Sending POST to /analytics/profile/" + candidateId + "/view");
+      const response = await apiClient.post(
+        `/analytics/profile/${candidateId}/view`,
+        {},
+        token,
+      );
+      console.log("[TRACKING] ✓ Profile view tracked:", candidateId);
+      console.log("[TRACKING] Response:", response);
+    } catch (err: any) {
+      console.error("[TRACKING] ✗ Failed to track profile view:", candidateId);
+      console.error("[TRACKING] Error details:", err);
+    }
+  };
+
   const handleViewProfile = async (
     candidate: Candidate,
     tab: string = "resume",
   ) => {
+    // Track profile view
+    await trackProfileView(candidate.user_id);
+    
     setIsFetchingProfile(true);
     try {
       const token = awsAuth.getToken();
       if (!token) return;
 
-      const fullCandidate = await apiClient.get(
-        `/recruiter/candidate/${candidate.user_id}`,
-        token,
-      );
+      const [fullCandidate, interviewData] = await Promise.all([
+        apiClient.get(`/recruiter/candidate/${candidate.user_id}`, token),
+        apiClient.get("/interviews/my", token)
+      ]);
 
       setProfileModal({
         isOpen: true,
-        candidate: { ...candidate, ...fullCandidate },
+        candidate: { 
+          ...candidate, 
+          ...fullCandidate, 
+          interviews: interviewData.filter((i: any) => i.candidate_id === candidate.user_id) 
+        },
         initialTab: tab,
       });
     } catch (err) {
@@ -247,7 +279,7 @@ export default function CandidatePoolPage() {
             <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
               <div>
                 <h1 className="text-3xl font-bold text-slate-900 tracking-tight">
-                  Talent <span className="text-indigo-600">Pool</span>
+                  Talent <span className="text-primary">Pool</span>
                 </h1>
                 <p className="text-slate-500 text-sm mt-1">
                   Browse and manage all candidates in your database
@@ -272,7 +304,7 @@ export default function CandidatePoolPage() {
                     placeholder="Search name, role, skills..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 pl-11 pr-4 py-2.5 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
+                    className="w-full bg-slate-50 border border-slate-200 pl-11 pr-4 py-2.5 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
                   />
                 </div>
                 <div className="flex gap-3 flex-wrap">
@@ -282,7 +314,7 @@ export default function CandidatePoolPage() {
                       onClick={() => setFilterExperience(band)}
                       className={`px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
                         filterExperience === band
-                          ? "bg-indigo-600 text-white shadow-md shadow-indigo-200"
+                          ? "bg-primary text-white shadow-md shadow-primary-light"
                           : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                       }`}
                     >
@@ -297,7 +329,7 @@ export default function CandidatePoolPage() {
             {loading ? (
               <div className="flex items-center justify-center py-20">
                 <div className="flex flex-col items-center gap-4">
-                  <div className="h-8 w-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                  <div className="h-8 w-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                   <p className="text-slate-500 text-sm">Loading candidates...</p>
                 </div>
               </div>
@@ -356,13 +388,15 @@ export default function CandidatePoolPage() {
             status="Talent Pool"
             initialTab={profileModal.initialTab}
             isDiscovery={true}
+            interviews={(profileModal.candidate as any).interviews || []}
+            onRefresh={() => handleViewProfile(profileModal.candidate as any, profileModal.initialTab)}
           />
         )}
 
         {isFetchingProfile && (
           <div className="fixed inset-0 z-100 bg-slate-900/10 backdrop-blur-[2px] flex items-center justify-center animate-in fade-in duration-300">
             <div className="bg-white/80 p-6 rounded-4xl shadow-2xl border border-white flex flex-col items-center gap-4">
-              <div className="h-12 w-12 rounded-2xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-200">
+              <div className="h-12 w-12 rounded-2xl bg-primary flex items-center justify-center shadow-lg shadow-primary-light">
                 <div className="h-6 w-6 border-4 border-white border-t-transparent rounded-full animate-spin" />
               </div>
               <p className="text-[10px] font-black text-slate-900 uppercase tracking-[0.3em] animate-pulse">
@@ -399,10 +433,10 @@ function CandidateCard({
   onMessage: () => void;
 }) {
   return (
-    <div className="bg-white rounded-4xl border border-slate-100 shadow-sm hover:shadow-2xl hover:shadow-indigo-500/10 transition-all duration-500 group relative flex flex-col p-5 h-full">
+    <div className="bg-white rounded-4xl border border-slate-100 shadow-sm hover:shadow-2xl hover:shadow-primary/10 transition-all duration-500 group relative flex flex-col p-5 h-full">
       <div className="flex items-start justify-between mb-4">
         <div className="relative">
-          <div className="h-14 w-14 rounded-2xl border border-slate-50 bg-slate-100 overflow-hidden shadow-inner group-hover:border-indigo-100 transition-colors flex items-center justify-center">
+          <div className="h-14 w-14 rounded-2xl border border-slate-50 bg-slate-100 overflow-hidden shadow-inner group-hover:border-primary-light transition-colors flex items-center justify-center">
             {candidate.profile_photo_url ? (
               <img
                 src={candidate.profile_photo_url}
@@ -423,25 +457,18 @@ function CandidateCard({
         </div>
 
         <div className="flex flex-col items-end gap-1.5">
-          <div className="px-2 py-0.5 bg-indigo-50 text-[7px] font-black text-indigo-500 uppercase tracking-tighter rounded-md italic shrink-0">
+          <div className="px-2 py-0.5 bg-primary-light text-[7px] font-black text-primary uppercase tracking-tighter rounded-md italic shrink-0">
             Elite Talent
           </div>
-          <button
-            onClick={onViewProfile}
-            className="text-[8px] font-black text-slate-400 hover:text-indigo-600 transition-colors flex items-center gap-1 group/btn uppercase tracking-widest shrink-0"
-          >
-            Profile{" "}
-            <ChevronRight className="w-2.5 h-2.5 group-hover/btn:translate-x-0.5 transition-transform" />
-          </button>
         </div>
       </div>
 
       <div className="flex-1 space-y-1 mb-4 flex flex-col justify-center">
-        <h3 className="text-base font-black text-slate-900 tracking-tight leading-none group-hover:text-indigo-600 transition-colors truncate">
+        <h3 className="text-base font-black text-slate-900 tracking-tight leading-none group-hover:text-primary transition-colors truncate">
           {candidate.full_name}
         </h3>
-        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider truncate mb-1">
-          {candidate.current_role}
+        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider truncate mb-1 text-wrap">
+          {candidate.current_role || "Professional Candidate"}
         </p>
       </div>
 
@@ -459,7 +486,7 @@ function CandidateCard({
           <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest leading-none">
             Context
           </span>
-          <span className="text-[8px] font-black text-indigo-600 uppercase italic tracking-tighter leading-none">
+          <span className="text-[8px] font-black text-primary uppercase italic tracking-tighter leading-none">
             {candidate.years_of_experience} Years In-Market
           </span>
         </div>
@@ -473,7 +500,7 @@ function CandidateCard({
             </span>
           ))}
           {candidate.skills?.length > 2 && (
-            <span className="px-1.5 py-0.5 bg-indigo-50/50 text-indigo-400 rounded-md text-[7px] font-black uppercase tracking-widest">
+            <span className="px-1.5 py-0.5 bg-primary-light/50 text-primary rounded-md text-[7px] font-black uppercase tracking-widest">
               +{candidate.skills.length - 2}
             </span>
           )}
@@ -482,21 +509,14 @@ function CandidateCard({
 
       <div className="flex items-center gap-2 mt-auto pt-4 border-t border-slate-50">
         <button
-          onClick={onViewResume}
+          onClick={onViewProfile}
           className="flex-1 h-10 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-sm active:scale-95 whitespace-nowrap"
         >
-          View Insight
-        </button>
-        <button
-          onClick={onMessage}
-          className="h-10 w-10 bg-white text-indigo-600 rounded-xl flex items-center justify-center hover:bg-indigo-600 hover:text-white transition-all shadow-sm active:scale-95 group/msg shrink-0 border border-slate-100"
-          title="Direct Message"
-        >
-          <MessageSquare className="w-4 h-4" />
+          View Profile
         </button>
         <button
           onClick={onInvite}
-          className="h-10 w-10 bg-indigo-600 text-white rounded-xl flex items-center justify-center hover:bg-indigo-700 transition-all shadow-md active:scale-90 group/invite shrink-0"
+          className="h-10 w-10 bg-primary text-white rounded-xl flex items-center justify-center hover:bg-primary-dark transition-all shadow-md active:scale-90 group/invite shrink-0"
           title="Job Invitation"
         >
           <Plus className="w-4 h-4 group-hover/invite:rotate-90 transition-transform" />
@@ -505,3 +525,4 @@ function CandidateCard({
     </div>
   );
 }
+

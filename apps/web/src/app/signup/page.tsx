@@ -227,7 +227,7 @@ function SignupForm() {
         <div className="flex items-center gap-4">
           <Link
             href="/"
-            className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500 hover:text-indigo-600"
+            className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500 hover:text-primary"
             aria-label="Back to home"
           >
             <svg
@@ -245,7 +245,7 @@ function SignupForm() {
             </svg>
           </Link>
           <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-indigo-600 flex items-center justify-center">
+            <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
               <div className="h-4 w-4 rounded-sm bg-white rotate-45" />
             </div>
             <span className="font-bold text-slate-900 tracking-tight">
@@ -271,7 +271,7 @@ function SignupForm() {
             <div
               className={`max-w-[80%] rounded-2xl px-4 py-3 shadow-sm ${
                 msg.sender === "user"
-                  ? "bg-indigo-600 text-white rounded-tr-none"
+                  ? "bg-primary text-white rounded-tr-none"
                   : "bg-white text-slate-800 border border-slate-100 rounded-tl-none"
               }`}
             >
@@ -310,7 +310,7 @@ function SignupForm() {
             onChange={(e) => setInput(e.target.value)}
             placeholder="Type your message..."
             disabled={isLoading || state === "COMPLETED"}
-            className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all disabled:opacity-50"
+            className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
           />
 
           <button
@@ -321,7 +321,7 @@ function SignupForm() {
               isListening
                 ? "bg-red-500 text-white animate-pulse"
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-            } disabled:opacity-50`}
+            } disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed`}
             title={isListening ? "Stop listening" : "Start voice input"}
           >
             <svg
@@ -342,7 +342,7 @@ function SignupForm() {
           <button
             type="submit"
             disabled={!input.trim() || isLoading || state === "COMPLETED"}
-            className="p-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all disabled:opacity-50 shadow-md shadow-indigo-100"
+            className="p-3 bg-primary text-white rounded-xl hover:bg-primary-dark transition-all disabled:bg-slate-300 disabled:text-slate-600 disabled:cursor-not-allowed shadow-md shadow-primary-light"
           >
             <svg
               className="w-5 h-5"
@@ -374,3 +374,4 @@ export default function Page() {
     </Suspense>
   );
 }
+

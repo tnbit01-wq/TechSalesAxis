@@ -146,12 +146,18 @@ export default function ApplicationsPipelinePage() {
         router.replace("/login");
         return;
       }
-      const [data, profileData] = await Promise.all([
+      const [data, profileData, interviewData] = await Promise.all([
         apiClient.get("/recruiter/applications/pipeline", token),
         apiClient.get("/recruiter/profile", token),
+        apiClient.get("/interviews/my", token),
       ]);
 
-      const appsData = data || [];
+      const appsData = (data || []).map((app: any) => ({
+        ...app,
+        interviews: (interviewData || []).filter(
+          (i: any) => i.application_id === app.id
+        ),
+      }));
       setApplications(appsData);
       setProfile(profileData);
 
@@ -173,6 +179,43 @@ export default function ApplicationsPipelinePage() {
     const interval = setInterval(fetchApplications, 60000);
     return () => clearInterval(interval);
   }, [fetchApplications]);
+
+  const trackProfileView = async (candidateId: string, jobId?: string) => {
+    try {
+      console.log("[TRACKING] Starting profile view tracking for:", candidateId);
+      console.log("[TRACKING] Job ID:", jobId);
+      
+      const token = awsAuth.getToken();
+      console.log("[TRACKING] Token exists:", !!token);
+      if (!token) {
+        console.log("[TRACKING] No token, skipping");
+        return;
+      }
+
+      const url = jobId 
+        ? `/analytics/profile/${candidateId}/view?job_id=${jobId}`
+        : `/analytics/profile/${candidateId}/view`;
+      
+      console.log("[TRACKING] Sending POST to", url);
+      const response = await apiClient.post(
+        url,
+        {},
+        token
+      );
+      console.log("[TRACKING] ✓ Profile view tracked:", candidateId);
+      console.log("[TRACKING] Response:", response);
+      if (response?.notification_sent) {
+        console.log("[TRACKING] ✓ Notification sent to candidate for job application");
+      }
+    } catch (err: any) {
+      console.error("[TRACKING] ✗ Failed to track profile view:", candidateId);
+      console.error("[TRACKING] Error details:", err);
+      if (err?.response) {
+        console.error("[TRACKING] API Status:", err.response.status);
+        console.error("[TRACKING] API Response:", err.response.data);
+      }
+    }
+  };
 
   const exportToCSV = () => {
     if (filteredApplications.length === 0) return;
@@ -598,7 +641,8 @@ export default function ApplicationsPipelinePage() {
                     </td>
                     <td className="px-4 py-3">
                       <button
-                        onClick={() =>
+                        onClick={() => {
+                          trackProfileView(app.candidate_id, app.job_id);
                           setProfileModal({
                             isOpen: true,
                             candidate: app.candidate_profiles,
@@ -610,8 +654,8 @@ export default function ApplicationsPipelinePage() {
                             initialTab: "application",
                             applicationId: app.id,
                             interviews: app.interviews,
-                          })
-                        }
+                          });
+                        }}
                         className="text-sm font-bold text-slate-900 hover:text-indigo-600 flex items-center gap-1"
                       >
                         {app.candidate_profiles?.full_name}
@@ -656,6 +700,30 @@ export default function ApplicationsPipelinePage() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {app.status === "interview_scheduled" && app.interviews?.some(i => i.status === "scheduled") && (
+                          <button
+                            onClick={() => {
+                              trackProfileView(app.candidate_id);
+                              setProfileModal({
+                                isOpen: true,
+                                candidate: app.candidate_profiles,
+                                resumeData: app.resume_data,
+                                jobTitle: app.jobs.title,
+                                appliedDate: app.created_at,
+                                score: app.profile_scores?.final_score || 0,
+                                status: app.status,
+                                initialTab: "interview",
+                                applicationId: app.id,
+                                interviews: app.interviews,
+                              });
+                            }}
+                            className="p-1.5 bg-indigo-600 text-white border border-indigo-600 rounded hover:bg-slate-900 hover:border-slate-900 transition-colors flex items-center gap-1.5 px-3"
+                            title="Join Interview"
+                          >
+                            <Video className="h-4 w-4" />
+                            <span className="text-[10px] font-black uppercase tracking-wider">Join</span>
+                          </button>
+                        )}
                         {["shortlisted", "applied"].includes(app.status) && (
                           <button
                             onClick={() => {
@@ -669,7 +737,8 @@ export default function ApplicationsPipelinePage() {
                           </button>
                         )}
                         <button
-                          onClick={() =>
+                          onClick={() => {
+                            trackProfileView(app.candidate_id);
                             setProfileModal({
                               isOpen: true,
                               candidate: app.candidate_profiles,
@@ -681,8 +750,8 @@ export default function ApplicationsPipelinePage() {
                               initialTab: "application",
                               applicationId: app.id,
                               interviews: app.interviews,
-                            })
-                          }
+                            });
+                          }}
                           className="p-1.5 bg-white border border-slate-200 rounded hover:text-slate-900 text-slate-400 transition-colors"
                           title="View Profile"
                         >
@@ -721,6 +790,7 @@ export default function ApplicationsPipelinePage() {
                             {app.status === "shortlisted" && !app.interviews?.some(i => i.status === "pending_confirmation" || i.status === "scheduled") && (
                               <button
                                 onClick={() => {
+                                  trackProfileView(app.candidate_id);
                                   setProfileModal({
                                     isOpen: true,
                                     candidate: app.candidate_profiles,

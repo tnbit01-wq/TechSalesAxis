@@ -90,7 +90,7 @@ export default function InterviewFeedbackModal({
         <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/30">
           <div>
             <h2 className="text-2xl font-black text-slate-900 uppercase italic tracking-tighter">
-              Post-Interview <span className="text-indigo-600">Evaluation</span>
+              Post-Interview <span className="text-primary">Evaluation</span>
             </h2>
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-1">
               Mission Debrief: {candidateName} - {roundName}
@@ -116,7 +116,7 @@ export default function InterviewFeedbackModal({
               <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
               <div>
                 <p className="font-black">ATTENDANCE REQUIRED</p>
-                <p className="font-medium text-amber-600 mt-1">You must attend the interview to submit feedback. Select "Not Conducted" only if neither of you attended.</p>
+                <p className="font-medium text-amber-600 mt-1">You must attend the interview to submit evaluation results. Select &quot;Not Conducted&quot; if you missed the session or it didn&apos;t happen.</p>
               </div>
             </div>
           )}
@@ -152,12 +152,12 @@ export default function InterviewFeedbackModal({
                   p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 group
                   ${!recruiterAttended ? "opacity-40 cursor-not-allowed" : ""}
                   ${decision === "shortlisted" 
-                    ? "border-indigo-500 bg-indigo-50 shadow-lg shadow-indigo-100" 
-                    : "border-slate-100 hover:border-indigo-200 bg-white"}
+                    ? "border-primary bg-primary-light shadow-lg shadow-primary-light" 
+                    : "border-slate-100 hover:border-primary-light bg-white"}
                 `}
               >
-                <FastForward className={`h-6 w-6 ${decision === "shortlisted" ? "text-indigo-500" : "text-slate-300 group-hover:text-indigo-400"}`} />
-                <span className={`text-[9px] font-black uppercase tracking-widest ${decision === "shortlisted" ? "text-indigo-700" : "text-slate-500"}`}>
+                <FastForward className={`h-6 w-6 ${decision === "shortlisted" ? "text-primary" : "text-slate-300 group-hover:text-primary"}`} />
+                <span className={`text-[9px] font-black uppercase tracking-widest ${decision === "shortlisted" ? "text-primary-dark" : "text-slate-500"}`}>
                   Next Round
                 </span>
               </button>
@@ -200,11 +200,11 @@ export default function InterviewFeedbackModal({
 
               <button
                 onClick={() => setDecision("not_conducted")}
-                disabled={recruiterAttended || candidateAttended}
-                title={recruiterAttended || candidateAttended ? "Select only if neither attended" : ""}
+                disabled={recruiterAttended}
+                title={recruiterAttended ? "Select only if you didn't attend or the meeting failed" : ""}
                 className={`
                   p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 group
-                  ${recruiterAttended || candidateAttended ? "opacity-40 cursor-not-allowed" : ""}
+                  ${recruiterAttended ? "opacity-40 cursor-not-allowed" : ""}
                   ${decision === "not_conducted" 
                     ? "border-purple-500 bg-purple-50 shadow-lg shadow-purple-100" 
                     : "border-slate-100 hover:border-purple-200 bg-white"}
@@ -221,7 +221,7 @@ export default function InterviewFeedbackModal({
           {/* Feedback Input */}
           <div className="space-y-4">
             <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 flex items-center gap-2">
-              <MessageCircle className="h-3.5 w-3.5 text-indigo-500" />
+              <MessageCircle className="h-3.5 w-3.5 text-primary" />
               Detailed Feedback / Candidate Debrief
             </h3>
             <div className="relative">
@@ -230,7 +230,7 @@ export default function InterviewFeedbackModal({
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
                 placeholder="Share your evaluation after the session. This helps the candidate understand your decision or prepares them for the next transmission."
-                className="w-full h-40 bg-slate-50 border border-slate-100 rounded-3xl p-6 pl-12 text-sm font-medium text-slate-700 focus:bg-white focus:ring-2 focus:ring-indigo-500/10 focus:outline-none transition-all placeholder:text-slate-300 resize-none shadow-inner"
+                className="w-full h-40 bg-slate-50 border border-slate-100 rounded-3xl p-6 pl-12 text-sm font-medium text-slate-700 focus:bg-white focus:ring-2 focus:ring-primary/10 focus:outline-none transition-all placeholder:text-slate-300 resize-none shadow-inner"
               />
             </div>
             <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest italic text-center">
@@ -253,7 +253,7 @@ export default function InterviewFeedbackModal({
                 flex-[2] py-4 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] transition-all shadow-xl
                 ${loading || !decision || (decision !== "no_show" && decision !== "not_conducted" && !feedback.trim())
                   ? "bg-slate-200 text-slate-400 cursor-not-allowed"
-                  : "bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-600/20 active:scale-[0.98]"}
+                  : "bg-primary text-white hover:bg-primary-dark shadow-primary/20 active:scale-[0.98]"}
               `}
             >
               {loading ? (
@@ -271,3 +271,4 @@ export default function InterviewFeedbackModal({
     </div>
   );
 }
+

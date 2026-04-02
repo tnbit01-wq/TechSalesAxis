@@ -123,7 +123,7 @@ export default function CandidateInterviewConfirmModal({
         <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/30">
           <div>
             <h2 className="text-2xl font-black text-slate-900 uppercase italic tracking-tighter">
-              Confirm <span className="text-indigo-600">Interview</span>
+              Confirm <span className="text-primary">Interview</span>
             </h2>
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-1">
               Mission Synchronization Required
@@ -140,7 +140,7 @@ export default function CandidateInterviewConfirmModal({
         <div className="p-8 space-y-8 overflow-y-auto max-h-[70vh]">
           {loading ? (
             <div className="flex flex-col items-center py-20">
-              <Loader2 className="h-10 w-10 text-indigo-600 animate-spin mb-4" />
+              <Loader2 className="h-10 w-10 text-primary animate-spin mb-4" />
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
                 Retrieving Time Coordinates...
               </p>
@@ -166,9 +166,9 @@ export default function CandidateInterviewConfirmModal({
                   </span>
                   <div className="flex items-center gap-2">
                     {interview.format === "virtual" ? (
-                      <Video className="h-4 w-4 text-indigo-500" />
+                      <Video className="h-4 w-4 text-primary" />
                     ) : (
-                      <MapPin className="h-4 w-4 text-indigo-500" />
+                      <MapPin className="h-4 w-4 text-primary" />
                     )}
                     <p className="font-bold text-slate-900 capitalize">{interview.format}</p>
                   </div>
@@ -183,7 +183,7 @@ export default function CandidateInterviewConfirmModal({
                   </h4>
                   <div className="flex flex-wrap gap-2">
                     {interview.interviewer_names.map((name) => (
-                      <span key={name} className="px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-bold border border-indigo-100">
+                      <span key={name} className="px-3 py-1.5 bg-primary-light text-primary rounded-xl text-xs font-bold border border-primary-light">
                         {name}
                       </span>
                     ))}
@@ -194,7 +194,7 @@ export default function CandidateInterviewConfirmModal({
               {/* Slots Selection */}
               <div className="space-y-4">
                 <h4 className="text-[10px] font-black text-slate-900 uppercase tracking-widest px-1 flex items-center gap-2">
-                  <Calendar className="h-3.5 w-3.5 text-indigo-600" />
+                  <Calendar className="h-3.5 w-3.5 text-primary" />
                   Select Preferred Slot
                 </h4>
                 <div className="grid grid-cols-1 gap-3">
@@ -211,8 +211,8 @@ export default function CandidateInterviewConfirmModal({
                         className={`
                           p-5 rounded-3xl border-2 text-left transition-all relative group
                           ${isSelected 
-                            ? "border-indigo-600 bg-indigo-50/50 shadow-lg shadow-indigo-100" 
-                            : "border-slate-100 bg-white hover:border-indigo-200"}
+                            ? "border-primary bg-primary-light/50 shadow-lg shadow-primary-light" 
+                            : "border-slate-100 bg-white hover:border-primary-light"}
                           ${submitting ? "opacity-50 cursor-not-allowed" : ""}
                         `}
                       >
@@ -227,7 +227,7 @@ export default function CandidateInterviewConfirmModal({
                             </div>
                           </div>
                           {isSelected && (
-                            <CheckCircle2 className="h-6 w-6 text-indigo-600 animate-in zoom-in duration-300" />
+                            <CheckCircle2 className="h-6 w-6 text-primary animate-in zoom-in duration-300" />
                           )}
                         </div>
                       </button>
@@ -250,8 +250,8 @@ export default function CandidateInterviewConfirmModal({
                   className={`
                     flex-[2] py-4 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] transition-all shadow-xl
                     ${!selectedSlotId || submitting || interview?.status === "scheduled"
-                      ? "bg-slate-200 text-slate-400 cursor-not-allowed"
-                      : "bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-600/20 active:scale-[0.98]"}
+                      ? "bg-slate-200 text-slate-700 cursor-not-allowed"
+                      : "bg-primary text-white hover:bg-primary-dark shadow-primary/20 active:scale-[0.98]"}
                   `}
                 >
                   {submitting ? (
@@ -271,3 +271,4 @@ export default function CandidateInterviewConfirmModal({
     </div>
   );
 }
+

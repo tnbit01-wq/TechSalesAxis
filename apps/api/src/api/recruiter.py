@@ -4,7 +4,16 @@ from src.services.recruiter_service import recruiter_service
 from src.services.s3_service import S3Service
 from src.core.database import SessionLocal
 import uuid
-from src.core.models import RecruiterProfile, Company, User, RecruiterSetting, BlockedUser
+from datetime import datetime
+from src.core.models import (
+    RecruiterProfile, 
+    Company, 
+    User, 
+    RecruiterSetting, 
+    BlockedUser,
+    ChatThread,
+    ChatMessage
+)
 from src.models.invitation import TeamInvitation
 from src.schemas.recruiter import (
     RecruiterProfileUpdate, 
@@ -23,6 +32,7 @@ from src.schemas.recruiter import (
 )
 from src.services.id_verification_service import IDVerificationService
 from src.services.notification_service import NotificationService
+from src.services.chat_service import ChatService
 from src.services.s3_service import S3Service
 from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
@@ -169,12 +179,29 @@ async def get_recommended_candidates(
 async def update_profile(data: RecruiterProfileUpdate, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     user_id = user["sub"]
     profile = db.query(RecruiterProfile).filter(RecruiterProfile.user_id == user_id).first()
-    if not profile: raise HTTPException(status_code=404)
-    for k, v in data.model_dump(exclude_unset=True).items():
-        setattr(profile, k, v)
-    db.commit()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    # Update profile fields from request data
+    update_data = data.model_dump(exclude_unset=True)
+    for k, v in update_data.items():
+        if hasattr(profile, k):
+            setattr(profile, k, v)
+    
+    try:
+        db.commit()
+        db.refresh(profile)
+    except Exception as e:
+        db.rollback()
+        print(f"DEBUG: Profile update failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to persist profile changes")
+
     new_score = await recruiter_service.sync_completion_score(user_id)
-    return {"status": "ok", "completion_score": new_score}
+    return {
+        "status": "ok", 
+        "completion_score": new_score,
+        "professional_persona": profile.professional_persona
+    }
 
 @router.post("/invite")
 async def invite_member(data: TeamInviteRequest, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -316,8 +343,14 @@ async def update_company_details_legacy(
 
 @router.post("/generate-bio")
 async def generate_bio(data: BioRequest):
-    bio = await recruiter_service.generate_company_bio(data.website)
-    return {"bio": bio}
+    try:
+        print(f"DEBUG: Generating bio for website: {data.website}")
+        bio = await recruiter_service.generate_company_bio(data.website)
+        print(f"DEBUG: Generated bio: {bio}")
+        return {"bio": bio or "", "success": bool(bio)}
+    except Exception as e:
+        print(f"ERROR in generate_bio: {str(e)}")
+        return {"bio": "", "success": False, "error": str(e)}
 
 @router.get("/assessment-questions")
 async def get_assessment_questions(user: dict = Depends(get_current_user)):
@@ -597,7 +630,12 @@ async def bulk_application_status(data: BulkApplicationStatusUpdate, db: Session
 
 @router.get("/talent-pool")
 async def talent_pool():
-    return await recruiter_service.get_talent_pool()
+    try:
+        result = await recruiter_service.get_talent_pool()
+        return result or []
+    except Exception as e:
+        print(f"Error fetching talent pool: {e}")
+        return []
 
 @router.get("/candidate-pool")
 async def candidate_pool(db: Session = Depends(get_db)):
@@ -607,19 +645,38 @@ async def candidate_pool(db: Session = Depends(get_db)):
     for candidate in candidates:
         resume = db.query(ResumeData).filter(ResumeData.user_id == candidate.user_id).first()
         years = candidate.years_of_experience or 0
-        experience = "leadership" if years >= 10 else "senior" if years >= 5 else "mid" if years >= 1 else "fresher"
+        
+        # Priority 1: User-defined experience band
+        exp_band = (candidate.experience or "").lower().strip()
+        
+        # Priority 2: Fallback to Years calculation if band is missing or empty
+        if not exp_band or exp_band == "not set":
+            exp_band = "leadership" if years >= 10 else "senior" if years >= 5 else "mid" if years >= 1 else "fresher"
+        
+        # Priority 3: Normalization for UI consistency
+        if exp_band in ["fresher", "entry", "intern"]:
+            normalized_exp = "fresher"
+        elif exp_band in ["mid", "intermediate", "associate"]:
+            normalized_exp = "mid"
+        elif exp_band in ["senior", "sr", "expert"]:
+            normalized_exp = "senior"
+        elif exp_band in ["leadership", "mgmt", "management", "director", "vp"]:
+            normalized_exp = "leadership"
+        else:
+            normalized_exp = exp_band # Keep original if none of the above
+            
         results.append({
             "user_id": str(candidate.user_id),
             "full_name": candidate.full_name or "Unknown Candidate",
             "current_role": candidate.current_role,
-            "experience": experience,
+            "experience": normalized_exp,
             "years_of_experience": years,
             "profile_strength": candidate.profile_strength or "Low",
             "identity_verified": bool(candidate.identity_verified),
             "trust_score": candidate.final_profile_score or 0,
             "assessment_status": candidate.assessment_status or "not_started",
             "skills": resume.skills if resume and resume.skills else [],
-            "profile_photo_url": candidate.profile_photo_url,
+            "profile_photo_url": S3Service.get_signed_url(candidate.profile_photo_url) if candidate.profile_photo_url else None,
             "resume_path": S3Service.get_signed_url(candidate.resume_path) if candidate.resume_path else None,
         })
     return results
@@ -682,22 +739,68 @@ async def generate_job_ai(data: JobAIPrompt):
     }
 
 @router.post("/check-job-potential")
-async def check_job_potential(data: Dict[str, Any], db: Session = Depends(get_db)):
+async def check_job_potential(
+    data: Dict[str, Any], 
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     from src.services.recruiter_service import recruiter_service
+    user_id = current_user.get("sub")
     
-    # Use the same weighted matching logic from the talent pool
-    recommendations = await recruiter_service.get_recommended_candidates(
-        skills=data.get("skills"),
-        experience_years=data.get("experience_years"),
-        location=data.get("location"),
-        salary_expectation=data.get("salary_range")
-    )
+    try:
+        print(f"🎯 CHECK JOB POTENTIAL - User: {user_id}")
+        print(f"📋 Incoming data: {data}")
+        
+        # Map the incoming data to the params dictionary expected by the service
+        years = data.get("experience_years") or 0
+        exp_band = "leadership" if years >= 10 else "senior" if years >= 5 else "mid" if years >= 1 else "fresher"
+        
+        # Ensure skills is always a list
+        skills = data.get("skills") or []
+        if isinstance(skills, str):
+            skills = [s.strip() for s in skills.split(",") if s.strip()]
+        
+        location = data.get("location") or ""
+        title = data.get("title") or ""
+
+        params = {
+            "required_skills": skills,
+            "experience_band": exp_band,
+            "location": location,
+            "salary_range": data.get("salary_range", "")
+        }
+        
+        print(f"🔍 Processed params: {params}")
+        print(f"📌 Experience band: {exp_band} (from {years} years)")
+        print(f"📌 Location: {location}")
+        print(f"📌 Skills: {skills}")
+
+        # Use skill matching for job preview (same as global chat)
+        recommendations = await recruiter_service.get_recommended_candidates(
+            user_id=user_id,
+            filter_type="skill_match",  # Changed from talent_pool to skill_match for better accuracy
+            params=params
+        )
+        
+        count = len(recommendations)
+        print(f"✅ Found {count} candidates matching job preview criteria")
+        
+        return {
+            "count": count,
+            "message": f"Found {count} highly relevant candidates in our talent pool matching your requirements.",
+            "data": recommendations[:5] if recommendations else []  # Return top 5 for preview
+        }
     
-    count = len(recommendations)
-    return {
-        "count": count,
-        "message": f"Found {count} highly relevant candidates in our talent pool matching your requirements.",
-    }
+    except Exception as e:
+        print(f"❌ ERROR in check_job_potential: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
+        return {
+            "count": 0,
+            "message": f"Error checking talent pool: {str(e)}",
+            "error": True
+        }
 
 @router.get("/candidate/{candidate_id}")
 async def get_candidate(candidate_id: str, db: Session = Depends(get_db)):
@@ -717,7 +820,9 @@ async def get_candidate(candidate_id: str, db: Session = Depends(get_db)):
         "years_of_experience": candidate.years_of_experience,
         "location": candidate.location,
         "phone_number": candidate.phone_number,
-        "profile_photo_url": candidate.profile_photo_url,
+        "gender": candidate.gender,
+        "birthdate": candidate.birthdate,
+        "profile_photo_url": S3Service.get_signed_url(candidate.profile_photo_url) if candidate.profile_photo_url else None,
         "resume_path": S3Service.get_signed_url(candidate.resume_path) if candidate.resume_path else None,
         "skills": resume.skills if resume else [],
         "resume_data": {
@@ -733,12 +838,50 @@ async def get_candidate(candidate_id: str, db: Session = Depends(get_db)):
 
 @router.post("/candidate/{candidate_id}/invite")
 async def invite_candidate(candidate_id: str, data: JobInviteRequest, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    user_id = user["sub"]
+    invite_msg = data.message or "A recruiter invited you to explore a role."
+    
+    # 1. Create thread so they can talk immediately
+    thread_data = ChatService.get_or_create_thread(db, user_id, candidate_id)
+    thread_id = thread_data["id"]
+
+    # 2. Post the invitation message as the first chat message bypasses the lock check because it's system-initiated
+    try:
+        # Check if this exact invite message was already sent to avoid duplicates on double-click
+        existing = db.query(ChatMessage).filter(
+            ChatMessage.thread_id == thread_id,
+            ChatMessage.sender_id == user_id,
+            ChatMessage.text == f"[Job Invite] {invite_msg}"
+        ).first()
+
+        if not existing:
+            new_msg = ChatMessage(
+                thread_id=thread_id,
+                sender_id=user_id,
+                text=f"[Job Invite] {invite_msg}"
+            )
+            db.add(new_msg)
+            
+            # Update thread's last_message_at
+            thread = db.query(ChatThread).filter(ChatThread.id == thread_id).first()
+            if thread:
+                thread.last_message_at = datetime.utcnow()
+            
+            db.commit()
+            print(f"DEBUG: Posted invite message to thread {thread_id}")
+        else:
+            print(f"DEBUG: Invite message already exists in thread {thread_id}")
+    except Exception as e:
+        db.rollback()
+        print(f"Failed to post invite message to chat: {e}")
+
+    # 3. Create Notification
     NotificationService.create_notification(
         candidate_id,
         "job_invite",
         "New recruiter interest",
-        data.message or "A recruiter invited you to explore a role.",
-        {"job_id": data.job_id, "recruiter_id": user["sub"], "custom_role_title": data.custom_role_title},
+        invite_msg,
+        {"job_id": data.job_id, "recruiter_id": user_id, "custom_role_title": data.custom_role_title},
         db,
     )
     return {"status": "invited"}
@@ -773,46 +916,6 @@ async def remove_team_member(member_id: str, user: dict = Depends(get_current_us
     db.delete(member)
     db.commit()
     return {"status": "removed", "user_id": member_id}
-
-@router.get("/market-insights")
-async def market_insights(db: Session = Depends(get_db)):
-    from src.core.models import CandidateProfile, ResumeData, Job
-    candidates = db.query(CandidateProfile).all()
-    resumes = db.query(ResumeData).all()
-    jobs = db.query(Job).filter(Job.status == "active").all()
-
-    skill_counts: Dict[str, int] = {}
-    for resume in resumes:
-        for skill in (resume.skills or [])[:15]:
-            skill_counts[skill] = skill_counts.get(skill, 0) + 1
-
-    talent_density = [
-        {"skill": skill, "percentage": count}
-        for skill, count in sorted(skill_counts.items(), key=lambda item: item[1], reverse=True)[:8]
-    ]
-    max_count = max([item["percentage"] for item in talent_density], default=1)
-    for item in talent_density:
-        item["percentage"] = int((item["percentage"] / max_count) * 100) if max_count else 0
-
-    competition_index = []
-    for item in talent_density[:6]:
-        active_openings = sum(1 for job in jobs if item["skill"].lower() in ((job.description or "") + " " + (job.title or "")).lower())
-        competition_index.append({
-            "skill": item["skill"],
-            "active_openings": active_openings,
-        })
-
-    return {
-        "market_state": "LIVE",
-        "pool_size": len(candidates),
-        "talent_density": talent_density or [
-            {"skill": "General", "percentage": 100}
-        ],
-        "competition_index": competition_index or [
-            {"skill": "General", "active_openings": len(jobs)}
-        ],
-    }
-
 
 @router.post("/profile-matches/persist")
 async def persist_profile_matches(

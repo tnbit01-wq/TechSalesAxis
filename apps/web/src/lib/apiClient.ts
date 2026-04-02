@@ -52,6 +52,7 @@ async function fetchWithFallback(path: string, options: FetchOptions) {
 
       lastError = err;
       if (!isNetworkError) {
+        // Only log network-level retries/errors, don't spam API validation errors
         throw err;
       }
 
@@ -83,8 +84,6 @@ export const apiClient = {
 
       return response.json();
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Unknown error";
-      console.error(`API POST Error [${url}]:`, errorMessage);
       throw err;
     }
   },

@@ -79,21 +79,86 @@ class AnalyticsService:
         job_id: Optional[UUID] = None,
         metadata: Optional[Dict] = None
     ) -> ProfileAnalytics:
-        """Log a profile analytics event (view, application, etc.)."""
-        profile_event = ProfileAnalytics(
-            candidate_id=candidate_id,
-            recruiter_id=recruiter_id,
-            event_type=event_type,
-            job_id=job_id,
-            event_metadata=metadata or {}
-        )
+        """
+        Log a profile analytics event (view, application, etc.).
+        For profile_view events: One entry per recruiter-candidate pair (all time).
+        If recruiter views multiple times, updates the timestamp but doesn't create new entries.
+        
+        This allows:
+        - Recruiter A views Candidate B → 1 entry
+        - Recruiter A views Candidate C → 1 separate entry (different candidate)
+        - Recruiter A views Candidate B again → Same entry (updated timestamp)
+        """
+        from datetime import datetime
+        
+        print(f"\n[SERVICE] ===== log_profile_analytics =====")
+        print(f"[SERVICE] event_type: {event_type}")
+        print(f"[SERVICE] recruiter_id: {recruiter_id} (type: {type(recruiter_id)})")
+        print(f"[SERVICE] candidate_id: {candidate_id} (type: {type(candidate_id)})")
+        
         try:
+            # For profile_view events, check if this recruiter ever viewed THIS SPECIFIC candidate
+            if event_type == "profile_view":
+                print(f"[SERVICE] Checking for existing view...")
+                
+                # Query with explicit UUID handling
+                existing_view = db.query(ProfileAnalytics).filter(
+                    ProfileAnalytics.candidate_id == candidate_id,
+                    ProfileAnalytics.recruiter_id == recruiter_id,
+                    ProfileAnalytics.event_type == "profile_view"
+                ).first()
+                
+                print(f"[SERVICE] Existing view found: {existing_view is not None}")
+                
+                if existing_view:
+                    # Update the timestamp of existing view (track most recent view time)
+                    print(f"[SERVICE] ✓ View already exists - ID: {existing_view.id}")
+                    print(f"[SERVICE]   Previous timestamp: {existing_view.created_at}")
+                    old_timestamp = existing_view.created_at
+                    
+                    existing_view.created_at = datetime.utcnow()
+                    if metadata:
+                        existing_view.event_metadata = metadata
+                    db.commit()
+                    db.refresh(existing_view)
+                    
+                    print(f"[SERVICE]   Updated timestamp: {existing_view.created_at}")
+                    print(f"[SERVICE]   Reusing existing entry (no new record created)")
+                    return existing_view
+            
+            # Create new profile event if this recruiter hasn't viewed this candidate before
+            print(f"[SERVICE] Creating NEW entry...")
+            profile_event = ProfileAnalytics(
+                candidate_id=candidate_id,
+                recruiter_id=recruiter_id,
+                event_type=event_type,
+                job_id=job_id,
+                event_metadata=metadata or {}
+            )
+            print(f"[SERVICE] ProfileAnalytics object created")
+            print(f"[SERVICE]   Recruiter: {recruiter_id}")
+            print(f"[SERVICE]   Candidate: {candidate_id}")
+            
+            print(f"[SERVICE] Adding to database session...")
             db.add(profile_event)
+            print(f"[SERVICE] Committing transaction...")
             db.commit()
+            print(f"[SERVICE] Refreshing object from DB...")
             db.refresh(profile_event)
+            
+            print(f"[SERVICE] ✓ NEW entry created - ID: {profile_event.id}")
+            print(f"[SERVICE]   Timestamp: {profile_event.created_at}")
+            print(f"[SERVICE] ===== log_profile_analytics END =====\n")
             return profile_event
+            
         except Exception as e:
+            print(f"[SERVICE] ✗ EXCEPTION during save")
+            print(f"[SERVICE] Error: {str(e)}")
+            print(f"[SERVICE] Error type: {type(e).__name__}")
             db.rollback()
+            import traceback
+            traceback.print_exc()
+            print(f"[SERVICE] ===== log_profile_analytics END (ERROR) =====\n")
             raise Exception(f"Failed to log profile analytics: {str(e)}")
     
     @staticmethod

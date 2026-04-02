@@ -237,18 +237,27 @@ export default function RecruiterOnboarding() {
             
             // Auto-generate bio from website
             try {
-              addMessage("Synthesizing company biological signals from website...", "bot");
+              addMessage("Analyzing your website to create a company narrative...", "bot");
+              console.log("Calling generate-bio with website:", val);
+              
               const res = await apiClient.post(
                 "/recruiter/generate-bio",
                 { website: val },
                 token,
               );
-              if (res.bio) {
+              
+              console.log("Bio generation response:", res);
+              
+              if (res && res.bio && res.bio.trim()) {
                 nextDetails.description = res.bio;
-                addMessage("Synthesized Narrative: " + res.bio, "bot");
+                addMessage("✨ Generated Company Narrative:\n" + res.bio, "bot");
+              } else {
+                console.log("No bio returned, will ask for manual entry");
+                addMessage("I'll ask you to describe your company in a moment.", "bot");
               }
             } catch (err) {
-              console.error("Bio generation failed", err);
+              console.error("Bio generation error:", err);
+              addMessage("No problem! I'll ask you to describe your company manually.", "bot");
             }
           } else if (!nextDetails.location) {
             nextDetails.location = val;
@@ -485,7 +494,7 @@ export default function RecruiterOnboarding() {
           {!isAssessmentActive && (
             <Link
               href="/"
-              className="p-2 hover:bg-slate-50 rounded-full transition-colors text-slate-400 hover:text-indigo-600"
+              className="p-2 hover:bg-slate-50 rounded-full transition-colors text-slate-400 hover:text-primary"
               aria-label="Back to home"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -494,7 +503,7 @@ export default function RecruiterOnboarding() {
             </Link>
           )}
           <div className="flex items-center gap-2.5">
-            <div className={`h-9 w-9 rounded-xl ${isAssessmentActive ? "bg-blue-600 shadow-blue-900/20" : "bg-indigo-600 shadow-indigo-200"} flex items-center justify-center shadow-lg`}>
+            <div className={`h-9 w-9 rounded-xl ${isAssessmentActive ? "bg-blue-600 shadow-blue-900/20" : "bg-primary shadow-primary-light"} flex items-center justify-center shadow-lg`}>
               <div className={`h-4 w-4 rounded ${isAssessmentActive ? "bg-black" : "bg-white"} rotate-45`} />
             </div>
             <h1 className={`text-xl font-bold tracking-tight ${isAssessmentActive ? "text-white uppercase italic" : "text-slate-800"}`}>
@@ -638,7 +647,7 @@ export default function RecruiterOnboarding() {
                       className={`px-5 py-4 rounded-2xl shadow-sm text-sm leading-relaxed ${
                         m.sender === "bot" 
                           ? "bg-slate-50 border border-slate-100 text-slate-700 rounded-tl-none" 
-                          : "bg-indigo-600 text-white rounded-tr-none shadow-indigo-100 font-semibold"
+                          : "bg-primary text-white rounded-tr-none shadow-primary-light font-semibold"
                       }`}
                     >
                       <p className="whitespace-pre-wrap font-medium">
@@ -653,7 +662,7 @@ export default function RecruiterOnboarding() {
                             key={opt}
                             onClick={() => handleSend(opt)}
                             disabled={isLoading}
-                            className="px-5 py-2.5 bg-white hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 rounded-full text-sm font-semibold text-slate-600 hover:text-indigo-600 transition-all shadow-sm active:scale-95 disabled:opacity-50"
+                            className="px-5 py-2.5 bg-white hover:bg-primary-light border border-slate-200 hover:border-primary-light rounded-full text-sm font-semibold text-slate-600 hover:text-primary transition-all shadow-sm active:scale-95 disabled:opacity-50"
                           >
                             {opt}
                           </button>
@@ -668,9 +677,9 @@ export default function RecruiterOnboarding() {
                 <div className="flex justify-start">
                   <div className="bg-slate-50 px-5 py-4 rounded-2xl border border-slate-100 rounded-tl-none shadow-sm">
                     <div className="flex space-x-1.5 items-center h-4">
-                      <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce"></div>
-                      <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce delay-100"></div>
-                      <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce delay-200"></div>
+                      <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce"></div>
+                      <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce delay-100"></div>
+                      <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce delay-200"></div>
                     </div>
                   </div>
                 </div>
@@ -680,7 +689,7 @@ export default function RecruiterOnboarding() {
             {/* Action Bar */}
             <div className="px-6 py-6 bg-white border-t border-slate-100">
               <div className="max-w-4xl mx-auto relative">
-                <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 focus-within:border-indigo-500 focus-within:ring-4 focus-within:ring-indigo-50 transition-all px-2 py-2 rounded-2xl">
+                <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 focus-within:border-primary focus-within:ring-4 focus-within:ring-primary-light transition-all px-2 py-2 rounded-2xl">
                   <input
                     type="text"
                     value={input}
@@ -711,7 +720,7 @@ export default function RecruiterOnboarding() {
                       className={`p-2.5 rounded-xl transition-all ${
                         isListening 
                           ? "bg-red-500 text-white animate-pulse" 
-                          : "text-slate-400 hover:text-indigo-600 hover:bg-white border border-transparent hover:border-slate-100"
+                          : "text-slate-400 hover:text-primary hover:bg-white border border-transparent hover:border-slate-100"
                       }`}
                     >
                       <MicIcon />
@@ -719,7 +728,7 @@ export default function RecruiterOnboarding() {
                     <button
                       onClick={() => handleSend()}
                       disabled={isLoading || !input.trim()}
-                      className="bg-indigo-600 hover:bg-indigo-700 text-white p-2.5 rounded-xl transition-all shadow-md shadow-indigo-100 disabled:opacity-40 active:scale-95"
+                      className="bg-primary hover:bg-primary-dark text-white p-2.5 rounded-xl transition-all shadow-md shadow-primary-light disabled:opacity-40 active:scale-95"
                     >
                       <SendIcon />
                     </button>
@@ -772,3 +781,4 @@ function SendIcon() {
     </svg>
   );
 }
+

@@ -161,16 +161,21 @@ class ChatService:
             raise e
 
     @staticmethod
-    def get_user_threads(db: Session, user_id: str, role: str) -> List[dict]:
+    def get_user_threads(db: Session, user_id: str, role: str, show_archived: bool = False) -> List[dict]:
         """
-        Retrieves all active threads for a user (candidate or recruiter).
+        Retrieves threads for a user (candidate or recruiter).
+        Filters by user-specific archive flag.
         """
         try:
-            field_filter = ChatThread.recruiter_id == user_id if role == "recruiter" else ChatThread.candidate_id == user_id
+            is_recruiter = (role == "recruiter")
+            id_filter = ChatThread.recruiter_id == user_id if is_recruiter else ChatThread.candidate_id == user_id
+            
+            # Use user-specific archive flag
+            archive_filter = ChatThread.recruiter_archived == show_archived if is_recruiter else ChatThread.candidate_archived == show_archived
             
             threads = db.query(ChatThread).filter(
-                field_filter,
-                ChatThread.is_active == True
+                id_filter,
+                archive_filter
             ).order_by(desc(ChatThread.last_message_at)).all()
             
             results = []
@@ -181,6 +186,8 @@ class ChatService:
                     "recruiter_id": str(t.recruiter_id),
                     "last_message_at": t.last_message_at.isoformat() if t.last_message_at else None,
                     "is_active": t.is_active,
+                    "recruiter_archived": t.recruiter_archived,
+                    "candidate_archived": t.candidate_archived,
                     "created_at": t.created_at.isoformat() if t.created_at else None
                 }
                 

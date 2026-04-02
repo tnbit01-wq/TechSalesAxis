@@ -15,7 +15,9 @@ from src.api.career_gps import router as career_gps_router
 from src.api.ai_intent import router as ai_intent_router
 from src.api.storage import router as storage_router
 from src.api.analytics import router as analytics_router
-from bulk_upload_api import router as bulk_upload_router
+from src.api.admin import router as admin_router
+from src.api.admin_unified import router as admin_unified_router
+from src.api.bulk_upload import router as bulk_upload_router
 import time
 
 app = FastAPI(title="TechSales Axis API")
@@ -67,7 +69,11 @@ app.include_router(career_gps_router)
 app.include_router(storage_router)
 app.include_router(analytics_router, prefix="/analytics")
 app.include_router(ai_intent_router) # AI Intelligence Core
+app.include_router(admin_router)
+app.include_router(admin_unified_router, prefix="/api/v1")  # Unified admin endpoints
+print(f"DEBUG: Registering bulk_upload_router: {bulk_upload_router}")
 app.include_router(bulk_upload_router, prefix="/api/v1/bulk-upload", tags=["bulk-upload"])
+print("DEBUG: bulk_upload_router registered successfully")
 
 @app.get("/")
 async def root():

@@ -115,7 +115,7 @@ export default function JobInviteModal({
               <select
                 value={isUnlisted ? "unlisted" : selectedJobId}
                 onChange={(e) => handleJobChange(e.target.value)}
-                className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none appearance-none cursor-pointer"
+                className="w-full p-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-900 focus:ring-2 focus:ring-primary focus:outline-none appearance-none cursor-pointer"
               >
                 {jobs
                   .filter((j) => j.status === "active")
@@ -124,7 +124,7 @@ export default function JobInviteModal({
                       {job.title} ({job.location})
                     </option>
                   ))}
-                <option value="unlisted" className="text-indigo-600">
+                <option value="unlisted">
                   + Other / Unlisted Role
                 </option>
               </select>
@@ -138,7 +138,7 @@ export default function JobInviteModal({
                   placeholder="Enter Unlisted Role Title (e.g. Lead Developer)"
                   value={customTitle}
                   onChange={(e) => handleCustomTitleChange(e.target.value)}
-                  className="w-full p-4 bg-indigo-50/30 border border-indigo-100 rounded-2xl text-sm font-bold text-indigo-900 placeholder:text-indigo-300 focus:ring-2 focus:ring-indigo-500 focus:outline-none mt-2"
+                  className="w-full p-4 bg-primary-light/30 border border-primary-light rounded-2xl text-sm font-bold text-indigo-900 placeholder:text-indigo-300 focus:ring-2 focus:ring-primary focus:outline-none mt-2"
                 />
               </div>
             )}
@@ -151,18 +151,18 @@ export default function JobInviteModal({
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              className="w-full h-32 p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-600 focus:ring-2 focus:ring-indigo-500 focus:outline-none resize-none leading-relaxed"
+              className="w-full h-32 p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-600 focus:ring-2 focus:ring-primary focus:outline-none resize-none leading-relaxed"
               placeholder="Write a personalized message..."
             />
           </div>
 
           {!isUnlisted && selectedJobId && (
-            <div className="p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100/50 flex items-center gap-4">
-              <div className="h-10 w-10 rounded-xl bg-white border border-indigo-100 flex items-center justify-center shadow-sm">
-                <Briefcase className="w-5 h-5 text-indigo-500" />
+            <div className="p-4 bg-primary-light/50 rounded-2xl border border-primary-light/50 flex items-center gap-4">
+              <div className="h-10 w-10 rounded-xl bg-white border border-primary-light flex items-center justify-center shadow-sm">
+                <Briefcase className="w-5 h-5 text-primary" />
               </div>
               <div className="flex flex-col">
-                <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">
+                <span className="text-[10px] font-black text-primary uppercase tracking-widest">
                   {jobs.find((j) => j.id === selectedJobId)?.title}
                 </span>
                 <span className="text-[8px] font-bold text-indigo-300 uppercase tracking-widest">
@@ -183,7 +183,7 @@ export default function JobInviteModal({
           <button
             onClick={handleSendInvite}
             disabled={loading || (isUnlisted && !customTitle)}
-            className="flex-2 py-4 bg-slate-900 text-white rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] flex items-center justify-center gap-3 hover:bg-indigo-600 transition-all shadow-xl shadow-indigo-100 disabled:bg-slate-200 disabled:shadow-none active:scale-95"
+            className="flex-2 py-4 bg-slate-900 text-white rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] flex items-center justify-center gap-3 hover:bg-primary transition-all shadow-xl shadow-primary-light disabled:bg-slate-200 disabled:shadow-none active:scale-95"
           >
             {loading ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -198,3 +198,4 @@ export default function JobInviteModal({
     </div>
   );
 }
+

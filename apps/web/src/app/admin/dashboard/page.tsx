@@ -37,15 +37,26 @@ export default function AdminDashboard() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const token = localStorage.getItem('auth_token');
-        const response = await fetch('/api/v1/admin/dashboard/stats', {
+        // Safely get token from localStorage (check if window exists for Next.js hydration)
+        const token = typeof window !== 'undefined' ? localStorage.getItem('tf_token') : null;
+        
+        if (!token) {
+          console.error('No authentication token found. Redirecting to login.');
+          router.push('/login');
+          return;
+        }
+
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8005';
+        const response = await fetch(`${apiUrl}/api/v1/admin/dashboard/stats`, {
           headers: {
             'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
           },
         });
 
         if (!response.ok) {
           if (response.status === 401) {
+            console.error('Authentication failed. Token may be expired.');
             router.push('/login');
             return;
           }
@@ -55,6 +66,7 @@ export default function AdminDashboard() {
         const data = await response.json();
         setStats(data);
       } catch (err) {
+        console.error('Dashboard error:', err);
         setError(err instanceof Error ? err.message : 'Unknown error');
       } finally {
         setLoading(false);
@@ -64,12 +76,20 @@ export default function AdminDashboard() {
     fetchStats();
   }, [router]);
 
+  const handleLogout = () => {
+    // Clear token from localStorage
+    localStorage.removeItem('tf_token');
+    localStorage.removeItem('user');
+    // Redirect to login
+    router.push('/login');
+  };
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-primary-light">
         <div className="text-center">
           <div className="mb-4">
-            <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto"></div>
+            <div className="w-12 h-12 border-4 border-primary-light border-t-primary rounded-full animate-spin mx-auto"></div>
           </div>
           <p className="text-gray-600">Loading dashboard...</p>
         </div>
@@ -95,15 +115,24 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-100 to-slate-200 p-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-800 mb-2">Admin Dashboard</h1>
-          <p className="text-gray-600">Manage bulk resume uploads and candidate profiles</p>
+    <div className="max-w-7xl mx-auto">
+      {/* Header */}
+      <div className="mb-8 flex justify-between items-start">
+        <div>
+          <h1 className="text-3xl font-black text-slate-800 tracking-tight mb-2">Admin Dashboard</h1>
+          <p className="text-slate-500 font-medium">Manage bulk resume uploads and candidate profiles</p>
         </div>
+        <div className="flex gap-4">
+          <Link
+            href="/admin/bulk-upload"
+            className="inline-block px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark font-bold tracking-tight shadow-lg shadow-primary/20"
+          >
+            + New Bulk Upload
+          </Link>
+        </div>
+      </div>
 
-        {/* Stats Grid */}
+      {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           {/* Total Batches Card */}
           <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition">
@@ -131,11 +160,11 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Duplicates Found Card */}
+          {/* Matches Found Card */}
           <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-gray-500 text-sm font-medium">Duplicates Found</p>
+                <p className="text-gray-500 text-sm font-medium">Matches Found</p>
                 <p className="text-4xl font-bold text-gray-800 mt-2">
                   {stats?.duplicates_found || 0}
                 </p>
@@ -166,7 +195,7 @@ export default function AdminDashboard() {
           >
             <div className="text-3xl mb-2">📤</div>
             <h3 className="font-bold text-lg">New Upload</h3>
-            <p className="text-blue-100 text-sm mt-1">Upload 500-1000 resumes</p>
+            <p className="text-blue-100 text-sm mt-1">Upload multiple resumes</p>
           </Link>
 
           <Link
@@ -183,7 +212,7 @@ export default function AdminDashboard() {
             className="bg-gradient-to-r from-orange-600 to-orange-700 text-white rounded-lg p-6 hover:shadow-lg transition transform hover:scale-105"
           >
             <div className="text-3xl mb-2">⚠️</div>
-            <h3 className="font-bold text-lg">Review Duplicates</h3>
+            <h3 className="font-bold text-lg">Review Matches</h3>
             <p className="text-orange-100 text-sm mt-1">Approve/reject matches</p>
           </Link>
 
@@ -260,7 +289,7 @@ export default function AdminDashboard() {
             </div>
           )}
         </div>
-      </div>
     </div>
   );
 }
+

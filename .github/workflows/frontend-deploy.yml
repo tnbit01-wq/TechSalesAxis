@@ -1,0 +1,66 @@
+name: Frontend Deploy
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/web/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+          cache-dependency-path: 'apps/web/package-lock.json'
+      
+      - name: Install dependencies
+        working-directory: apps/web
+        run: npm ci
+      
+      - name: Build frontend
+        working-directory: apps/web
+        run: npm run build
+      
+      # TODO: Customize deployment based on your platform
+      # Examples below for different platforms:
+      
+      # For Vercel:
+      # - name: Deploy to Vercel
+      #   uses: amondnet/vercel-action@v25
+      #   with:
+      #     vercel-token: ${{ secrets.VERCEL_TOKEN }}
+      #     vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+      #     vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+      #     working-directory: apps/web
+      
+      # For Netlify:
+      # - name: Deploy to Netlify
+      #   uses: netlify/actions/cli@main
+      #   with:
+      #     args: deploy --prod --dir=apps/web/.next --functions=apps/web/netlify/functions
+      #   env:
+      #     NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+      #     NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+      
+      # For AWS S3 + CloudFront:
+      # - name: Deploy to AWS S3
+      #   uses: jakejarvis/s3-sync-action@master
+      #   with:
+      #     args: --acl public-read --follow-symlinks --delete
+      #   env:
+      #     AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
+      #     AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      #     AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      #     AWS_REGION: us-east-1
+      #     SOURCE_DIR: apps/web/.next
+      
+      - name: Deployment Status
+        run: echo "✅ Frontend deployment workflow ready. Configure your deployment steps above."

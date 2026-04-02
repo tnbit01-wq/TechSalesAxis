@@ -8,6 +8,9 @@ class RecruiterProfileUpdate(BaseModel):
     job_title: Optional[str] = None
     linkedin_url: Optional[str] = None
     bio: Optional[str] = None
+    professional_persona: Optional[Dict[str, Any]] = None
+    onboarding_step: Optional[str] = None
+    team_role: Optional[str] = None
 
 class CompanyProfileUpdate(BaseModel):
     name: Optional[str] = None

@@ -231,34 +231,60 @@ export default function CandidateApplicationsPage() {
                 </div>
               )}
 
-              {app.active_interview?.status === "scheduled" && app.active_interview?.meeting_link && (
-                <div className="mt-2 pt-2 border-t border-slate-50/50">
-                  <button
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      const token = awsAuth.getToken();
-                      if (token) {
-                        try {
-                          await apiClient.post(`/interviews/${app.active_interview?.id}/join-event`, { role: "candidate" }, token);
-                        } catch (err) {
-                          console.error("Failed to signal join:", err);
+              {app.active_interview?.status === "scheduled" && app.active_interview?.meeting_link && (() => {
+                const now = new Date();
+                const confirmedSlot = app.active_interview.slots?.find((s: any) => s.is_selected);
+                if (!confirmedSlot) return null;
+
+                const start = new Date(confirmedSlot.start_time);
+                const end = new Date(confirmedSlot.end_time);
+                
+                // NEW PROTOCOL: Join opens 15m before START 
+                const allowedStart = new Date(start.getTime() - 15 * 60 * 1000);
+                const fiveAfterStart = new Date(start.getTime() + 5 * 60 * 1000);
+                
+                // Cannot join after end time
+                const allowedEnd = fiveAfterStart < end ? fiveAfterStart : end;
+                const isActive = now >= allowedStart && now <= allowedEnd;
+
+                return (
+                  <div className="mt-2 pt-2 border-t border-slate-50/50">
+                    <button
+                      disabled={!isActive}
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        const token = awsAuth.getToken();
+                        if (token) {
+                          try {
+                            await apiClient.post(`/interviews/${app.active_interview?.id}/join-event`, { role: "candidate" }, token);
+                          } catch (err: any) {
+                            console.error("Failed to signal join:", err);
+                            // If backend rejects, don't open meeting
+                            return;
+                          }
                         }
-                      }
-                      if (app.active_interview?.meeting_link) {
-                        window.open(app.active_interview.meeting_link, "_blank");
-                      }
-                    }}
-                    className={`w-full px-2 py-1.5 rounded-lg font-bold text-[8px] uppercase tracking-wider transition flex items-center justify-center gap-2 ${
-                      app.active_interview?.status === "in_progress"
-                        ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
-                        : "bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
-                    }`}
-                  >
-                    <Video className="h-3 w-3" />
-                    {app.active_interview?.status === "in_progress" ? "Join Meeting" : "Join Interview"}
-                  </button>
-                </div>
-              )}
+                        if (app.active_interview?.meeting_link) {
+                          window.open(app.active_interview.meeting_link, "_blank");
+                        }
+                      }}
+                      className={`w-full px-2 py-1.5 rounded-lg font-bold text-[8px] uppercase tracking-wider transition flex items-center justify-center gap-2 ${
+                        isActive
+                          ? "bg-indigo-600 text-white hover:bg-slate-900 shadow-lg shadow-indigo-200"
+                          : "bg-slate-100 text-slate-400 cursor-not-allowed"
+                      }`}
+                    >
+                      <Video className="h-3 w-3" />
+                      {isActive 
+                        ? "Join Interview" 
+                        : now < allowedStart 
+                          ? `Locked: In ${Math.round((allowedStart.getTime() - now.getTime()) / 60000)}m`
+                          : now > end
+                            ? "Expired"
+                            : "Window Closed"}
+                    </button>
+                  </div>
+                );
+              })()}
 
               {/* Applied Date & Actions */}
               <div className="mt-2 pt-2 border-t border-slate-50/50 flex items-center justify-between gap-2">

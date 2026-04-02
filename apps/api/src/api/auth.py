@@ -208,6 +208,9 @@ async def post_login(current_user: dict = Depends(get_current_user), db: Session
     user_id = current_user["sub"]
     user_role = current_user["role"]
 
+    if user_role == "admin":
+        return {"next_step": "/admin/dashboard", "role": "admin"}
+
     if user_role == "candidate":
         profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == user_id).first()
         if not profile:
@@ -224,6 +227,9 @@ async def post_login(current_user: dict = Depends(get_current_user), db: Session
         if profile and profile.onboarding_step == "completed":
             return {"next_step": "/dashboard/recruiter", "role": "recruiter"}
         return {"next_step": "/onboarding/recruiter", "role": "recruiter"}
+
+    elif user_role == "admin":
+        return {"next_step": "/admin/dashboard", "role": "admin"}
 
     return {"next_step": "/", "role": user_role}
 

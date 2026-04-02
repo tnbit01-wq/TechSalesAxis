@@ -471,7 +471,7 @@ export default function AssessmentExam() {
           <button
             onClick={handleAadhaarUpload}
             disabled={!aadhaarFile || isUploading || isFinishing}
-            className={`w-full py-5 rounded-2xl font-black text-sm tracking-[0.2em] transform transition-all active:scale-[0.98] ${!aadhaarFile ? "bg-gray-800 text-gray-500" : "bg-blue-600 text-white hover:bg-blue-500 shadow-xl shadow-blue-600/20"}`}
+            className={`w-full py-5 rounded-2xl font-black text-sm tracking-[0.2em] transform transition-all active:scale-[0.98] ${!aadhaarFile ? "bg-slate-200 text-slate-700 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-500 shadow-xl shadow-blue-600/20"}`}
           >
             {isUploading
               ? "ENCRYPTING..."

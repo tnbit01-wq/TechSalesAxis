@@ -13,6 +13,7 @@ import re
 from google import genai
 from src.core.config import OPENAI_API_KEY, GOOGLE_API_KEY, OPENROUTER_API_KEY
 from src.services.comprehensive_extractor import ComprehensiveResumeExtractor
+from src.services.enhanced_resume_extractor import EnhancedResumeExtractor, CandidateProfileMapper
 
 class ResumeService:
     @staticmethod
@@ -65,11 +66,12 @@ class ResumeService:
 
         await ResumeService._store_initial_text(user_id, text)
 
-        # 3. High-Fidelity Path: OpenAI (New Primary)
+        # 3. High-Fidelity Path: OpenAI (New Primary) - WITH ENHANCED SCHEMA FOR 100% FIELD COVERAGE
         if openai_key:
             try:
                 async with httpx.AsyncClient(timeout=45.0) as client:
-                    prompt = f"Extract structured resume data. SCHEMA: {{'full_name', 'email', 'phone', 'links': {{'linkedin', 'portfolio'}}, 'location', 'relevant_years_experience', 'experience_band', 'bio', 'skills': {{'technical', 'soft', 'tools'}}, 'timeline', 'career_gap_report', 'education', 'projects', 'major_achievements'}}. Text: {text[:15000]}"
+                    # Use enhanced prompt with comprehensive schema (35+ fields)
+                    prompt = EnhancedResumeExtractor.compile_ai_prompt(text)
                     
                     response = await client.post(
                         "https://api.openai.com/v1/chat/completions",
@@ -80,7 +82,7 @@ class ResumeService:
                         json={
                             "model": "gpt-4o",
                             "messages": [
-                                {"role": "system", "content": "You are a professional recruitment AI. Respond only with valid JSON."},
+                                {"role": "system", "content": "You are a professional recruitment AI specializing in resume parsing. Return ONLY valid JSON with all fields. For missing data, use null."},
                                 {"role": "user", "content": prompt}
                             ],
                             "response_format": { "type": "json_object" },
@@ -167,6 +169,10 @@ class ResumeService:
     async def _store_initial_text(user_id: str, text: str):
         db = SessionLocal()
         try:
+            # PostgreSQL hack: remove NUL characters (0x00) which are not allowed in string literals
+            if text and "\x00" in text:
+                text = text.replace("\x00", "")
+                
             resume = db.query(ResumeData).filter(ResumeData.user_id == user_id).first()
             if resume:
                 resume.raw_text = text[:30000]
@@ -182,124 +188,125 @@ class ResumeService:
 
     @staticmethod
     async def _store_data(user_id: str, text: str, parsed_data: dict):
+        """
+        ENHANCED: Store resume data with 100% field coverage
+        Uses CandidateProfileMapper to populate ALL candidate_profiles columns
+        """
         db = SessionLocal()
         try:
-            extracted_skills = []
+            # PostgreSQL hack: remove NUL characters (0x00) which are not allowed in string literals
+            if text and "\x00" in text:
+                text = text.replace("\x00", "")
             
-            # 1. Update Candidate Profile
+            # Recursively remove NUL characters from parsed_data dict/list
+            def _clean_nul(obj):
+                if isinstance(obj, str):
+                    return obj.replace("\x00", "")
+                elif isinstance(obj, dict):
+                    return {k: _clean_nul(v) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [_clean_nul(i) for i in obj]
+                return obj
+            
+            parsed_data = _clean_nul(parsed_data)
+            
+            # ===== ENHANCED: Use CandidateProfileMapper for ALL field mapping =====
+            # This maps 35+ fields automatically instead of manual assignment
+            profile_updates = CandidateProfileMapper.map_to_profile(parsed_data)
+            
+            # ===== Handle additional AI-extracted field enhancements =====
+            extracted_skills = []
+            skills_raw = parsed_data.get("skills") or []
+            
+            if isinstance(skills_raw, list):
+                extracted_skills = [str(s) for s in skills_raw if s]
+            elif isinstance(skills_raw, dict):
+                # Handle nested skills structure {technical, soft, tools}  
+                for k in ["technical", "soft", "tools"]:
+                    val = skills_raw.get(k)
+                    if isinstance(val, list):
+                        extracted_skills.extend([str(v) for v in val if v])
+            
+            # Clean and deduplicate skills
+            extracted_skills = list(set([str(s).strip().title() for s in extracted_skills if s]))
+            profile_updates["skills"] = extracted_skills
+            
+            # ===== APPLY ALL UPDATES TO CANDIDATE PROFILE =====
             profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == user_id).first()
             if profile:
-                profile.full_name = parsed_data.get("full_name") or parsed_data.get("name")
-                profile.phone_number = str(parsed_data.get("phone_number") or parsed_data.get("phone") or "").strip()
-                profile.location = parsed_data.get("location")
-                profile.bio = parsed_data.get("bio")
-                profile.current_role = parsed_data.get("current_role")
-                profile.years_of_experience = parsed_data.get("years_of_experience")
-                profile.last_resume_parse_at = func.now()
+                # Apply all mapped field updates
+                for key, value in profile_updates.items():
+                    if hasattr(profile, key) and value is not None:
+                        setattr(profile, key, value)
+                        print(f"✓ Updated profile.{key}")
                 
-                # Normalize experience_band to lowercase enum values
-                raw_exp = str(parsed_data.get("experience_band") or "mid").lower()
-                if "leader" in raw_exp or "leadership" in raw_exp:
-                    profile.experience = "leadership"
-                elif "senior" in raw_exp:
-                    profile.experience = "senior"
-                elif "fresher" in raw_exp or "entry" in raw_exp:
-                    profile.experience = "fresher"
-                else:
-                    profile.experience = "mid"
-                
-                # Links extraction
-                links = parsed_data.get("links") or {}
-                if isinstance(links, dict):
-                    profile.linkedin_url = links.get("linkedin")
-                    profile.portfolio_url = links.get("portfolio")
-                
-                # Structured data fields (JSONB columns)
-                education_history = parsed_data.get("education_history") or parsed_data.get("education") or []
-                experience_history = parsed_data.get("experience_history") or parsed_data.get("timeline") or []
-                
-                profile.education_history = education_history
-                profile.experience_history = experience_history
-                profile.projects = parsed_data.get("projects") or []
-                profile.career_gap_report = parsed_data.get("career_gap_report") or {}
-                
-                # Major achievements
-                achievements_data = parsed_data.get("major_achievements")
-                if achievements_data:
-                    if isinstance(achievements_data, (list, dict)):
-                        profile.major_achievements = json.dumps(achievements_data)
-                    else:
-                        profile.major_achievements = str(achievements_data)
-                
-                # Extract skills for profile and catalog
-                skills_data = parsed_data.get("skills") or []
-                if isinstance(skills_data, list):
-                    extracted_skills = skills_data
-                elif isinstance(skills_data, dict):
-                    # Handle nested skills structure
-                    for k in ["technical", "soft", "tools"]:
-                        val = skills_data.get(k)
-                        if isinstance(val, list): 
-                            extracted_skills.extend(val)
-                
-                # Clean and deduplicate skills
-                extracted_skills = list(set([str(s).strip() for s in extracted_skills if s]))
-                profile.skills = extracted_skills
-
-            # 2. Update/Upsert Resume Data
+                print(f"✅ Updated CandidateProfile with {len(profile_updates)} fields")
+            
+            # ===== STORE RAW RESUME DATA IN resume_data TABLE =====
+            def _get_json_field(data, keys):
+                """Safely extract JSON field handling both list and stringified formats"""
+                for k in keys:
+                    val = data.get(k)
+                    if val:
+                        if isinstance(val, str):
+                            try:
+                                return json.loads(val)
+                            except:
+                                continue
+                        return val
+                return []
+            
             resume = db.query(ResumeData).filter(ResumeData.user_id == user_id).first()
             
-            exp_history = parsed_data.get("experience_history") or parsed_data.get("timeline") or []
-            edu_history = parsed_data.get("education_history") or parsed_data.get("education") or []
+            education_history = _get_json_field(parsed_data, ["education_history", "education"])
+            experience_history = _get_json_field(parsed_data, ["experience_history", "timeline"])
+            projects = _get_json_field(parsed_data, ["projects"])
+            career_gaps = _get_json_field(parsed_data, ["career_gap_report"])
             
-            # Achievements handling
-            achievements_list_data = parsed_data.get("major_achievements") or []
-            achievements = []
-            if isinstance(achievements_list_data, list):
-                achievements = [str(a) for a in achievements_list_data if a]
-            elif achievements_list_data:
-                achievements = [str(achievements_list_data)]
-
             if resume:
                 resume.raw_text = text[:30000]
-                resume.raw_education = json.dumps(edu_history) if edu_history else "[]"
-                resume.raw_experience = json.dumps(exp_history) if exp_history else "[]"
-                resume.raw_projects = json.dumps(parsed_data.get("projects") or [])
-                resume.timeline = exp_history
-                resume.education = edu_history
-                resume.career_gaps = parsed_data.get("career_gap_report")
+                resume.raw_education = education_history
+                resume.raw_experience = experience_history
+                resume.raw_projects = projects
+                resume.timeline = experience_history
+                resume.education = education_history
+                resume.career_gaps = career_gaps
                 resume.skills = extracted_skills
-                resume.achievements = achievements
+                resume.achievements = parsed_data.get("major_achievements")
                 resume.parsed_at = func.now()
             else:
                 resume = ResumeData(
                     user_id=user_id,
                     raw_text=text[:30000],
-                    raw_education=json.dumps(edu_history) if edu_history else "[]",
-                    raw_experience=json.dumps(exp_history) if exp_history else "[]",
-                    raw_projects=json.dumps(parsed_data.get("projects") or []),
-                    timeline=exp_history,
-                    education=edu_history,
-                    career_gaps=parsed_data.get("career_gap_report"),
+                    raw_education=education_history,
+                    raw_experience=experience_history,
+                    raw_projects=projects,
+                    timeline=experience_history,
+                    education=education_history,
+                    career_gaps=career_gaps,
                     skills=extracted_skills,
-                    achievements=achievements,
+                    achievements=parsed_data.get("major_achievements"),
                     parsed_at=func.now()
                 )
                 db.add(resume)
             
+            print(f"✓ ResumeData stored for user {user_id}")
+            
             db.commit()
-
-            # Sync skills to catalog with proper case sensitivity and experience band
+            print(f"✅ All resume data committed successfully")
+            
+            # ===== SYNC SKILLS TO CATALOG =====
             if extracted_skills and profile:
                 await ResumeService._sync_to_skill_catalog(extracted_skills, profile.experience)
                 
         except Exception as e:
-            print(f"Error storing data: {e}")
+            print(f"❌ Error storing data: {e}")
             import traceback
             traceback.print_exc()
             db.rollback()
         finally:
             db.close()
+
 
     @staticmethod
     async def _sync_to_skill_catalog(skills: list, band: str = "mid"):
@@ -309,19 +316,20 @@ class ResumeService:
         """
         if not skills: 
             return
+            
+        # Standardize band
+        valid_bands = ["fresher", "mid", "senior", "leadership"]
+        band = str(band).lower() if str(band).lower() in valid_bands else "mid"
+        
         db = SessionLocal()
         try:
             from src.core.models import SkillCatalog
             from sqlalchemy import func
             
-            # Normalize band
-            valid_bands = ["fresher", "mid", "senior", "leadership"]
-            band = band.lower() if band in valid_bands else "mid"
-            
             skill_count = 0
             for skill_name in skills:
                 name = str(skill_name).strip()
-                if not name or len(name) < 2: 
+                if not name or len(name) < 2 or len(name) > 100: 
                     continue
                 
                 # Check if exists for this band (case-sensitive)
@@ -332,7 +340,6 @@ class ResumeService:
                 
                 if existing:
                     existing.last_seen_at = func.now()
-                    skill_count += 1
                 else:
                     new_skill = SkillCatalog(
                         name=name,  # Preserves exact casing
@@ -340,12 +347,35 @@ class ResumeService:
                         last_seen_at=func.now()
                     )
                     db.add(new_skill)
-                    skill_count += 1
+                skill_count += 1
             
             db.commit()
-            print(f"Synced {skill_count} skills to catalog for band: {band}")
+            print(f"DEBUG: Synced {skill_count} skills to catalog for band: {band}")
         except Exception as e:
-            print(f"Error syncing skills to catalog: {e}")
+            print(f"CRITICAL: Skill catalog sync failed: {e}")
             db.rollback()
         finally:
             db.close()
+    
+    @staticmethod
+    def parse_resume_sync(user_id: str, resume_path: str, google_key: str = None):
+        """
+        Synchronous wrapper for parse_resume() for use with BackgroundTasks
+        Must be called from a background task, not from async context
+        """
+        import asyncio
+        try:
+            # Run the async function in a new event loop
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            result = loop.run_until_complete(
+                ResumeService.parse_resume(user_id, resume_path, google_key)
+            )
+            loop.close()
+            print(f"✅ Resume parsing completed for user {user_id}")
+            return result
+        except Exception as e:
+            print(f"❌ Resume parsing error for user {user_id}: {e}")
+            import traceback
+            traceback.print_exc()
+            return None

@@ -15,6 +15,7 @@ class AnswerSubmission(BaseModel):
     category: str
     answer: str
     difficulty: str
+    is_skipped: bool = False
     metadata: dict = {}
 
 @router.post("/start")
@@ -69,7 +70,8 @@ async def submit_answer(submission: AnswerSubmission, user: dict = Depends(get_c
         user_id, 
         submission.question_id,
         submission.answer,
-        db
+        db,
+        is_skipped=submission.is_skipped
     )
     return result
 

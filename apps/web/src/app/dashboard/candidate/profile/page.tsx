@@ -288,7 +288,7 @@ export default function CandidateProfilePage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white font-sans">
         <div className="flex flex-col items-center gap-4">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
           <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">
             Loading Profile...
           </p>
@@ -304,8 +304,8 @@ export default function CandidateProfilePage() {
         <div className="p-8 max-w-6xl mx-auto w-full font-sans">
           {/* Mirror Banner Card */}
           <div className="relative mb-10 overflow-hidden bg-slate-900 rounded-4xl p-10 shadow-2xl">
-            <div className="absolute top-0 right-0 w-1/2 h-full bg-linear-to-l from-indigo-500/20 to-transparent pointer-none" />
-            <div className="absolute -bottom-24 -right-24 w-64 h-64 bg-indigo-600/30 rounded-full blur-[80px]" />
+            <div className="absolute top-0 right-0 w-1/2 h-full bg-linear-to-l from-primary/20 to-transparent pointer-none" />
+            <div className="absolute -bottom-24 -right-24 w-64 h-64 bg-primary/30 rounded-full blur-[80px]" />
             <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
               <div>
                 <h1 className="text-4xl font-black text-white tracking-tight mb-2">
@@ -329,12 +329,12 @@ export default function CandidateProfilePage() {
                 </div>
                 <div className="flex items-end gap-3 mb-2">
                   <div className="text-3xl font-black text-white">{profile?.completion_score || 0}%</div>
-                  <div className="text-indigo-400 text-xs font-bold mb-1">
+                  <div className="text-primary text-xs font-bold mb-1">
                     READY
                   </div>
                 </div>
                 <div className="w-48 h-1.5 bg-white/10 rounded-full overflow-hidden">
-                  <div className="h-full bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)] transition-all duration-700" style={{ width: `${profile?.completion_score || 0}%` }} />
+                  <div className="h-full bg-primary shadow-[0_0_10px_rgba(99,102,241,0.5)] transition-all duration-700" style={{ width: `${profile?.completion_score || 0}%` }} />
                 </div>
               </div>
             </div>
@@ -362,7 +362,7 @@ export default function CandidateProfilePage() {
                 <div className="flex flex-col items-center gap-4 group">
                   <div
                     onClick={() => fileInputRef.current?.click()}
-                    className="h-32 w-32 rounded-3xl bg-slate-100 border-2 border-dashed border-slate-200 flex items-center justify-center cursor-pointer overflow-hidden relative transition-all group-hover:border-indigo-400 group-hover:bg-white"
+                    className="h-32 w-32 rounded-3xl bg-slate-100 border-2 border-dashed border-slate-200 flex items-center justify-center cursor-pointer overflow-hidden relative transition-all group-hover:border-primary group-hover:bg-white"
                   >
                     {profile?.profile_photo_url ? (
                       <Image 
@@ -377,12 +377,12 @@ export default function CandidateProfilePage() {
                     )}
                     {uploading && (
                       <div className="absolute inset-0 bg-white/80 flex items-center justify-center">
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
                       </div>
                     )}
                   </div>
                   <input type="file" ref={fileInputRef} onChange={handlePhotoUpload} className="hidden" accept="image/*" />
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 group-hover:text-indigo-600 transition-colors">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 group-hover:text-primary transition-colors">
                     {uploading ? "Uploading..." : "Click to change photo"}
                   </span>
                 </div>
@@ -394,7 +394,7 @@ export default function CandidateProfilePage() {
                       name="full_name"
                       value={profile?.full_name || ""}
                       onChange={handleInputChange}
-                      className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none"
+                      className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
                     />
                   </Field>
                   <Field label="Phone Number" icon={Phone}>
@@ -404,7 +404,7 @@ export default function CandidateProfilePage() {
                       value={profile?.phone_number || ""}
                       onChange={handleInputChange}
                       placeholder="+1 (555) 000-0000"
-                      className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none"
+                      className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
                     />
                   </Field>
                   <Field label="Location" icon={MapPin}>
@@ -414,7 +414,7 @@ export default function CandidateProfilePage() {
                       value={profile?.location || ""}
                       onChange={handleInputChange}
                       placeholder="e.g. New York, USA"
-                      className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none"
+                      className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
                     />
                   </Field>
                   <Field label="Birthdate" icon={Calendar}>
@@ -423,7 +423,7 @@ export default function CandidateProfilePage() {
                       name="birthdate"
                       value={profile?.birthdate || ""}
                       onChange={handleInputChange}
-                      className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none"
+                      className="w-full bg-white border-2 border-slate-300 rounded-xl px-4 py-3 text-sm font-semibold text-slate-900 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/50 transition-all appearance-none cursor-pointer"
                     />
                   </Field>
                   <Field label="Gender" icon={Users}>
@@ -431,7 +431,7 @@ export default function CandidateProfilePage() {
                       name="gender"
                       value={profile?.gender || ""}
                       onChange={handleInputChange}
-                      className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none appearance-none"
+                      className="w-full bg-white border-2 border-slate-300 rounded-xl px-4 py-3 text-sm font-semibold text-slate-900 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/50 transition-all appearance-none cursor-pointer"
                     >
                       <option value="">Select Gender</option>
                       <option value="male">Male</option>
@@ -445,7 +445,7 @@ export default function CandidateProfilePage() {
                       name="current_employment_status"
                       value={profile?.current_employment_status || ""}
                       onChange={handleInputChange}
-                      className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none appearance-none"
+                      className="w-full bg-white border-2 border-slate-300 rounded-xl px-4 py-3 text-sm font-semibold text-slate-900 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/50 transition-all appearance-none cursor-pointer"
                     >
                       <option value="">Select Status</option>
                       <option value="Employed">Currently Employed</option>
@@ -460,7 +460,7 @@ export default function CandidateProfilePage() {
                       value={profile?.referral || ""}
                       onChange={handleInputChange}
                       placeholder="e.g. LinkedIn, Friend, LinkedIn"
-                      className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none"
+                      className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
                     />
                   </Field>
                 </div>
@@ -473,7 +473,7 @@ export default function CandidateProfilePage() {
                     value={profile?.bio || ""}
                     onChange={handleInputChange}
                     placeholder="Briefly describe your professional journey..."
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none resize-none"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none resize-none"
                   />
                 </Field>
               </div>
@@ -489,7 +489,7 @@ export default function CandidateProfilePage() {
                     value={profile?.target_role || ""}
                     onChange={handleInputChange}
                     placeholder="e.g. Senior Product Manager"
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
                   />
                 </Field>
                 <Field label="Long-term Goal" icon={Target}>
@@ -499,7 +499,7 @@ export default function CandidateProfilePage() {
                     value={profile?.long_term_goal || ""}
                     onChange={handleInputChange}
                     placeholder="e.g. Lead a global team at a Fortune 500 company"
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none resize-none"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none resize-none"
                   />
                 </Field>
                 <Field label="Current Role" icon={Briefcase}>
@@ -509,12 +509,12 @@ export default function CandidateProfilePage() {
                     value={profile?.current_role || ""}
                     onChange={handleInputChange}
                     placeholder="e.g. Senior Software Engineer"
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
                   />
                 </Field>
                 <Field label="Experience level" icon={Target}>
                    {profile?.assessment_status === "completed" ? (
-                    <div className="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-400 cursor-not-allowed flex justify-between items-center group/lock">
+                    <div className="w-full bg-slate-100 border-2 border-slate-300 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 cursor-not-allowed flex justify-between items-center group/lock">
                       <span>{profile?.experience?.toUpperCase() || "NOT SET"}</span>
                       <ShieldCheck className="w-4 h-4" />
                     </div>
@@ -523,7 +523,7 @@ export default function CandidateProfilePage() {
                       name="experience"
                       value={profile?.experience || "fresher"}
                       onChange={handleInputChange}
-                      className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none appearance-none"
+                      className="w-full bg-white border-2 border-slate-300 rounded-xl px-4 py-3 text-sm font-semibold text-slate-900 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/50 transition-all appearance-none cursor-pointer"
                     >
                       <option value="fresher">Fresher</option>
                       <option value="mid">Mid-Level</option>
@@ -537,7 +537,7 @@ export default function CandidateProfilePage() {
                     name="job_type"
                     value={profile?.job_type || "onsite"}
                     onChange={handleInputChange}
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none appearance-none"
+                    className="w-full bg-white border-2 border-slate-300 rounded-xl px-4 py-3 text-sm font-semibold text-slate-900 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/50 transition-all appearance-none cursor-pointer"
                   >
                     <option value="onsite">On-Site</option>
                     <option value="remote">Remote</option>
@@ -551,7 +551,7 @@ export default function CandidateProfilePage() {
                     value={profile?.expected_salary || ""}
                     onChange={handleInputChange}
                     placeholder="e.g. 100000"
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
                   />
                 </Field>
                 <Field label="Primary Industry" icon={Globe}>
@@ -561,7 +561,7 @@ export default function CandidateProfilePage() {
                     value={profile?.primary_industry_focus || ""}
                     onChange={handleInputChange}
                     placeholder="e.g. Fintech, E-commerce"
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
                   />
                 </Field>
                 <Field label="Years of Experience" icon={Calendar}>
@@ -576,7 +576,7 @@ export default function CandidateProfilePage() {
                       name="years_of_experience"
                       value={profile?.years_of_experience || 0}
                       onChange={handleInputChange}
-                      className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none"
+                      className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
                     />
                   )}
                 </Field>
@@ -605,7 +605,7 @@ export default function CandidateProfilePage() {
                           type="text"
                           value={exp.role || ""}
                           onChange={(e) => handleArrayInputChange("experience_history", index, "role", e.target.value)}
-                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
                         />
                       </Field>
                       <Field label="Company" icon={Globe}>
@@ -613,7 +613,7 @@ export default function CandidateProfilePage() {
                           type="text"
                           value={exp.company || ""}
                           onChange={(e) => handleArrayInputChange("experience_history", index, "company", e.target.value)}
-                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
                         />
                       </Field>
                     </div>
@@ -623,7 +623,7 @@ export default function CandidateProfilePage() {
                           type="text"
                           value={exp.location || ""}
                           onChange={(e) => handleArrayInputChange("experience_history", index, "location", e.target.value)}
-                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
                         />
                       </Field>
                       <Field label="Start Month/Year" icon={Calendar}>
@@ -632,7 +632,7 @@ export default function CandidateProfilePage() {
                           value={exp.start_date || ""}
                           onChange={(e) => handleArrayInputChange("experience_history", index, "start_date", e.target.value)}
                           placeholder="MM/YYYY"
-                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
                         />
                       </Field>
                       <Field label="End Month/Year" icon={Calendar}>
@@ -641,7 +641,7 @@ export default function CandidateProfilePage() {
                           value={exp.end_date || ""}
                           onChange={(e) => handleArrayInputChange("experience_history", index, "end_date", e.target.value)}
                           placeholder="MM/YYYY or Present"
-                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
                         />
                       </Field>
                     </div>
@@ -654,7 +654,7 @@ export default function CandidateProfilePage() {
                             const newDescs = [...(exp.descriptions || []), ""];
                             handleArrayInputChange("experience_history", index, "descriptions", newDescs);
                           }}
-                          className="text-[10px] font-black text-indigo-600 hover:text-indigo-800 uppercase flex items-center gap-1"
+                          className="text-[10px] font-black text-primary hover:text-indigo-800 uppercase flex items-center gap-1"
                         >
                           <PlusCircle className="w-3 h-3" /> Add achievement
                         </button>
@@ -670,7 +670,7 @@ export default function CandidateProfilePage() {
                                   handleArrayInputChange("experience_history", index, "descriptions", newDescs);
                                 }}
                                 rows={2}
-                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none resize-none"
+                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none resize-none"
                                 placeholder="Describe your impact and results..."
                               />
                                <button
@@ -693,7 +693,7 @@ export default function CandidateProfilePage() {
                 <button
                   type="button"
                   onClick={() => addHistoryItem("experience_history")}
-                  className="w-full py-4 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 text-xs font-bold uppercase tracking-widest hover:border-indigo-300 hover:text-indigo-500 hover:bg-indigo-50/30 transition-all flex items-center justify-center gap-2"
+                  className="w-full py-4 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 text-xs font-bold uppercase tracking-widest hover:border-indigo-300 hover:text-primary hover:bg-primary-light/30 transition-all flex items-center justify-center gap-2"
                 >
                   <PlusCircle className="w-4 h-4" /> Add work experience
                 </button>
@@ -719,7 +719,7 @@ export default function CandidateProfilePage() {
                           value={edu.institution || ""}
                           onChange={(e) => handleArrayInputChange("education_history", index, "institution", e.target.value)}
                           placeholder="University Name"
-                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
                         />
                       </Field>
                       <Field label="Degree" icon={GraduationCap}>
@@ -728,7 +728,7 @@ export default function CandidateProfilePage() {
                           value={edu.degree || ""}
                           onChange={(e) => handleArrayInputChange("education_history", index, "degree", e.target.value)}
                           placeholder="e.g. Bachelor of Science"
-                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
                         />
                       </Field>
                     </div>
@@ -739,7 +739,7 @@ export default function CandidateProfilePage() {
                           value={edu.field || ""}
                           onChange={(e) => handleArrayInputChange("education_history", index, "field", e.target.value)}
                           placeholder="e.g. Computer Science"
-                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
                         />
                       </Field>
                       <Field label="Start Year" icon={Calendar}>
@@ -748,7 +748,7 @@ export default function CandidateProfilePage() {
                           value={edu.start_date || ""}
                           onChange={(e) => handleArrayInputChange("education_history", index, "start_date", e.target.value)}
                           placeholder="YYYY"
-                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
                         />
                       </Field>
                       <Field label="End Year" icon={Calendar}>
@@ -757,7 +757,7 @@ export default function CandidateProfilePage() {
                           value={edu.end_date || ""}
                           onChange={(e) => handleArrayInputChange("education_history", index, "end_date", e.target.value)}
                           placeholder="YYYY"
-                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
                         />
                       </Field>
                     </div>
@@ -766,7 +766,7 @@ export default function CandidateProfilePage() {
                 <button
                   type="button"
                   onClick={() => addHistoryItem("education_history")}
-                  className="w-full py-4 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 text-xs font-bold uppercase tracking-widest hover:border-indigo-300 hover:text-indigo-500 hover:bg-indigo-50/30 transition-all flex items-center justify-center gap-2"
+                  className="w-full py-4 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 text-xs font-bold uppercase tracking-widest hover:border-indigo-300 hover:text-primary hover:bg-primary-light/30 transition-all flex items-center justify-center gap-2"
                 >
                   <PlusCircle className="w-4 h-4" /> Add education
                 </button>
@@ -784,7 +784,7 @@ export default function CandidateProfilePage() {
                         value={profile?.linkedin_url || ""}
                         onChange={handleInputChange}
                         placeholder="https://linkedin.com/in/username"
-                        className="w-full bg-slate-50/50 border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none"
+                        className="w-full bg-slate-50/50 border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
                       />
                       <Linkedin className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                     </div>
@@ -797,7 +797,7 @@ export default function CandidateProfilePage() {
                         value={profile?.portfolio_url || ""}
                         onChange={handleInputChange}
                         placeholder="https://yourportfolio.com"
-                        className="w-full bg-slate-50/50 border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none"
+                        className="w-full bg-slate-50/50 border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
                       />
                       <Globe className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                     </div>
@@ -840,7 +840,7 @@ export default function CandidateProfilePage() {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="relative group overflow-hidden px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase tracking-[0.15em] hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100/50 active:scale-95 disabled:opacity-70 flex items-center gap-2"
+                  className="relative group overflow-hidden px-6 py-2.5 bg-primary text-white rounded-xl font-bold text-xs uppercase tracking-[0.15em] hover:bg-primary-dark transition-all shadow-lg shadow-primary-light/50 active:scale-95 disabled:opacity-70 flex items-center gap-2"
                 >
                    {saving ? (
                     <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -890,7 +890,7 @@ function Section({
     <div className="bg-white rounded-4xl border border-slate-200 p-10 shadow-sm transition-all hover:shadow-xl hover:shadow-slate-200/50">
       <div className="mb-10">
         <h2 className="text-2xl font-black text-slate-900 flex items-center gap-4 mb-2">
-          <div className="p-3 bg-indigo-50 rounded-2xl text-indigo-600 shadow-sm border border-indigo-100/50">
+          <div className="p-3 bg-primary-light rounded-2xl text-primary shadow-sm border border-primary-light/50">
             <Icon className="w-6 h-6" />
           </div>
           {title}
@@ -917,7 +917,7 @@ function Field({
 }) {
   return (
     <div className={fullWidth ? "md:col-span-2" : "group"}>
-      <label className="flex items-center text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1 group-focus-within:text-indigo-600 transition-colors">
+      <label className="flex items-center text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1 group-focus-within:text-primary transition-colors">
         <Icon className="w-3.5 h-3.5 mr-2 opacity-70" />
         {label}
       </label>
@@ -925,3 +925,4 @@ function Field({
     </div>
   );
 }
+

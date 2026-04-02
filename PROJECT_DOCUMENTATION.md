@@ -47,7 +47,7 @@ To build a **verified talent marketplace** where:
 |-----------|---------|-----------------|
 | **Candidates** | Job search + career development | Find trustworthy companies, get fair assessment |
 | **Recruiters** | Talent acquisition | Access verified talent pool, reduce hiring friction |
-| **Companies** | Employer branding | Build trust through quality candidates |
+| **Companies** | Company profile management | Build trust through quality candidates |
 
 ---
 
@@ -253,11 +253,10 @@ TalentFlow offers **two simultaneously running workflows**:
 - **Skill Match:** Highlighted for Applied candidates
 
 #### 6. **Analytics & Intelligence**
-- **Market Insights:**
-  - Skill prevalence (which skills are saturated?)
-  - Competitive indices (job market hotness)
-  - Salary trends & benchmarks
-  - Hiring time metrics (avg time-to-offer)
+- **Hiring Funnel Analytics:**
+  - Application trends
+  - Candidate pipeline metrics
+  - Hiring performance KPIs
   
 - **Company Metrics:**
   - Jobs posted vs. offers made
@@ -368,11 +367,10 @@ Once onboarding complete, candidates see:
 - Add/edit personal info (gender, employment status, referral source)
 - Career goals (target role, long-term vision)
 
-**Career GPS (If assessment passed)**
-- Market insights: Skills in demand
-- Competitive indices: How you rank
+**Career Development**
+- Skill recommendations: Skills to develop
 - Career progression: Next-step roles
-- Salary trends: Role benchmarks
+- Salary benchmarks: Role industry standards
 
 **Messages**
 - Chat threads (recruiter-initiated)
@@ -518,13 +516,11 @@ Once setup complete, recruiters see:
 - Features: Send, receive, thread history, mark read
 - Anti-spam: No cold outreach (must shortlist first)
 
-**Intelligence (Market Insights)**
-- **Skill Demand:** What skills are in-demand this month
-- **Competitive Index:** Is market saturated or talent-starved?
-- **Role Trends:** Which roles are hot?
-- **Salary Benchmarks:** Typical pay for role + experience
-- **Hiring Timeline:** Avg days to hire (industry benchmark + your company)
-- **Candidate Quality:** Avg trust score of candidates in your funnel
+**Hiring Analytics**
+- **Applicant Metrics:** Track application volume and conversion
+- **Candidate Pipeline:** Monitor stages (Applied → Shortlisted → Interviewed → Hired)
+- **Hiring Performance:** Days to hire and offer acceptance rates
+- **Team Collaboration:** Track team member activity and hiring progress
 
 **Notifications (Signal Center)**
 - **System Protocols:** New applications, interview confirmations, offers accepted
@@ -650,7 +646,7 @@ apps/api/src/
 │   ├── chat_service.py         # Messaging threads
 │   ├── notification_service.py # Alerts, channels
 │   ├── resume_service.py       # Parsing, generation
-│   ├── career_gps_service.py   # Market insights
+│   ├── career_development_service.py   # Career recommendations
 │   └── ai_service.py           # Gemini, Groq calls
 │
 ├── models/              # SQLAlchemy ORM models
@@ -1847,39 +1843,6 @@ file: <PDF or DOC>
   "data": {
     "notification_id": "uuid",
     "read_at": "2024-03-24T10:35:00Z"
-  }
-}
-```
-
----
-
-### Career GPS Endpoints
-
-#### GET /career/market-insights
-**Purpose:** Get market intelligence for candidate
-
-**Response (200):**
-```json
-{
-  "success": true,
-  "data": {
-    "skill_demand": {
-      "Python": {
-        "prevalence": 65,  // % of verified candidates
-        "job_postings": 245,
-        "trend": "+12%"  // week-over-week
-      },
-      "FastAPI": {
-        "prevalence": 45,
-        "job_postings": 120,
-        "trend": "+25%"
-      }
-    },
-    "competitive_indices": {
-      "your_rank_percentile": 78,  // Top 22%
-      "avg_candidate_score": 68,
-      "your_score": 82
-    }
   }
 }
 ```
