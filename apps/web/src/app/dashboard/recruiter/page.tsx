@@ -108,7 +108,7 @@ export default function RecruiterDashboard() {
         <div className="flex flex-col items-center gap-6">
           <div className="relative h-16 w-16">
             <div className="absolute inset-0 rounded-full border-2 border-white/5"></div>
-            <div className="absolute inset-0 rounded-full border-t-2 border-primary animate-spin shadow-[0_0_15px_rgba(255,152,0,0.5)]"></div>
+            <div className="absolute inset-0 rounded-full border-t-2 border-blue-600 animate-spin shadow-[0_0_15px_rgba(30,144,255,0.3)]"></div>
           </div>
           <div className="space-y-1 text-center">
             <p className="text-white font-black text-xs uppercase tracking-[0.3em] animate-pulse">
@@ -194,10 +194,10 @@ export default function RecruiterDashboard() {
           <div className="space-y-2">
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight">
-                Recruiter <span className="text-primary">Command Center</span>
+                Recruiter <span className="text-blue-600">Command Center</span>
               </h1>
               {profile?.is_admin && (
-                <div className="px-3 py-1 bg-primary-light text-primary text-[11px] font-black uppercase tracking-widest rounded-lg border border-primary/20">
+                <div className="px-3 py-1 bg-blue-100 text-blue-600 text-[11px] font-black uppercase tracking-widest rounded-lg border border-blue-600/20">
                   Admin Access
                 </div>
               )}
@@ -217,7 +217,7 @@ export default function RecruiterDashboard() {
 
         {/* Company Profile Score Card - Premium Version */}
         <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800 rounded-3xl p-8 md:p-12 mb-6 relative overflow-hidden shadow-2xl shadow-indigo-900/20 border border-white/5">
-          <div className="absolute top-0 right-0 w-96 h-96 bg-primary/10 rounded-full blur-[100px] -mr-48 -mt-48 opacity-40" />
+          <div className="absolute top-0 right-0 w-96 h-96 bg-blue-600/10 rounded-full blur-[100px] -mr-48 -mt-48 opacity-40" />
           <div className="absolute bottom-0 left-0 w-72 h-72 bg-purple-600/5 rounded-full blur-[80px] -ml-36 -mb-36" />
 
           <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-8 md:gap-12 items-center">
@@ -225,8 +225,8 @@ export default function RecruiterDashboard() {
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <div className="px-2.5 py-1 bg-white/10 backdrop-blur-md rounded-full border border-white/10 flex items-center gap-2">
-                    <ShieldCheck className="h-3 w-3 text-primary" />
-                    <span className="text-[8px] font-black uppercase tracking-[0.15em] text-primary">
+                    <ShieldCheck className="h-3 w-3 text-blue-600" />
+                    <span className="text-[8px] font-black uppercase tracking-[0.15em] text-blue-600">
                       Verified Company
                     </span>
                   </div>
@@ -274,14 +274,14 @@ export default function RecruiterDashboard() {
 
             <div className="flex justify-center lg:justify-end">
               <div className="relative h-80 w-80 group/shield">
-                <div className="absolute inset-x-0 bottom-0 top-0 m-auto h-56 w-56 bg-primary/20 rounded-full blur-3xl group-hover/shield:bg-primary/40 transition-all duration-700" />
+                <div className="absolute inset-x-0 bottom-0 top-0 m-auto h-56 w-56 bg-blue-600/20 rounded-full blur-3xl group-hover/shield:bg-blue-600/40 transition-all duration-700" />
 
                 <div className="absolute inset-0 rounded-full flex flex-col items-center justify-center z-10 text-center">
                   <div className="bg-slate-800/80 p-12 rounded-full border border-white/10 shadow-2xl backdrop-blur-2xl group-hover/shield:scale-105 transition-transform duration-500">
                     <div className="text-6xl font-black text-white tracking-tighter leading-none mb-2">
                       {profile?.companies?.profile_score ?? 0}
                     </div>
-                    <div className="text-[11px] font-black uppercase tracking-[0.3em] text-primary">
+                    <div className="text-[11px] font-black uppercase tracking-[0.3em] text-blue-600">
                       Trust Index
                     </div>
                     <div className="mt-3 flex items-center justify-center gap-1.5 px-3 py-1 bg-white/5 rounded-full border border-white/10">
@@ -371,7 +371,7 @@ export default function RecruiterDashboard() {
               <div className="flex items-center justify-between">
                 <div className="space-y-1">
                   <h3 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
-                    <TrendingUp className="h-5 w-5 text-primary" />
+                    <TrendingUp className="h-5 w-5 text-blue-600" />
                     Hiring Progress
                   </h3>
                   <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest opacity-80">
@@ -400,7 +400,7 @@ export default function RecruiterDashboard() {
 
             {/* Optimization Hub - Integrated Below Momentum */}
             <div className="bg-white rounded-2xl border border-slate-100 p-8 shadow-sm relative overflow-hidden group">
-              <div className="absolute top-0 right-0 w-64 h-64 bg-primary-light rounded-full blur-3xl -mr-32 -mt-32 opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
+              <div className="absolute top-0 right-0 w-64 h-64 bg-blue-100 rounded-full blur-3xl -mr-32 -mt-32 opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
 
               <div className="flex items-center justify-between mb-8 relative z-10">
                 <div>
@@ -416,7 +416,7 @@ export default function RecruiterDashboard() {
                     <div className="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">
                       Profile Strength
                     </div>
-                    <div className="text-xl font-black text-primary leading-none">
+                    <div className="text-xl font-black text-blue-600 leading-none">
                       {profile?.completion_score}%
                     </div>
                   </div>
@@ -456,14 +456,14 @@ export default function RecruiterDashboard() {
           <div className="space-y-6">
             {/* AI Insights / Market Position */}
             <div className="bg-slate-900 rounded-2xl p-6 text-white shadow-xl shadow-indigo-900/10 flex flex-col items-center text-center justify-between min-h-[300px] relative overflow-hidden group border border-white/5">
-              <div className="absolute top-0 right-0 w-40 h-40 bg-primary/10 rounded-full blur-3xl -mr-20 -mt-20 transition-all duration-700 pointer-events-none" />
+              <div className="absolute top-0 right-0 w-40 h-40 bg-blue-600/10 rounded-full blur-3xl -mr-20 -mt-20 transition-all duration-700 pointer-events-none" />
 
               <div className="space-y-4 relative z-10 w-full">
                 <div className="p-3 bg-white/5 border border-white/10 rounded-xl w-fit mx-auto backdrop-blur-xl">
-                  <Compass className="h-5 w-5 text-primary" />
+                  <Compass className="h-5 w-5 text-blue-600" />
                 </div>
                 <div className="space-y-2">
-                  <div className="text-[9px] font-black uppercase tracking-[0.2em] text-primary">
+                  <div className="text-[9px] font-black uppercase tracking-[0.2em] text-blue-600">
                     Market Insights
                   </div>
                   <h3 className="text-xl font-black tracking-tighter leading-tight">
@@ -496,7 +496,7 @@ export default function RecruiterDashboard() {
             {/* Tiers Card */}
             <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm flex-1">
               <div className="h-full flex flex-col">
-                <div className="h-8 w-8 bg-primary-light rounded-lg flex items-center justify-center text-primary mb-4 shrink-0">
+                <div className="h-8 w-8 bg-blue-100 rounded-lg flex items-center justify-center text-blue-600 mb-4 shrink-0">
                   <Award className="h-4 w-4" />
                 </div>
                 <h4 className="text-[13px] font-black text-slate-900 tracking-tight mb-3 shrink-0">
@@ -505,7 +505,7 @@ export default function RecruiterDashboard() {
                 <div className="flex-1 flex flex-col justify-around gap-2">
                   {[
                     { l: "Elite", d: "Premium visibility", c: "bg-emerald-400" },
-                    { l: "Prime", d: "Brand strength", c: "bg-primary" },
+                    { l: "Prime", d: "Brand strength", c: "bg-blue-600" },
                     { l: "Growth", d: "Building signals", c: "bg-slate-300" }
                   ].map(t => (
                     <div key={t.l} className="flex items-center justify-between group cursor-default">
@@ -539,11 +539,11 @@ function CompletionItem({
 }) {
   return (
     <div
-      className={`flex items-center justify-between p-5 rounded-2xl border transition-all duration-500 group ${done ? "bg-slate-50 border-slate-100 shadow-sm" : "bg-white border-slate-200 hover:border-primary-light hover:shadow-2xl hover:shadow-primary/10"}`}
+      className={`flex items-center justify-between p-5 rounded-2xl border transition-all duration-500 group ${done ? "bg-slate-50 border-slate-100 shadow-sm" : "bg-white border-slate-200 hover:border-blue-100 hover:shadow-2xl hover:shadow-blue-600/10"}`}
     >
       <div className="flex items-center gap-4">
         <div
-          className={`h-9 w-9 rounded-xl flex items-center justify-center transition-all duration-500 ${done ? "bg-emerald-100 text-emerald-600 scale-90" : "bg-slate-100 text-slate-400 group-hover:bg-primary-light group-hover:text-primary group-hover:rotate-6"}`}
+          className={`h-9 w-9 rounded-xl flex items-center justify-center transition-all duration-500 ${done ? "bg-emerald-100 text-emerald-600 scale-90" : "bg-slate-100 text-slate-400 group-hover:bg-blue-100 group-hover:text-blue-600 group-hover:rotate-6"}`}
         >
           {icon}
         </div>
@@ -561,7 +561,7 @@ function CompletionItem({
         href && (
           <Link
             href={href}
-            className="px-4 py-1.5 bg-primary-light text-[9px] font-black uppercase tracking-widest text-primary rounded-lg hover:bg-primary hover:text-white transition-all transform active:scale-90"
+            className="px-4 py-1.5 bg-blue-100 text-[9px] font-black uppercase tracking-widest text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all transform active:scale-90"
           >
             Optimize
           </Link>
@@ -588,7 +588,7 @@ function StatCard({
 }) {
   const colorMap = {
     slate: "text-slate-500 bg-slate-50",
-    indigo: "text-primary bg-primary-light",
+    indigo: "text-blue-600 bg-blue-100",
     emerald: "text-emerald-600 bg-emerald-50",
     amber: "text-amber-600 bg-amber-50",
     purple: "text-purple-600 bg-purple-50",

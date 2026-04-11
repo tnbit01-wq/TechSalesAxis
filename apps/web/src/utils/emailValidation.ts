@@ -33,12 +33,25 @@ export const isValidEmail = (email: string): boolean => {
 
 export const extractNameFromEmail = (email: string): string => {
   const prefix = email.split("@")[0];
-  // Remove all non-letters (numbers, special chars)
-  const lettersOnly = prefix.replace(/[^a-zA-Z._-]/g, "");
-
-  return lettersOnly
-    .split(/[._-]/)
-    .filter((part) => part.length > 0)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+  
+  // Extract only alphabetic characters
+  const letters = prefix.replace(/[^a-zA-Z]/g, "");
+  
+  if (!letters) {
+    return "User";
+  }
+  
+  // Split by dots, underscores, or hyphens in the original prefix
+  const parts = prefix
+    .split(/[._\-]+/)
+    .map(part => part.replace(/[^a-zA-Z]/g, "")) // Remove numbers/special chars from each part
+    .filter(part => part.length > 0);
+  
+  if (parts.length === 0) {
+    return "User";
+  }
+  
+  return parts
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
     .join(" ");
 };

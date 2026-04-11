@@ -4,7 +4,7 @@ from src.core.dependencies import get_current_user
 from src.core.database import get_db
 from src.core.models import CandidateProfile, User, Job, JobApplication, SavedJob, ResumeData, Company
 from src.services.s3_service import S3Service
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
 from src.services.resume_service import ResumeService
 from src.services.candidate_service import CandidateService
@@ -42,29 +42,34 @@ class CandidateSettingsUpdate(BaseModel):
     minimum_salary_threshold: Optional[int] = None
 
 class EducationData(BaseModel):
-    degree: str
-    institution: str
-    year: str
+    model_config = ConfigDict(populate_by_name=True)
+    
+    degree: Optional[str] = None
+    institution: Optional[str] = Field(alias="school", default=None)
+    year: Optional[str] = Field(alias="years", default=None)
     field: Optional[str] = None
     gpa: Optional[str] = None
+    location: Optional[str] = None
 
 class ExperienceData(BaseModel):
-    role: str
-    company: str
+    role: Optional[str] = None
+    company: Optional[str] = None
     location: Optional[str] = "Remote"
-    start: str
-    end: str
+    start: Optional[str] = None
+    end: Optional[str] = None
     description: Optional[str] = None
     key_achievements: Optional[List[str]] = []
 
 class GenerateResumeRequest(BaseModel):
     full_name: str
+    email: Optional[str] = None
     phone: str
     location: str
-    bio: str
-    education: List[EducationData]
-    timeline: List[ExperienceData]
-    skills: List[str]
+    bio: Optional[str] = None
+    education: List[EducationData] = []
+    timeline: List[ExperienceData] = []
+    skills: List[str] = []
+    current_role: Optional[str] = None
     linkedin: Optional[str] = None
     portfolio: Optional[str] = None
     template: str = "professional"
@@ -415,7 +420,6 @@ async def generate_resume(
         profile.full_name = request.full_name
         profile.phone_number = request.phone
         profile.location = request.location
-        profile.professional_summary = request.bio # Note: Make sure professional_summary is in model
         profile.bio = request.bio
         profile.linkedin_url = request.linkedin
         profile.portfolio_url = request.portfolio

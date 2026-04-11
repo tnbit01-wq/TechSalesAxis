@@ -248,8 +248,8 @@ export default function CommunityFeed() {
 
       const user = awsAuth.getUser();
       if (user) {
-        console.log("DEBUG: Setting Current User ID:", user.id || user.sub);
-        setCurrentUserId(user.id || user.sub);
+        console.log("DEBUG: Setting Current User ID:", user.id);
+        setCurrentUserId(user.id);
       }
 
       const data = await apiClient.get("/posts/feed", token);
@@ -396,7 +396,7 @@ export default function CommunityFeed() {
           >
             Community Feed
             {activeTab === "global" && (
-              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full" />
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-full" />
             )}
           </button>
           <button
@@ -409,14 +409,14 @@ export default function CommunityFeed() {
           >
             My Posts
             {activeTab === "personal" && (
-              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full" />
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-full" />
             )}
           </button>
         </div>
 
         <div className="flex items-center gap-2 bg-slate-100/50 p-1 rounded-xl">
           <div className="px-3 py-1.5 flex items-center gap-2">
-            <TrendingUp size={14} className="text-primary" />
+            <TrendingUp size={14} className="text-blue-600" />
             <span className="text-3xs font-black uppercase text-slate-500 tracking-widest">
               Trending Now
             </span>
@@ -430,7 +430,7 @@ export default function CommunityFeed() {
           {/* Create Post Box */}
           <div className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm mb-8">
             <h2 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4 flex items-center gap-2">
-              <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+              <div className="h-1.5 w-1.5 rounded-full bg-blue-600" />
               Start a Conversation
             </h2>
             <form onSubmit={handleCreatePost} className="space-y-4">
@@ -488,7 +488,7 @@ export default function CommunityFeed() {
                     onClick={() => fileInputRef.current?.click()}
                     className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-xl hover:bg-slate-100 transition-all group border border-slate-100"
                   >
-                    <div className="p-1 bg-primary-light text-primary rounded-lg group-hover:bg-primary-light transition-colors">
+                    <div className="p-1 bg-blue-100 text-blue-600 rounded-lg group-hover:bg-blue-100 transition-colors">
                       <Video size={12} />
                     </div>
                     <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">
@@ -509,7 +509,7 @@ export default function CommunityFeed() {
                   <button
                     disabled={isSubmitting || !newPost.trim()}
                     type="submit"
-                    className="bg-primary text-white font-black px-10 py-3 rounded-xl text-[11px] uppercase tracking-[0.2em] transition-all hover:bg-slate-900 active:scale-95 shadow-lg shadow-primary-light disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="bg-blue-600 text-white font-black px-10 py-3 rounded-xl text-[11px] uppercase tracking-[0.2em] transition-all hover:bg-slate-900 active:scale-95 shadow-lg shadow-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isSubmitting ? "..." : "POST"}
                   </button>
@@ -522,7 +522,7 @@ export default function CommunityFeed() {
           <div className="space-y-6">
             {loading ? (
               <div className="py-20 flex flex-col items-center justify-center space-y-4">
-                <div className="h-10 w-10 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                <div className="h-10 w-10 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
                   Loading Feed...
                 </p>
@@ -555,7 +555,7 @@ export default function CommunityFeed() {
                               className="object-cover"
                             />
                           ) : (
-                            <div className="h-full w-full flex items-center justify-center font-black text-primary text-sm bg-primary-light">
+                            <div className="h-full w-full flex items-center justify-center font-black text-blue-600 text-sm bg-blue-100">
                               {post.author?.full_name?.[0] || "?"}
                             </div>
                           )}
@@ -565,7 +565,7 @@ export default function CommunityFeed() {
                             {post.author?.full_name || "Anonymous"}
                           </h3>
                           <div className="flex items-center gap-2 text-[9px] font-bold text-slate-400 mt-0.5">
-                            <span className="uppercase tracking-widest text-primary bg-primary-light px-2 py-0.5 rounded-md border border-primary-light">
+                            <span className="uppercase tracking-widest text-blue-600 bg-blue-100 px-2 py-0.5 rounded-md border border-blue-100">
                               {post.author?.role === "recruiter"
                                 ? "Recruiter"
                                 : "Candidate"}
@@ -581,11 +581,11 @@ export default function CommunityFeed() {
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => handlePinPost(post.id)}
-                          className={`p-2 rounded-lg transition-all ${pinnedPostIds.has(post.id) ? "text-primary bg-primary-light" : "text-slate-300 hover:text-slate-600 hover:bg-slate-50"}`}
+                          className={`p-2 rounded-lg transition-all ${pinnedPostIds.has(post.id) ? "text-blue-600 bg-blue-100" : "text-slate-300 hover:text-slate-600 hover:bg-slate-50"}`}
                         >
                           <Pin
                             size={16}
-                            className={pinnedPostIds.has(post.id) ? "fill-primary" : ""}
+                            className={pinnedPostIds.has(post.id) ? "fill-blue-600" : ""}
                           />
                         </button>
                       </div>
@@ -661,10 +661,10 @@ export default function CommunityFeed() {
                         <button 
                           onClick={() => toggleComments(post.id)}
                           className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest transition-colors ${
-                            expandingComments.has(post.id) ? "text-primary" : "text-slate-500 hover:text-primary"
+                            expandingComments.has(post.id) ? "text-blue-600" : "text-slate-500 hover:text-blue-600"
                           }`}
                         >
-                          <MessageSquare size={16} className={expandingComments.has(post.id) ? "fill-primary" : ""} />
+                          <MessageSquare size={16} className={expandingComments.has(post.id) ? "fill-blue-600" : ""} />
                           {post.comments_count > 0 ? `${post.comments_count} COMMENT${post.comments_count > 1 ? "S" : ""}` : "COMMENT"}
                         </button>
                       </div>
@@ -688,7 +688,7 @@ export default function CommunityFeed() {
                           <div className="flex gap-1">
                             <button
                               onClick={() => startEditing(post)}
-                              className="p-2 text-slate-400 hover:text-primary transition-all"
+                              className="p-2 text-slate-400 hover:text-blue-600 transition-all"
                             >
                               <Edit3 size={16} />
                             </button>
@@ -724,7 +724,7 @@ export default function CommunityFeed() {
                             <button
                               disabled={!(commentInputs[post.id]?.trim())}
                               onClick={() => handleAddComment(post.id)}
-                              className="text-primary font-black text-[10px] uppercase tracking-widest disabled:opacity-30 disabled:grayscale transition-all hover:text-primary-dark"
+                              className="text-blue-600 font-black text-[10px] uppercase tracking-widest disabled:opacity-30 disabled:grayscale transition-all hover:text-blue-700"
                             >
                               Post
                             </button>
@@ -739,7 +739,7 @@ export default function CommunityFeed() {
                                 {comment.author?.profile_photo_url ? (
                                   <Image src={comment.author.profile_photo_url} alt="" fill className="object-cover" />
                                 ) : (
-                                  <div className="h-full w-full flex items-center justify-center font-black text-primary text-[10px] bg-primary-light">
+                                  <div className="h-full w-full flex items-center justify-center font-black text-blue-600 text-[10px] bg-blue-100">
                                     {comment.author?.full_name?.[0] || "?"}
                                   </div>
                                 )}
@@ -785,13 +785,13 @@ export default function CommunityFeed() {
         {/* Sidebar Column */}
         <div className="col-span-12 lg:col-span-4 space-y-8 lg:sticky lg:top-24">
           <div className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full -mr-16 -mt-16 group-hover:scale-110 transition-transform duration-700" />
+            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/5 rounded-full -mr-16 -mt-16 group-hover:scale-110 transition-transform duration-700" />
             <div className="flex items-center justify-between mb-6">
               <h4 className="font-black text-[10px] uppercase tracking-widest text-slate-400 flex items-center gap-2">
-                <Pin size={14} className="text-primary" />
+                <Pin size={14} className="text-blue-600" />
                 Pinned Signals
               </h4>
-              <span className="text-[10px] font-black text-primary bg-primary-light px-2 py-0.5 rounded-full border border-primary-light italic">
+              <span className="text-[10px] font-black text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full border border-blue-100 italic">
                 {posts.filter((p) => pinnedPostIds.has(p.id)).length}
               </span>
             </div>
@@ -813,7 +813,7 @@ export default function CommunityFeed() {
                     >
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2 overflow-hidden">
-                          <div className="h-7 w-7 rounded-full bg-primary-light overflow-hidden relative border border-white shrink-0 flex items-center justify-center">
+                          <div className="h-7 w-7 rounded-full bg-blue-100 overflow-hidden relative border border-white shrink-0 flex items-center justify-center">
                             {post.author?.profile_photo_url ? (
                               <Image 
                                 src={post.author.profile_photo_url} 
@@ -822,7 +822,7 @@ export default function CommunityFeed() {
                                 className="object-cover" 
                               />
                             ) : (
-                              <span className="text-[10px] font-black text-primary">
+                              <span className="text-[10px] font-black text-blue-600">
                                 {post.author?.full_name?.[0] || "?"}
                               </span>
                             )}
@@ -833,12 +833,12 @@ export default function CommunityFeed() {
                         </div>
                         <button 
                           onClick={() => handlePinPost(post.id)}
-                          className="text-primary hover:text-rose-500 transition-colors shrink-0 px-1"
+                          className="text-blue-600 hover:text-rose-500 transition-colors shrink-0 px-1"
                         >
                           <Pin size={12} className="fill-current" />
                         </button>
                       </div>
-                      <p className="text-[11px] font-bold text-slate-500 leading-relaxed line-clamp-2 italic pl-1 border-l-2 border-primary-light/50">
+                      <p className="text-[11px] font-bold text-slate-500 leading-relaxed line-clamp-2 italic pl-1 border-l-2 border-blue-100/50">
                         &ldquo;{post.content}&rdquo;
                       </p>
 

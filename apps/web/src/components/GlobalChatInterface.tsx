@@ -165,11 +165,11 @@ export default function GlobalChatInterface() {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
              {Object.entries(msg.intelligence_metrics).map(([key, val]: [string, any]) => (
                 <div key={key} className="bg-zinc-950/80 border border-white/5 p-4 rounded-3xl relative overflow-hidden group">
-                   <div className="absolute top-0 left-0 w-1 h-full bg-primary rounded-full" />
+                   <div className="absolute top-0 left-0 w-1 h-full bg-blue-600 rounded-full" />
                    <p className="text-[10px] text-zinc-500 uppercase font-mono mb-1">{key.replace('_', ' ')}</p>
                    <p className="text-xl font-bold text-white pr-2">{val}%</p>
                    <div className="mt-2 w-full h-1 bg-zinc-800 rounded-full">
-                      <div className="h-full bg-primary rounded-full" style={{ width: `${val}%` }} />
+                      <div className="h-full bg-blue-600 rounded-full" style={{ width: `${val}%` }} />
                    </div>
                 </div>
              ))}
@@ -192,12 +192,12 @@ export default function GlobalChatInterface() {
             {msg.data_results?.map((item: any, idx: number) => (
               <div key={idx} className="bg-zinc-900/40 border border-white/5 rounded-3xl p-5 hover:bg-zinc-800/50 transition-all group relative">
                 <div className="absolute top-4 right-4 flex items-center gap-2">
-                   <span className="bg-primary/10 text-primary p-1 rounded-lg border border-primary/20 shadow-[0_0_10px_rgba(79,70,229,0.1)]">
+                   <span className="bg-blue-600/10 text-blue-600 p-1 rounded-lg border border-blue-600/20 shadow-[0_0_10px_rgba(30,144,255,0.1)]">
                      <ShieldCheck className="w-4 h-4" />
                    </span>
                 </div>
                 <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 bg-gradient-to-br from-primary/20 to-purple-500/20 rounded-2xl flex items-center justify-center text-primary shadow-inner">
+                  <div className="w-14 h-14 bg-gradient-to-br from-blue-600/20 to-purple-500/20 rounded-2xl flex items-center justify-center text-blue-600 shadow-inner">
                     <User className="w-7 h-7" />
                   </div>
                   <div>
@@ -230,7 +230,7 @@ export default function GlobalChatInterface() {
       <aside className="w-[280px] bg-zinc-950/50 backdrop-blur-3xl border-r border-white/5 flex flex-col p-6 space-y-8">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3 group">
-            <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center shadow-[0_0_20px_rgba(79,70,229,0.3)] group-hover:scale-110 transition-transform">
+            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-[0_0_20px_rgba(30,144,255,0.3)] group-hover:scale-110 transition-transform">
               <Brain className="w-6 h-6 text-white" />
             </div>
             <div>
@@ -242,7 +242,7 @@ export default function GlobalChatInterface() {
         
         <div className="space-y-2">
           <button className="flex items-center gap-3 w-full p-3 bg-white/5 hover:bg-white/10 border border-white/5 rounded-2xl transition-all text-sm group">
-            <Plus className="w-4 h-4 text-primary group-hover:rotate-90 transition-transform" />
+            <Plus className="w-4 h-4 text-blue-600 group-hover:rotate-90 transition-transform" />
             <span className="font-semibold">New Intelligence Session</span>
           </button>
         </div>
@@ -252,8 +252,8 @@ export default function GlobalChatInterface() {
             <h3 className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest mb-4 px-2 italic">Intelligence History</h3>
             <div className="space-y-1">
               {['Sourcing Audit', 'Integrity Analysis', 'Strategic DNA'].map((item) => (
-                <button key={item} className="flex items-center gap-3 w-full p-2.5 text-xs text-zinc-400 hover:text-white hover:bg-primary/10 rounded-xl transition-all group">
-                  <History className="w-4 h-4 text-zinc-600 group-hover:text-primary" />
+                <button key={item} className="flex items-center gap-3 w-full p-2.5 text-xs text-zinc-400 hover:text-white hover:bg-blue-600/10 rounded-xl transition-all group">
+                  <History className="w-4 h-4 text-zinc-600 group-hover:text-blue-600" />
                   <span className="truncate">{item}</span>
                 </button>
               ))}
@@ -264,7 +264,7 @@ export default function GlobalChatInterface() {
         <div className="pt-6 border-t border-white/5 space-y-3">
           <button 
             onClick={toggleChatMode}
-            className="flex items-center gap-3 w-full p-3 text-sm font-bold text-primary hover:bg-primary/10 border border-primary/20 rounded-2xl transition-all"
+            className="flex items-center gap-3 w-full p-3 text-sm font-bold text-blue-600 hover:bg-blue-600/10 border border-blue-600/20 rounded-2xl transition-all"
           >
             <LayoutDashboard className="w-4 h-4" />
             Return to Dashboard
@@ -276,9 +276,9 @@ export default function GlobalChatInterface() {
         <header className="h-16 flex items-center px-10 justify-between">
           <div className="flex items-center gap-4">
             <div className="flex space-x-1">
-              <div className="w-1 h-1 rounded-full bg-primary animate-pulse" />
-              <div className="w-1 h-1 rounded-full bg-primary animate-pulse delay-75" />
-              <div className="w-1 h-1 rounded-full bg-primary animate-pulse delay-150" />
+              <div className="w-1 h-1 rounded-full bg-blue-600 animate-pulse" />
+              <div className="w-1 h-1 rounded-full bg-blue-600 animate-pulse delay-75" />
+              <div className="w-1 h-1 rounded-full bg-blue-600 animate-pulse delay-150" />
             </div>
             <span className="text-[10px] font-mono text-zinc-500 tracking-wider">SECURE LINK ESTABLISHED / SYNC_OK</span>
           </div>
@@ -293,7 +293,7 @@ export default function GlobalChatInterface() {
               <div className={`relative max-w-[85%] ${m.role === 'user' ? 'order-2' : ''}`}>
                 <div className={`p-5 rounded-3xl ${
                   m.role === 'user' 
-                  ? 'bg-primary text-white shadow-[0_10px_30px_rgba(79,70,229,0.2)]' 
+                  ? 'bg-blue-600 text-white shadow-[0_10px_30px_rgba(30,144,255,0.2)]' 
                   : 'bg-zinc-900/80 backdrop-blur-md border border-white/5 text-zinc-100 shadow-xl'
                 }`}>
                   <p className="text-[15px] leading-relaxed font-medium">
@@ -314,14 +314,14 @@ export default function GlobalChatInterface() {
 
         <div className="absolute bottom-8 inset-x-0 px-10 md:px-24 xl:px-64">
           <div className="relative group">
-            <div className="absolute -inset-1 bg-gradient-to-r from-primary to-purple-600 rounded-[2rem] blur opacity-10 group-focus-within:opacity-25 transition duration-1000"></div>
+            <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-purple-600 rounded-[2rem] blur opacity-10 group-focus-within:opacity-25 transition duration-1000"></div>
             <div className="relative flex items-center bg-zinc-900/90 backdrop-blur-2xl border border-white/10 rounded-[1.8rem] p-2 transition-all shadow-2xl">
               <button 
                 onClick={toggleListening}
                 className={`p-4 rounded-2xl transition-all ${
                   isListening 
                   ? 'bg-red-500 text-white animate-pulse' 
-                  : 'text-zinc-500 hover:bg-white/5 hover:text-primary'
+                  : 'text-zinc-500 hover:bg-white/5 hover:text-blue-600'
                 }`}
               >
                 {isListening ? <MicOff className="w-5 h-5 flex-shrink-0" /> : <Mic className="w-5 h-5 flex-shrink-0" />}
@@ -343,7 +343,7 @@ export default function GlobalChatInterface() {
               <button 
                 onClick={handleSend}
                 disabled={!input.trim() || loading}
-                className="p-4 bg-primary hover:bg-primary-dark text-white disabled:bg-slate-200 disabled:text-slate-600 disabled:cursor-not-allowed rounded-2xl transition-all shadow-lg active:scale-95"
+                className="p-4 bg-blue-600 hover:bg-blue-700 text-white disabled:bg-slate-200 disabled:text-slate-600 disabled:cursor-not-allowed rounded-2xl transition-all shadow-lg active:scale-95"
               >
                 {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Send className="w-5 h-5" />}
               </button>

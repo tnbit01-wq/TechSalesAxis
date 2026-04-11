@@ -159,7 +159,7 @@ export default function CandidateNotificationsPage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
         <div className="flex flex-col items-center gap-4">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
           <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Loading Notifications...</p>
         </div>
       </div>
@@ -196,7 +196,7 @@ export default function CandidateNotificationsPage() {
             )}
             <button
               onClick={markAllRead}
-              className="px-4 py-2.5 bg-primary text-white rounded-xl text-xs font-bold hover:bg-primary-dark transition-all flex items-center gap-2"
+              className="px-4 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition-all flex items-center gap-2"
             >
               <CheckCircle2 className="h-4 w-4" />
               Mark All Read
@@ -231,7 +231,7 @@ export default function CandidateNotificationsPage() {
             <div
               key={notif.id}
               className={`group bg-white p-4 rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition-all flex items-start gap-3 cursor-pointer ${
-                !notif.is_read ? "bg-primary-light" : ""
+                !notif.is_read ? "bg-blue-100" : ""
               }`}
             >
               {/* Checkbox */}
@@ -241,7 +241,7 @@ export default function CandidateNotificationsPage() {
                 title="Select notification"
               >
                 {selectedIds.has(notif.id) ? (
-                  <CheckSquare className="h-5 w-5 text-primary" />
+                  <CheckSquare className="h-5 w-5 text-blue-600" />
                 ) : (
                   <Square className="h-5 w-5 text-slate-300 hover:text-slate-400" />
                 )}
@@ -252,15 +252,15 @@ export default function CandidateNotificationsPage() {
                 notif.type === "INTERVIEW_PROPOSED"
                   ? "bg-amber-50 border-amber-100"
                   : notif.type === "ASSESSMENT_REMINDER"
-                    ? "bg-primary-light border-primary-light"
+                    ? "bg-blue-100 border-blue-100"
                     : "bg-slate-50 border-slate-100"
               }`}
               >
                 {notif.type === "ASSESSMENT_REMINDER" ? (
-                  <AlertCircle className="h-5 w-5 text-primary" />
+                  <AlertCircle className="h-5 w-5 text-blue-600" />
                 ) : (
                   <Bell className={`h-5 w-5 ${
-                    notif.type === "INTERVIEW_PROPOSED" ? "text-amber-500" : "text-primary"
+                    notif.type === "INTERVIEW_PROPOSED" ? "text-amber-500" : "text-blue-600"
                   }`} />
                 )}
               </div>
@@ -268,7 +268,7 @@ export default function CandidateNotificationsPage() {
               {/* Content */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[7px] font-bold text-primary uppercase tracking-wider bg-primary-light px-1.5 py-0.5 rounded-md border border-primary-light">
+                  <span className="text-[7px] font-bold text-blue-600 uppercase tracking-wider bg-blue-100 px-1.5 py-0.5 rounded-md border border-blue-100">
                     {notif.type?.replace("_", " ")}
                   </span>
                   <span className="text-[8px] text-slate-400 uppercase tracking-wider flex items-center gap-1">
@@ -300,7 +300,7 @@ export default function CandidateNotificationsPage() {
                 {!notif.is_read && (
                   <button
                     onClick={() => markAsRead(notif.id)}
-                    className="p-2 bg-primary-light text-primary rounded-lg hover:bg-primary hover:text-white transition-all"
+                    className="p-2 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all"
                     title="Mark as Read"
                   >
                     <Check className="h-3 w-3" />

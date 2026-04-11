@@ -81,7 +81,7 @@ export default function ApplicationHistoryModal({
         <div className="p-8 max-h-[60vh] overflow-y-auto custom-scrollbar">
           {loading ? (
             <div className="flex flex-col items-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-4 border-blue-600 border-t-transparent mb-4"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-4 border-[#1a56db] border-t-transparent mb-4"></div>
               <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">
                 Retrieving Logs...
               </p>
@@ -100,7 +100,7 @@ export default function ApplicationHistoryModal({
                   <div
                     className={`mt-1.5 h-10 w-10 rounded-full border-4 border-white flex items-center justify-center shrink-0 z-10 shadow-sm ${
                       idx === history.length - 1
-                        ? "bg-blue-600"
+                        ? "bg-[#1a56db]"
                         : "bg-slate-200"
                     }`}
                   >
@@ -131,7 +131,7 @@ export default function ApplicationHistoryModal({
                           <ArrowRight className="h-3 w-3 text-slate-300" />
                         </>
                       ) : null}
-                      <span className="text-xs font-black text-blue-600 uppercase tracking-wide bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
+                      <span className="text-xs font-black text-[#1a56db] uppercase tracking-wide bg-blue-50 px-2 py-0.5 rounded-md border border-[#1a56db]/20">
                         {item.new_status}
                       </span>
                     </div>

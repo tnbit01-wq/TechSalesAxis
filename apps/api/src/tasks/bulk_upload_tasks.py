@@ -8,6 +8,7 @@ from celery import shared_task
 from src.celery_app import celery_app
 from src.services.s3_service import S3Service
 from src.services.comprehensive_extractor import ComprehensiveResumeExtractor
+from src.services.enhanced_extractor import EnhancedResumeExtractor
 import logging
 import json
 import tempfile
@@ -15,12 +16,165 @@ from typing import Dict, Optional, List
 import os
 from datetime import datetime, timedelta
 import requests
+import re
 
 logger = logging.getLogger(__name__)
 
 # ============================================================================
-# TASK 1: VIRUS SCAN TASK
+# ROLE CATEGORIZATION - Intelligent categorization of roles into relevant/irrelevant
+# Only TRULY IRRELEVANT roles (Teaching, HR, Accounting) get filtered to 0
 # ============================================================================
+
+# IRRELEVANT ROLES: These are explicitly not relevant to Tech/Sales career paths
+IRRELEVANT_ROLE_KEYWORDS = {
+    'teacher', 'professor', 'instructor', 'lecturer', 'trainer', 'tutor', 'educator',
+    'education', 'school', 'college', 'university', 'teaching', 'academic',
+    'hr', 'human resources', 'recruitment', 'recruiter', 'hiring manager',
+    'accountant', 'accounting', 'cpa', 'bookkeeper', 'financial analyst', 'cfo', 'finance manager',
+    'retail', 'store manager', 'cashier', 'retail associate',
+    'call center', 'call centre', 'bpo', 'bpo executive',
+    'housekeeping', 'housemaid', 'cook', 'chef', 'waiter', 'bartender',
+    'construction', 'carpenter', 'mason', 'electrician', 'plumber',
+    'driver', 'taxi', 'uber driver', 'delivery executive'
+}
+
+
+def _classify_role_category(current_role: str, skills: list) -> str:
+    """
+    Classify role into one of three categories:
+    1. IRRELEVANT - Roles with zero relevance to Tech/Sales (Teaching, HR, etc.)
+    2. TECH - Pure tech/engineering roles
+    3. RELEVANT - All other professional roles (Sales, BD, Operations, Management, etc.)
+    
+    Philosophy: ONLY filter to 0 for truly irrelevant roles.
+    Everything else counts as relevant experience.
+    """
+    if not current_role:
+        # No role provided - use skills to decide
+        return 'TECH' if skills else 'RELEVANT'
+
+    role_lower = current_role.lower()
+
+    # Step 1: Check if IRRELEVANT
+    if any(keyword in role_lower for keyword in IRRELEVANT_ROLE_KEYWORDS):
+        logger.info(f"Role classified as IRRELEVANT: {current_role}")
+        return 'IRRELEVANT'
+
+    # Step 2: Check if TECH (explicit tech keywords)
+    TECH_KEYWORDS = {
+        'developer', 'engineer', 'programmer', 'software', 'architect',
+        'data scientist', 'data engineer', 'analyst', 'business intelligence',
+        'devops', 'sre', 'qa', 'automation', 'tech lead', 'scrum master',
+        'product manager', 'it manager', 'tech manager',
+        'system admin', 'network admin', 'database admin',
+        'cloud', 'aws', 'azure', 'gcp', 'kubernetes', 'docker',
+        'python', 'java', 'javascript', 'react', 'django', '.net',
+        'sql', 'mongodb', 'postgres'
+    }
+
+    if any(keyword in role_lower for keyword in TECH_KEYWORDS):
+        logger.info(f"Role classified as TECH: {current_role}")
+        return 'TECH'
+
+    # Step 3: All other professional roles = RELEVANT
+    # This includes: Sales, Business Development, Operations, Management, Consultant, etc.
+    logger.info(f"Role classified as RELEVANT: {current_role}")
+    return 'RELEVANT'
+
+
+def _calculate_it_tech_experience(total_years: int, current_role: str, skills: list, education: list) -> int:
+    """
+    Calculate years of experience based on role category.
+    
+    Philosophy: Only filter to 0 for truly irrelevant roles (Teaching, HR, Accounting, etc.)
+    For all other professional roles, count the full experience.
+    
+    Parameters:
+    - total_years: Total years from resume
+    - current_role: Current/last job title
+    - skills: Technical skills extracted
+    - education: Education history
+    
+    Returns:
+    - Years of experience (0 for irrelevant roles, full years otherwise)
+    """
+    if total_years is None or total_years <= 0:
+        return 0
+
+    # Classify the role
+    role_category = _classify_role_category(current_role, skills)
+
+    # Decision: Only return 0 for irrelevant roles
+    if role_category == 'IRRELEVANT':
+        logger.info(f"Filtering to 0 years - Irrelevant role: {current_role}")
+        return 0
+
+    # For TECH and RELEVANT roles, count full years
+    logger.info(f"Counting full {total_years} years - Category: {role_category}, Role: {current_role}")
+    return total_years
+
+
+# ============================================================================
+# IMPROVED PHONE EXTRACTION - Better extraction for international formats
+# ============================================================================
+def _extract_phone_number(text: str) -> Optional[str]:
+    """
+    Extract phone number with improved regex for multiple formats:
+    - Indian: +91 XXXXX XXXXX, +91-XXXXX-XXXXX, 91XXXXXXXXXX
+    - International: +1 (XXX) XXX-XXXX, +44 XXXX XXXXXX
+    - Standard 10 digit: XXXXXXXXXX, (XXX) XXX-XXXX
+    """
+    if not text:
+        return None
+    
+    # Improved regex patterns for various phone formats
+    phone_patterns = [
+        # International with +91
+        r'\+91[\s\-\.]?(\d{5})[\s\-\.]?(\d{5})',  # +91 XXXXX XXXXX
+        r'\+91[\s\-]?(\d{10})',                   # +91-XXXXXXXXXX
+        r'\+91(\d{10})',                          # +91XXXXXXXXXX
+        
+        # International other country codes
+        r'\+1[\s\-\.]?(\([0-9]{3}\))[\s\-\.]?([0-9]{3})[\s\-\.]?([0-9]{4})',  # +1 (XXX) XXX-XXXX
+        r'\+\d{1,3}[\s\-]?(\d{7,12})',            # +{country} {number}
+        
+        # India without +91 prefix
+        r'\b91(\d{10})\b',                        # 91XXXXXXXXXX
+        r'\b(\d{10})\b',                          # 10 digit number
+        r'\(([0-9]{3})\)[\s\-\.]?([0-9]{3})[\s\-\.]?([0-9]{4})',  # (XXX) XXX-XXXX
+    ]
+    
+    text_lower = text.lower()
+    # Look for phone indicators
+    if any(keyword in text_lower for keyword in ['phone', 'mobile', 'contact', 'tel', 'whatsapp']):
+        # Extract next 100 characters after these keywords
+        for keyword in ['phone', 'mobile', 'contact number', 'tel', 'whatsapp']:
+            idx = text_lower.find(keyword)
+            if idx != -1:
+                section = text[idx:idx+150]
+                for pattern in phone_patterns:
+                    match = re.search(pattern, section)
+                    if match:
+                        # Extract the number part
+                        full_match = match.group(0)
+                        # Clean to get just digits
+                        digits_only = re.sub(r'\D', '', full_match)
+                        if len(digits_only) >= 10:
+                            # Return last 10 digits
+                            return digits_only[-10:]
+    
+    # If not found near keywords, search entire text
+    for pattern in phone_patterns:
+        matches = re.finditer(pattern, text)
+        for match in matches:
+            full_match = match.group(0)
+            digits_only = re.sub(r'\D', '', full_match)
+            if len(digits_only) >= 10:
+                return digits_only[-10:]  # Return last 10 digits
+    
+    return None
+
+
 
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=60)
 def virus_scan_file(self, file_id: str, file_path: str, file_name: str) -> Dict:
@@ -116,11 +270,38 @@ def parse_resume_file(self, file_id: str, file_path: str, file_name: str, bucket
             except Exception as oai_err:
                 logger.warning(f"OpenAI Parsing Error: {oai_err}")
                 
-        # If OpenAI failed or not configured, fallback to Comprehensive Extractor
-        if not extracted_data:
-            logger.info("AI parsing not available or failed. Falling back to ComprehensiveResumeExtractor.")
-            extractor = ComprehensiveResumeExtractor()
-            extracted_data = extractor.extract_all(raw_text) if hasattr(extractor, 'extract_all') else {}
+        # If OpenAI failed or not configured, fallback to Enhanced Extractor first, then Comprehensive
+        if not extracted_data or not extracted_data.get('current_role'):
+            logger.info("AI parsing not available or failed. Using enhanced extraction pipeline.")
+            
+            # Step 1: Try Enhanced Extractor for role extraction (better at this)
+            try:
+                enhanced_exp_list, enhanced_current_role, enhanced_prev_role = EnhancedResumeExtractor.extract_experience_enhanced(raw_text)
+                
+                # If enhanced extractor found a role, use it
+                if enhanced_current_role:
+                    logger.info(f"Enhanced extractor found role: {enhanced_current_role}")
+                    if not extracted_data:
+                        extracted_data = {}
+                    extracted_data['current_role'] = enhanced_current_role
+                    if not extracted_data.get('experience_history'):
+                        extracted_data['experience_history'] = enhanced_exp_list
+            except Exception as e:
+                logger.warning(f"Enhanced extractor error: {e}")
+            
+            # Step 2: If still no data or missing fields, use Comprehensive Extractor
+            if not extracted_data or not extracted_data.get('current_role'):
+                logger.info("Falling back to ComprehensiveResumeExtractor.")
+                extractor = ComprehensiveResumeExtractor()
+                comp_data = extractor.extract_all(raw_text) if hasattr(extractor, 'extract_all') else {}
+                
+                if not extracted_data:
+                    extracted_data = comp_data
+                else:
+                    # Merge: use comprehensive data for missing fields
+                    for key, value in comp_data.items():
+                        if not extracted_data.get(key) and value:
+                            extracted_data[key] = value
 
         raw_skills = extracted_data.get('skills', [])
         flat_skills = []
@@ -162,6 +343,7 @@ def parse_resume_file(self, file_id: str, file_path: str, file_name: str, bucket
             'location': extracted_data.get('location'),
             'current_role': extracted_data.get('current_role'),
             'years_experience': extracted_data.get('years_of_experience') or extracted_data.get('relevant_years_experience') or extracted_data.get('years_experience') or 0,
+            'years_of_experience': extracted_data.get('years_of_experience') or extracted_data.get('relevant_years_experience') or extracted_data.get('years_experience') or 0,  # ADDED for JSON consistency
             'skills': flat_skills,
             'education': extracted_data.get('education_history') or extracted_data.get('education', []),
             'highest_education': extracted_data.get('highest_education'),
@@ -500,6 +682,13 @@ def parse_resume_file_fastapi(file_id: str, file_path: str, file_name: str, buck
                 
             parsed_data = file_record.parsed_data or {}
             email = parsed_data.get('email')
+            phone = parsed_data.get('phone')
+            
+            # IMPROVED: If phone not extracted, try alternative extraction from raw text
+            if not phone and file_record.raw_text:
+                phone = _extract_phone_number(file_record.raw_text)
+                if phone:
+                    logger.info(f"Phone extracted from raw text for {file_id}: {phone[:6]}****")
             
             # Autogenerate email if missing
             if not email:
@@ -537,7 +726,16 @@ def parse_resume_file_fastapi(file_id: str, file_path: str, file_name: str, buck
                 db.flush()
 
                 # Now create Candidate Profile
-                exp_y_num = file_record.extracted_years_experience or 0
+                # FILTER: Only count IT/Tech/Sales experience (not teaching, general admin, etc)
+                raw_exp = file_record.extracted_years_experience or 0
+                exp_y_num = _calculate_it_tech_experience(
+                    raw_exp,
+                    parsed_data.get('current_role', ''),
+                    parsed_data.get('skills', []),
+                    parsed_data.get('education_history', [])
+                )
+                
+                # Calculate experience tier based on IT/Tech experience only
                 if exp_y_num < 2:
                     exp_str = 'fresher'
                 elif exp_y_num <= 5:
@@ -566,6 +764,40 @@ def parse_resume_file_fastapi(file_id: str, file_path: str, file_name: str, buck
                 db.commit()
             else:
                 user_id = existing_user.id
+                
+                # UPDATE EXISTING CANDIDATE PROFILE with newly extracted data
+                existing_profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == user_id).first()
+                
+                if existing_profile:
+                    # Recalculate years_of_experience based on extracted data
+                    raw_exp = file_record.extracted_years_experience or 0
+                    exp_y_num = _calculate_it_tech_experience(
+                        raw_exp,
+                        parsed_data.get('current_role', ''),
+                        parsed_data.get('skills', []),
+                        parsed_data.get('education_history', [])
+                    )
+                    
+                    # Calculate new experience tier
+                    if exp_y_num < 2:
+                        exp_str = 'fresher'
+                    elif exp_y_num <= 5:
+                        exp_str = 'mid'
+                    elif exp_y_num <= 10:
+                        exp_str = 'senior'
+                    else:
+                        exp_str = 'leadership'
+                    
+                    # Update profile with extracted data
+                    existing_profile.years_of_experience = exp_y_num
+                    existing_profile.current_role = parsed_data.get('current_role') or existing_profile.current_role
+                    existing_profile.location = parsed_data.get('location') or existing_profile.location
+                    existing_profile.experience = exp_str
+                    existing_profile.skills = parsed_data.get('skills', []) or existing_profile.skills
+                    existing_profile.resume_path = file_record.file_storage_path
+                    existing_profile.bulk_file_id = file_id
+                    
+                    db.commit()
                 
             # Linking matched user to the file
             file_record.matched_candidate_id = user_id

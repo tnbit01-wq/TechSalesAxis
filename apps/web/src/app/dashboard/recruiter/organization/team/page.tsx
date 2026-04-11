@@ -161,7 +161,7 @@ export default function TeamManagementPage() {
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
           <div>
             <h1 className="text-3xl font-bold text-slate-900 tracking-tight">
-              Team <span className="text-primary">Management</span>
+              Team <span className="text-blue-600">Management</span>
             </h1>
             <p className="text-slate-500 text-sm mt-1">
               Manage your team members and permissions
@@ -171,7 +171,7 @@ export default function TeamManagementPage() {
           {profile?.is_admin && (
             <button
               onClick={() => setIsInviteModalOpen(true)}
-              className="px-6 py-2.5 bg-primary hover:bg-primary-dark text-white rounded-lg font-medium text-sm transition-all shadow-md shadow-primary-light active:scale-95 flex items-center gap-2 w-fit"
+              className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-sm transition-all shadow-md shadow-blue-200 active:scale-95 flex items-center gap-2 w-fit"
             >
               <UserPlus className="h-4 w-4" />
               Invite Member
@@ -183,7 +183,7 @@ export default function TeamManagementPage() {
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <div className="flex flex-col items-center gap-4">
-              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
+              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
               <p className="text-slate-500 text-sm">Loading team...</p>
             </div>
           </div>
@@ -197,12 +197,12 @@ export default function TeamManagementPage() {
                 <div className="flex flex-col items-center text-center">
                   {/* Avatar */}
                   <div className="relative mb-4">
-                    <div className="h-16 w-16 rounded-full bg-primary-light flex items-center justify-center text-xl font-bold text-primary shadow-sm group-hover:bg-primary-light transition-all">
+                    <div className="h-16 w-16 rounded-full bg-blue-100 flex items-center justify-center text-xl font-bold text-blue-600 shadow-sm group-hover:bg-blue-100 transition-all">
                       {member.full_name?.charAt(0) ||
                         member.users.email.charAt(0).toUpperCase()}
                     </div>
                     {member.is_admin && (
-                      <div className="absolute -bottom-1 -right-1 bg-primary p-1 rounded-full shadow-md">
+                      <div className="absolute -bottom-1 -right-1 bg-blue-600 p-1 rounded-full shadow-md">
                         <ShieldCheck className="h-3 w-3 text-white" />
                       </div>
                     )}
@@ -221,7 +221,7 @@ export default function TeamManagementPage() {
                   {/* Badges */}
                   <div className="flex gap-2 justify-center mb-4 flex-wrap">
                     {member.is_admin && (
-                      <span className="px-2 py-1 bg-primary-light text-primary-dark text-xs font-medium rounded-md">
+                      <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-md">
                         Admin
                       </span>
                     )}
@@ -242,7 +242,7 @@ export default function TeamManagementPage() {
                     <button
                       onClick={() => handlePromote(member)}
                       disabled={actioningId === member.user_id}
-                      className="flex-1 px-3 py-2 bg-slate-100 hover:bg-primary hover:text-white rounded-lg text-xs font-medium transition-all disabled:opacity-50 flex items-center justify-center gap-1"
+                      className="flex-1 px-3 py-2 bg-slate-100 hover:bg-blue-600 hover:text-white rounded-lg text-xs font-medium transition-all disabled:opacity-50 flex items-center justify-center gap-1"
                     >
                       {actioningId === member.user_id ? (
                         <Loader2 className="h-3 w-3 animate-spin" />

@@ -180,7 +180,7 @@ export default function CandidateJobsPage() {
   if (loading) {
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary mb-4"></div>
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mb-4"></div>
         <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Loading Jobs...</p>
       </div>
     );
@@ -260,8 +260,8 @@ export default function CandidateJobsPage() {
               onClick={() => setSelectedJob(job)}
             >
               <div className="flex justify-between items-start mb-4">
-                <div className="h-12 w-12 bg-slate-50 rounded-2xl flex items-center justify-center border border-slate-100 group-hover:bg-primary-light transition-colors">
-                  <Building2 className="h-6 w-6 text-slate-400 group-hover:text-primary" />
+                <div className="h-12 w-12 bg-slate-50 rounded-2xl flex items-center justify-center border border-slate-100 group-hover:bg-blue-100 transition-colors">
+                  <Building2 className="h-6 w-6 text-slate-400 group-hover:text-blue-600" />
                 </div>
                 <button
                   onClick={(e) => {
@@ -271,8 +271,8 @@ export default function CandidateJobsPage() {
                   disabled={saving === job.id}
                   className={`p-2 rounded-xl transition-all ${
                     job.is_saved
-                      ? "bg-primary-light text-primary"
-                      : "text-slate-400 hover:bg-slate-50 hover:text-primary"
+                      ? "bg-blue-100 text-blue-600"
+                      : "text-slate-400 hover:bg-slate-50 hover:text-blue-600"
                   }`}
                 >
                   <Pin className={`h-4 w-4 ${job.is_saved ? "fill-current" : ""}`} />
@@ -280,11 +280,11 @@ export default function CandidateJobsPage() {
               </div>
 
               <div className="flex-1">
-                <h2 className="text-lg font-bold text-slate-900 line-clamp-1 group-hover:text-primary transition-colors">
+                <h2 className="text-lg font-bold text-slate-900 line-clamp-1 group-hover:text-blue-600 transition-colors">
                   {job.title}
                 </h2>
                 <div className="flex items-center gap-2 mt-1">
-                  <span className="text-xs font-bold text-primary uppercase tracking-wider">{job.company_name}</span>
+                  <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">{job.company_name}</span>
                   <span className="h-1 w-1 rounded-full bg-slate-200" />
                   <span className="text-xs text-slate-500">{job.location || "Remote"}</span>
                 </div>
@@ -317,7 +317,7 @@ export default function CandidateJobsPage() {
             <div className="p-8 md:p-12 space-y-8">
               <div className="flex justify-between items-start">
                 <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-primary font-bold text-sm">
+                  <div className="flex items-center gap-2 text-blue-600 font-bold text-sm">
                     <Building2 className="h-4 w-4" />
                     {selectedJob.company_name}
                   </div>
@@ -325,7 +325,7 @@ export default function CandidateJobsPage() {
                   <div className="flex flex-wrap gap-2">
                     <span className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold">{selectedJob.job_type}</span>
                     <span className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold">{selectedJob.experience_band}</span>
-                    <span className="px-3 py-1.5 bg-primary-light text-primary-dark rounded-xl text-xs font-bold">{selectedJob.salary_range}</span>
+                    <span className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-xl text-xs font-bold">{selectedJob.salary_range}</span>
                   </div>
                 </div>
                 <button 
@@ -383,7 +383,7 @@ export default function CandidateJobsPage() {
                       ? "bg-emerald-50 text-emerald-600 border border-emerald-200"
                       : assessmentStatus !== "completed"
                         ? "bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200"
-                        : "bg-primary text-white hover:bg-slate-900 shadow-xl shadow-primary-light"
+                        : "bg-blue-600 text-white hover:bg-slate-900 shadow-xl shadow-blue-200"
                   }`}
                 >
                   {applying === selectedJob.id ? (

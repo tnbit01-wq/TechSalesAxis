@@ -18,6 +18,8 @@ from src.api.analytics import router as analytics_router
 from src.api.admin import router as admin_router
 from src.api.admin_unified import router as admin_unified_router
 from src.api.bulk_upload import router as bulk_upload_router
+from src.api.career_readiness import router as career_readiness_router
+from src.routes.intelligence import router as intelligence_router
 import time
 
 app = FastAPI(title="TechSales Axis API")
@@ -59,6 +61,7 @@ app.include_router(health_router, prefix="/health")
 app.include_router(protected_router, prefix="/protected")
 app.include_router(auth_router, prefix="/auth")
 app.include_router(candidate_router)
+app.include_router(career_readiness_router, prefix="/api/v1/candidate")
 app.include_router(assessment_router, prefix="/assessment")
 app.include_router(recruiter_router)
 app.include_router(posts_router, prefix="/posts")
@@ -67,8 +70,9 @@ app.include_router(chat_router)
 app.include_router(interviews_router)
 app.include_router(career_gps_router)
 app.include_router(storage_router)
-app.include_router(analytics_router, prefix="/analytics")
+app.include_router(analytics_router)
 app.include_router(ai_intent_router) # AI Intelligence Core
+app.include_router(intelligence_router, prefix="/api/v1") # ✨ NEW: AI Personalization
 app.include_router(admin_router)
 app.include_router(admin_unified_router, prefix="/api/v1")  # Unified admin endpoints
 print(f"DEBUG: Registering bulk_upload_router: {bulk_upload_router}")

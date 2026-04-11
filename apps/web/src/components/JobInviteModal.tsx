@@ -138,7 +138,7 @@ export default function JobInviteModal({
                   placeholder="Enter Unlisted Role Title (e.g. Lead Developer)"
                   value={customTitle}
                   onChange={(e) => handleCustomTitleChange(e.target.value)}
-                  className="w-full p-4 bg-primary-light/30 border border-primary-light rounded-2xl text-sm font-bold text-indigo-900 placeholder:text-indigo-300 focus:ring-2 focus:ring-primary focus:outline-none mt-2"
+                  className="w-full p-4 bg-blue-100/30 border border-blue-100 rounded-2xl text-sm font-bold text-blue-900 placeholder:text-blue-300 focus:ring-2 focus:ring-blue-600 focus:outline-none mt-2"
                 />
               </div>
             )}
@@ -183,7 +183,7 @@ export default function JobInviteModal({
           <button
             onClick={handleSendInvite}
             disabled={loading || (isUnlisted && !customTitle)}
-            className="flex-2 py-4 bg-slate-900 text-white rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] flex items-center justify-center gap-3 hover:bg-primary transition-all shadow-xl shadow-primary-light disabled:bg-slate-200 disabled:shadow-none active:scale-95"
+            className="flex-2 py-4 bg-slate-900 text-white rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] flex items-center justify-center gap-3 hover:bg-blue-600 transition-all shadow-xl shadow-blue-200 disabled:bg-slate-200 disabled:shadow-none active:scale-95"
           >
             {loading ? (
               <Loader2 className="w-4 h-4 animate-spin" />

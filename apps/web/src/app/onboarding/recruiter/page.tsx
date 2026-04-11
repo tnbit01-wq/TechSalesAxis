@@ -18,6 +18,11 @@ type Message = {
 
 type OnboardingState =
   | "INITIAL"
+  | "EMAIL_ANALYSIS"
+  | "COMPANY_CONFIRMATION"
+  | "REVIEW_DETAILS"
+  | "EDITING_DETAIL"
+  | "LOCATION"
   | "REGISTRATION"
   | "DETAILS"
   | "ASSESSMENT_PROMPT"
@@ -58,6 +63,9 @@ export default function RecruiterOnboarding() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [state, setState] = useState<OnboardingState>("INITIAL");
   const [companyId, setCompanyId] = useState<string | null>(null);
+  const [detectedCompanyName, setDetectedCompanyName] = useState<string>("");
+  const [detectedDomain, setDetectedDomain] = useState<string>("");
+  const [editingField, setEditingField] = useState<"website" | "description" | null>(null);
   const [companyDetails, setCompanyDetails] = useState({
     name: "",
     website: "",
@@ -194,7 +202,302 @@ export default function RecruiterOnboarding() {
       try {
         const token = awsAuth.getToken();
 
-        if (state === "REGISTRATION") {
+        if (state === "COMPANY_CONFIRMATION") {
+          if (val === "Yes, that's right") {
+            // Use detected company name - now find its details
+            addMessage("✨ Finding company website and details...", "bot");
+            
+            try {
+              const detailsResult = await apiClient.post(
+                "/recruiter/find-company-details",
+                { company_name: detectedCompanyName },
+                token,
+              );
+              
+              if (detailsResult && detailsResult.found) {
+                const nextDetails = {
+                  name: detectedCompanyName,
+                  website: detailsResult.website || "",
+                  location: "",
+                  description: detailsResult.description || "",
+                };
+                setCompanyDetails(nextDetails);
+                setState("REVIEW_DETAILS");
+                
+                // Show details for review
+                addMessage("Here's what I found for your company:", "bot");
+                addMessage(`📍 **Company Name:** ${nextDetails.name}`, "bot");
+                addMessage(`🌐 **Website:** ${nextDetails.website || "Not found"}`, "bot");
+                addMessage(`📝 **Description:** ${nextDetails.description || "Not found"}`, "bot");
+                addMessage("Does everything look correct?", "bot", [
+                  "Yes, looks good!",
+                  "Edit website",
+                  "Edit description"
+                ]);
+              } else {
+                setCompanyDetails({
+                  name: detectedCompanyName,
+                  website: "",
+                  location: "",
+                  description: "",
+                });
+                setState("REVIEW_DETAILS");
+                addMessage("I need some details to complete your company profile:", "bot");
+                addMessage(`📍 **Company Name:** ${detectedCompanyName}`, "bot");
+                addMessage(`🌐 **Website:** Not found`, "bot");
+                addMessage(`📝 **Description:** Not found`, "bot");
+                addMessage("What is your company's website URL?", "bot");
+                setEditingField("website");
+              }
+            } catch (err) {
+              console.error("Company details error:", err);
+              setCompanyDetails({
+                name: detectedCompanyName,
+                website: "",
+                location: "",
+                description: "",
+              });
+              setState("REVIEW_DETAILS");
+              addMessage("I need some details to complete your company profile:", "bot");
+              addMessage(`📍 **Company Name:** ${detectedCompanyName}`, "bot");
+              addMessage(`🌐 **Website:** Not found`, "bot");
+              addMessage(`📝 **Description:** Not found`, "bot");
+              addMessage("What is your company's website URL?", "bot");
+              setEditingField("website");
+            }
+          } else if (val === "No, let me provide the correct name") {
+            addMessage("No problem! What is the name of your company?", "bot");
+          } else {
+            // They provided the company name
+            setDetectedCompanyName(val);
+            addMessage("✨ Finding company website and details...", "bot");
+            
+            try {
+              const detailsResult = await apiClient.post(
+                "/recruiter/find-company-details",
+                { company_name: val },
+                token,
+              );
+              
+              if (detailsResult && detailsResult.found) {
+                const nextDetails = {
+                  name: val,
+                  website: detailsResult.website || "",
+                  location: "",
+                  description: detailsResult.description || "",
+                };
+                setCompanyDetails(nextDetails);
+                setState("REVIEW_DETAILS");
+                
+                // Show details for review
+                addMessage("Here's what I found for your company:", "bot");
+                addMessage(`📍 **Company Name:** ${nextDetails.name}`, "bot");
+                addMessage(`🌐 **Website:** ${nextDetails.website || "Not found"}`, "bot");
+                addMessage(`📝 **Description:** ${nextDetails.description || "Not found"}`, "bot");
+                addMessage("Does everything look correct?", "bot", [
+                  "Yes, looks good!",
+                  "Edit website",
+                  "Edit description"
+                ]);
+              } else {
+                setCompanyDetails({
+                  name: val,
+                  website: "",
+                  location: "",
+                  description: "",
+                });
+                setState("REVIEW_DETAILS");
+                addMessage("I need some details to complete your company profile:", "bot");
+                addMessage(`📍 **Company Name:** ${val}`, "bot");
+                addMessage(`🌐 **Website:** Not found`, "bot");
+                addMessage(`📝 **Description:** Not found`, "bot");
+                addMessage("What is your company's website URL?", "bot");
+                setEditingField("website");
+              }
+            } catch (err) {
+              console.error("Company details error:", err);
+              setCompanyDetails({
+                name: val,
+                website: "",
+                location: "",
+                description: "",
+              });
+              setState("REVIEW_DETAILS");
+              addMessage("I need some details to complete your company profile:", "bot");
+              addMessage(`📍 **Company Name:** ${val}`, "bot");
+              addMessage(`🌐 **Website:** Not found`, "bot");
+              addMessage(`📝 **Description:** Not found`, "bot");
+              addMessage("What is your company's website URL?", "bot");
+              setEditingField("website");
+            }
+          }
+        } else if (state === "REVIEW_DETAILS") {
+          // Handle review details actions
+          if (val === "Yes, looks good!") {
+            // Move to location step
+            setState("LOCATION");
+            addMessage("Perfect! Now, where is your company headquartered?", "bot");
+          } else if (val === "Edit website") {
+            setEditingField("website");
+            setState("EDITING_DETAIL");
+            addMessage("What is your company's website URL?", "bot");
+          } else if (val === "Edit description") {
+            setEditingField("description");
+            setState("EDITING_DETAIL");
+            addMessage("Please provide a description of your company (or describe what your company does):", "bot");
+          } else {
+            // If in review mode and they're providing info, update the appropriate field
+            if (editingField === "website") {
+              // Website entered - now generate description from it
+              const websiteUrl = val.startsWith('http') ? val : `https://${val}`;
+              const updatedDetails = { ...companyDetails, website: websiteUrl };
+              setCompanyDetails(updatedDetails);
+              
+              addMessage(`✅ Website updated: ${websiteUrl}`, "bot");
+              addMessage("Generating description from your website...", "bot");
+              
+              try {
+                const res = await apiClient.post(
+                  "/recruiter/generate-bio",
+                  { website: websiteUrl },
+                  token,
+                );
+                
+                if (res && res.bio && res.bio.trim()) {
+                  updatedDetails.description = res.bio;
+                  setCompanyDetails(updatedDetails);
+                  addMessage(`✨ Generated Description:\n${res.bio}`, "bot");
+                } else {
+                  addMessage("Couldn't auto-generate description. You can provide one manually if needed.", "bot");
+                }
+              } catch (err) {
+                console.error("Bio generation error:", err);
+                addMessage("Couldn't auto-generate description. You can provide one manually if needed.", "bot");
+              }
+              
+              setEditingField(null);
+              setState("REVIEW_DETAILS");
+              addMessage("Does everything look correct now?", "bot", [
+                "Yes, looks good!",
+                "Edit website",
+                "Edit description"
+              ]);
+            } else if (editingField === "description") {
+              const updatedDetails = { ...companyDetails, description: val };
+              setCompanyDetails(updatedDetails);
+              setEditingField(null);
+              setState("REVIEW_DETAILS");
+              addMessage(`✅ Description updated`, "bot");
+              addMessage("Does everything look correct now?", "bot", [
+                "Yes, looks good!",
+                "Edit website",
+                "Edit description"
+              ]);
+            }
+          }
+        } else if (state === "EDITING_DETAIL") {
+          // Redirect back to REVIEW_DETAILS with the new value
+          if (editingField === "website") {
+            const websiteUrl = val.startsWith('http') ? val : `https://${val}`;
+            const updatedDetails = { ...companyDetails, website: websiteUrl };
+            setCompanyDetails(updatedDetails);
+            
+            addMessage(`✅ Website updated: ${websiteUrl}`, "bot");
+            addMessage("Generating description from your website...", "bot");
+            
+            try {
+              const res = await apiClient.post(
+                "/recruiter/generate-bio",
+                { website: websiteUrl },
+                token,
+              );
+              
+              if (res && res.bio && res.bio.trim()) {
+                updatedDetails.description = res.bio;
+                setCompanyDetails(updatedDetails);
+                addMessage(`✨ Generated Description:\n${res.bio}`, "bot");
+              } else {
+                addMessage("Couldn't auto-generate description. You can provide one manually if needed.", "bot");
+              }
+            } catch (err) {
+              console.error("Bio generation error:", err);
+              addMessage("Couldn't auto-generate description. You can provide one manually if needed.", "bot");
+            }
+            
+            setEditingField(null);
+            setState("REVIEW_DETAILS");
+            addMessage("Does everything look correct now?", "bot", [
+              "Yes, looks good!",
+              "Edit website",
+              "Edit description"
+            ]);
+          } else if (editingField === "description") {
+            const updatedDetails = { ...companyDetails, description: val };
+            setCompanyDetails(updatedDetails);
+            setEditingField(null);
+            setState("REVIEW_DETAILS");
+            addMessage(`✅ Description updated`, "bot");
+            addMessage("Does everything look correct now?", "bot", [
+              "Yes, looks good!",
+              "Edit website",
+              "Edit description"
+            ]);
+          }
+        } else if (state === "LOCATION") {
+          const nextDetails = { ...companyDetails, location: val };
+          setCompanyDetails(nextDetails);
+          
+          // If website not found, ask for it
+          if (!nextDetails.website) {
+            addMessage("What is your company's website URL?", "bot");
+            setState("DETAILS");
+          } else if (!nextDetails.description) {
+            addMessage("Please provide a short description of your company.", "bot");
+            setState("DETAILS");
+          } else {
+            // All details collected, move to registration
+            setState("REGISTRATION");
+            addMessage("Now, please enter your Company Registration Number (CIN or GSTIN).", "bot");
+          }
+        } else if (state === "DETAILS") {
+          const nextDetails = { ...companyDetails };
+          if (!nextDetails.website) {
+            nextDetails.website = val;
+            
+            // Auto-generate bio from website
+            try {
+              addMessage("Analyzing your website to create a company narrative...", "bot");
+              const res = await apiClient.post(
+                "/recruiter/generate-bio",
+                { website: val },
+                token,
+              );
+              
+              if (res && res.bio && res.bio.trim()) {
+                nextDetails.description = res.bio;
+                addMessage("✨ Generated Company Narrative:\n" + res.bio, "bot");
+              } else {
+                addMessage("I'll ask you to describe your company.", "bot");
+              }
+            } catch (err) {
+              console.error("Bio generation error:", err);
+              addMessage("No problem! I'll ask you to describe your company.", "bot");
+            }
+          } else if (!nextDetails.description) {
+            nextDetails.description = val;
+          }
+          
+          setCompanyDetails(nextDetails);
+          
+          if (nextDetails.website && nextDetails.description) {
+            setState("REGISTRATION");
+            addMessage("Perfect! Now, please enter your Company Registration Number (CIN or GSTIN).", "bot");
+          } else if (!nextDetails.website) {
+            addMessage("What is your company's website URL?", "bot");
+          } else {
+            addMessage("Please provide a short description of your company.", "bot");
+          }
+        } else if (state === "REGISTRATION") {
           const gstinRegex =
             /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
           const cinRegex =
@@ -213,6 +516,13 @@ export default function RecruiterOnboarding() {
             );
             setCompanyId(res.company_id);
 
+            // Save company details
+            await apiClient.post(
+              "/recruiter/details",
+              { company_id: res.company_id, ...companyDetails },
+              token,
+            );
+
             if (res.onboarding_step === "COMPLETED") {
               addMessage(
                 "Your company is already vetted! Fast-tracking you to the Command Center...",
@@ -220,68 +530,9 @@ export default function RecruiterOnboarding() {
               );
               setTimeout(() => router.push("/dashboard/recruiter"), 2000);
             } else {
-              setState("DETAILS");
-              addMessage("Registration confirmed.", "bot");
-              addMessage("What is the full legal name of your company?", "bot");
+              setState("ASSESSMENT_PROMPT");
+              showAssessmentPrompt();
             }
-          }
-        } else if (state === "DETAILS") {
-          const nextDetails = { ...companyDetails };
-          if (
-            !nextDetails.name ||
-            nextDetails.name === "Pending Verification"
-          ) {
-            nextDetails.name = val;
-          } else if (!nextDetails.website) {
-            nextDetails.website = val;
-            
-            // Auto-generate bio from website
-            try {
-              addMessage("Analyzing your website to create a company narrative...", "bot");
-              console.log("Calling generate-bio with website:", val);
-              
-              const res = await apiClient.post(
-                "/recruiter/generate-bio",
-                { website: val },
-                token,
-              );
-              
-              console.log("Bio generation response:", res);
-              
-              if (res && res.bio && res.bio.trim()) {
-                nextDetails.description = res.bio;
-                addMessage("✨ Generated Company Narrative:\n" + res.bio, "bot");
-              } else {
-                console.log("No bio returned, will ask for manual entry");
-                addMessage("I'll ask you to describe your company in a moment.", "bot");
-              }
-            } catch (err) {
-              console.error("Bio generation error:", err);
-              addMessage("No problem! I'll ask you to describe your company manually.", "bot");
-            }
-          } else if (!nextDetails.location) {
-            nextDetails.location = val;
-          } else if (!nextDetails.description) {
-            nextDetails.description = val;
-          }
-
-          setCompanyDetails(nextDetails);
-
-          if (
-            nextDetails.name &&
-            nextDetails.website &&
-            nextDetails.location &&
-            nextDetails.description
-          ) {
-            await apiClient.post(
-              "/recruiter/details",
-              { company_id: companyId, ...nextDetails },
-              token,
-            );
-            setState("ASSESSMENT_PROMPT");
-            showAssessmentPrompt();
-          } else {
-            promptNextDetail(nextDetails);
           }
         } else if (state === "ASSESSMENT_PROMPT") {
           if (val === "Start Assessment") {
@@ -341,6 +592,8 @@ export default function RecruiterOnboarding() {
       router,
       companyId,
       companyDetails,
+      detectedCompanyName,
+      editingField,
       showAssessmentPrompt,
       promptNextDetail,
       startAssessment,
@@ -386,22 +639,52 @@ export default function RecruiterOnboarding() {
         const currentStep = profile.onboarding_step as OnboardingState;
         setState(currentStep);
 
-        if (currentStep === "REGISTRATION" || currentStep === "INITIAL") {
+        if (currentStep === "REGISTRATION" || currentStep === "INITIAL" || currentStep === "EMAIL_ANALYSIS") {
           addMessage(
-            `Welcome, ${name}! Let's set up your company profile.`,
+            `Welcome, ${name}! Let's set up your company profile using AI intelligence.`,
             "bot",
           );
+          
+          // Auto-analyze email without asking or showing status
+          setState("EMAIL_ANALYSIS");
+          
+          try {
+            // Automatically call the email analysis with user's email
+            const analysisResult = await apiClient.post(
+              "/recruiter/analyze-email",
+              { email: user.email || "" },
+              token,
+            );
+            
+            if (analysisResult && analysisResult.company_name) {
+              setDetectedCompanyName(analysisResult.company_name);
+              setDetectedDomain(analysisResult.domain || "");
+              setState("COMPANY_CONFIRMATION");
+              addMessage(
+                `I detected that you're from **${analysisResult.company_name}**. Is this correct?`,
+                "bot",
+                ["Yes, that's right", "No, let me provide the correct name"]
+              );
+            } else {
+              // Fallback: couldn't detect, ask for company name
+              setState("COMPANY_CONFIRMATION");
+              addMessage("What is the name of your company?", "bot");
+            }
+          } catch (err) {
+            console.error("Email analysis error:", err);
+            // Fallback: error occurred, ask for company name
+            setState("COMPANY_CONFIRMATION");
+            addMessage("Let me ask directly: What is the name of your company?", "bot");
+          }
+        } else if (currentStep === "COMPANY_CONFIRMATION") {
+          addMessage("Let's confirm your company details.", "bot");
+          addMessage("What is the name of your company?", "bot");
+        } else if (currentStep === "LOCATION" || currentStep === "DETAILS") {
           addMessage(
-            "First, please enter your Company Registration Number (CIN or GSTIN).",
+            "Let's complete the details for your company.",
             "bot",
           );
-          setState("REGISTRATION");
-        } else if (currentStep === "DETAILS") {
-          addMessage(
-            "Let's complete the basic details for your company.",
-            "bot",
-          );
-          promptNextDetail(profile.companies || {});
+          addMessage("Where is your company headquartered?", "bot");
         } else if (currentStep === "ASSESSMENT_PROMPT" || currentStep === "ASSESSMENT_CHAT") {
           // Resuming from assessment state
           showAssessmentPrompt();
@@ -607,7 +890,7 @@ export default function RecruiterOnboarding() {
                     <button
                       onClick={() => handleSend()}
                       disabled={isLoading || !input.trim()}
-                      className="flex items-center gap-3 bg-zinc-800 hover:bg-blue-600 text-zinc-400 hover:text-white px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-[0.2em] transition-all disabled:opacity-50 group"
+                      className="flex items-center gap-3 bg-zinc-800 hover:bg-blue-600 text-white hover:text-white px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-[0.2em] transition-all disabled:opacity-50 group"
                     >
                       <span>Transmit Signal</span>
                       <SendIcon />
@@ -662,7 +945,7 @@ export default function RecruiterOnboarding() {
                             key={opt}
                             onClick={() => handleSend(opt)}
                             disabled={isLoading}
-                            className="px-5 py-2.5 bg-white hover:bg-primary-light border border-slate-200 hover:border-primary-light rounded-full text-sm font-semibold text-slate-600 hover:text-primary transition-all shadow-sm active:scale-95 disabled:opacity-50"
+                          className="px-5 py-2.5 bg-white hover:bg-primary-light border border-slate-200 hover:border-primary-light rounded-full text-sm font-semibold text-slate-800 hover:text-primary transition-all shadow-sm active:scale-95 disabled:opacity-50"
                           >
                             {opt}
                           </button>
@@ -696,7 +979,7 @@ export default function RecruiterOnboarding() {
                     onChange={(e) => setInput(e.target.value)}
                     onKeyPress={(e) => e.key === "Enter" && handleSend()}
                     placeholder={isListening ? "Listening..." : "Type your response..."}
-                    className="flex-1 bg-transparent px-4 py-2 text-slate-700 placeholder:text-slate-400 focus:outline-none text-sm font-medium"
+                    className="flex-1 bg-transparent px-4 py-2 text-slate-700 placeholder:text-slate-500 focus:outline-none text-sm font-medium"
                     autoComplete="off"
                   />
                   <div className="flex items-center gap-1.5">

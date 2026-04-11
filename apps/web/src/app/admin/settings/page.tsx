@@ -142,7 +142,7 @@ export default function AdminSettingsPage() {
       <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-primary-light">
         <div className="text-center">
           <div className="mb-4">
-            <div className="w-12 h-12 border-4 border-primary-light border-t-primary rounded-full animate-spin mx-auto"></div>
+            <div className="w-12 h-12 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin mx-auto"></div>
           </div>
           <p className="text-gray-600">Loading settings...</p>
         </div>
@@ -156,7 +156,7 @@ export default function AdminSettingsPage() {
       <div className="mb-8">
         <button
           onClick={() => router.back()}
-          className="text-primary hover:text-primary-dark font-bold mb-4"      
+          className="text-blue-600 hover:text-blue-700 font-bold mb-4"      
         >
           ← Back
         </button>
@@ -320,7 +320,7 @@ export default function AdminSettingsPage() {
                     placeholder="Enter email address"
                     className="flex-1 border border-gray-300 rounded-lg px-4 py-2"
                   />
-                  <select className="border-2 border-slate-300 rounded-lg px-4 py-2 bg-white text-slate-900 font-medium focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/50">
+                  <select className="border-2 border-slate-300 rounded-lg px-4 py-2 bg-white text-slate-900 font-medium focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200">
                     <option value="admin">Admin</option>
                     <option value="moderator">Moderator</option>
                   </select>

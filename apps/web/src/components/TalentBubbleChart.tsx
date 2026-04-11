@@ -86,7 +86,7 @@ export default function TalentBubbleChart({ data }: TalentBubbleChartProps) {
     return results.filter(r => r.value > 0);
   }, [data]);
 
-  useEffect(() => {
+  useEffect((): undefined | (() => void) => {
     if (!containerRef.current || aggregateData.length === 0) return;
 
     const width = containerRef.current.clientWidth;

@@ -323,7 +323,7 @@ export default function InterviewScheduler({
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
                   Proposed Time Slots (Max 5)
                 </label>
-                <p className="text-[8px] font-bold text-primary uppercase tracking-widest mt-0.5">
+                <p className="text-[8px] font-bold text-blue-600 uppercase tracking-widest mt-0.5">
                   Operating in {Intl.DateTimeFormat().resolvedOptions().timeZone}
                 </p>
               </div>

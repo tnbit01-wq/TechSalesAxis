@@ -177,6 +177,193 @@ class RecruiterService:
             print(f"DEBUG: Bio generation failed: {str(e)}")
             return ""
 
+    async def analyze_email_and_detect_company(self, email: str) -> Dict[str, Any]:
+        """
+        Analyze recruiter email to detect company name and domain.
+        Smart detection: tries to find actual website, only guesses if needed.
+        Returns: {"company_name": str, "domain": str, "confidence": str}
+        """
+        try:
+            if not email:
+                return {"company_name": "", "domain": "", "confidence": "low"}
+            
+            # Extract domain from email
+            if "@" not in email:
+                return {"company_name": "", "domain": "", "confidence": "low"}
+            
+            domain = email.split("@")[1].lower()
+            domain_name = domain.split(".")[0]
+            
+            print(f"DEBUG: Analyzing email domain: {domain}, domain_name: {domain_name}")
+            
+            # Skip personal email domains
+            personal_domains = ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "aol.com", "mail.com", "mailinator.com"]
+            if domain in personal_domains:
+                return {"company_name": "", "domain": domain, "confidence": "low"}
+            
+            # Try to fetch the domain directly to verify it's a valid company website
+            potential_urls = [
+                f"https://{domain}",
+                f"https://www.{domain}",
+                f"https://{domain_name}.com",
+                f"https://www.{domain_name}.com",
+            ]
+            
+            company_website = None
+            for url in potential_urls:
+                try:
+                    async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
+                        response = await client.get(url)
+                        if response.status_code == 200:
+                            company_website = url
+                            print(f"DEBUG: Found valid website: {url}")
+                            break
+                except:
+                    continue
+            
+            # If we found a valid website, extract company info from it
+            if company_website:
+                try:
+                    async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+                        response = await client.get(company_website)
+                        response.raise_for_status()
+                    
+                    soup = BeautifulSoup(response.text, 'html.parser')
+                    page_text = soup.get_text()[:1500]
+                    
+                    # Use AI to extract company name from actual website content
+                    prompt = f"""Extract the actual official company name from this website content:
+
+{page_text}
+
+Respond with ONLY the company name, nothing else. If unclear, respond with the domain name capitalized."""
+                    
+                    company_name = await self._call_ai(prompt, "You are an expert at extracting official company names from websites.")
+                    
+                    if company_name and company_name.strip():
+                        print(f"DEBUG: Extracted company from website: {company_name}")
+                        return {
+                            "company_name": company_name.strip(),
+                            "domain": domain,
+                            "confidence": "high"
+                        }
+                except Exception as e:
+                    print(f"DEBUG: Failed to extract from website: {str(e)}")
+            
+            # Fallback: capitalize domain name conservatively (no AI guessing)
+            fallback_name = " ".join([word.capitalize() for word in domain_name.split("-")])
+            print(f"DEBUG: Using fallback name: {fallback_name}")
+            return {
+                "company_name": fallback_name,
+                "domain": domain,
+                "confidence": "low"
+            }
+            
+        except Exception as e:
+            print(f"DEBUG: Email analysis failed: {str(e)}")
+            return {"company_name": "", "domain": "", "confidence": "low"}
+
+    async def find_company_details_by_name(self, company_name: str) -> Dict[str, Any]:
+        """
+        Find company website and auto-generate description from website.
+        Smart approach: tries multiple domain patterns, then AI prediction.
+        Returns: {"website": str, "description": str, "found": bool}
+        """
+        try:
+            if not company_name or company_name.lower() in ["unknown", ""]:
+                return {"website": "", "description": "", "found": False}
+            
+            print(f"DEBUG: Finding details for company: {company_name}")
+            
+            # Step 1: Generate possible domain patterns from company name
+            # Example: "Association of Indian Technology Sales Professionals" -> "aitsp", "association-of-indian-technology-sales-professionals", etc.
+            name_lower = company_name.lower().strip()
+            
+            # Try different domain patterns
+            domain_candidates = []
+            
+            # Pattern 1: Acronym (first letters)
+            words = name_lower.split()
+            if len(words) > 1:
+                acronym = "".join([w[0] for w in words if w])
+                domain_candidates.extend([
+                    f"{acronym}.com",
+                    f"{acronym}.in",
+                    f"{acronym}.io",
+                    f"www.{acronym}.com",
+                    f"www.{acronym}.in",
+                ])
+            
+            # Pattern 2: Direct domain with company name
+            # Remove common words
+            name_simplified = name_lower.replace(" pvt.", "").replace(" ltd.", "").replace(" inc.", "").replace(" llc.", "").strip()
+            name_simplified = name_simplified.replace(" and ", "-").replace(" ", "-")
+            
+            domain_candidates.extend([
+                f"{name_simplified}.com",
+                f"{name_simplified}.in",
+                f"{name_simplified}.io",
+                f"www.{name_simplified}.com",
+                f"www.{name_simplified}.in",
+            ])
+            
+            # Pattern 3: Use AI to get the most likely domain
+            ai_prompt = f"""You are an expert at finding company websites. Given the company name:
+
+'{company_name}'
+
+What is the MOST LIKELY official website domain? Think about:
+1. The company's nature/industry
+2. Common domain patterns (.com, .in, .io)
+3. Acronyms from the company name
+4. Simplified versions of the name
+
+Respond with ONLY the domain in format: domain.com (no https://, no www., just the domain)"""
+            
+            ai_suggestion = await self._call_ai(ai_prompt, "You are an expert at identifying company websites.")
+            
+            if ai_suggestion and ai_suggestion.lower() not in ["unknown", ""]:
+                ai_suggestion = ai_suggestion.strip()
+                if not ai_suggestion.startswith(('http://', 'https://')):
+                    domain_candidates.insert(0, ai_suggestion)  # Add AI suggestion at the top
+            
+            print(f"DEBUG: Domain candidates to try: {domain_candidates[:5]}")
+            
+            # Step 2: Try each domain until we find one that works
+            for domain in domain_candidates:
+                domain = domain.strip()
+                if not domain:
+                    continue
+                
+                # Try both http and https
+                for protocol in ['https://', 'http://']:
+                    url = f"{protocol}{domain}" if not domain.startswith(('http://', 'https://')) else domain
+                    
+                    try:
+                        async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
+                            response = await client.get(url)
+                            if response.status_code == 200:
+                                print(f"DEBUG: Found working website: {url}")
+                                
+                                # Generate bio from the website
+                                description = await self.generate_company_bio(url)
+                                
+                                return {
+                                    "website": url,
+                                    "description": description,
+                                    "found": True
+                                }
+                    except Exception as e:
+                        print(f"DEBUG: Domain {url} failed: {type(e).__name__}")
+                        continue
+            
+            print(f"DEBUG: No working domain found for {company_name}")
+            return {"website": "", "description": "", "found": False}
+            
+        except Exception as e:
+            print(f"DEBUG: Company details lookup failed: {str(e)}")
+            return {"website": "", "description": "", "found": False}
+
     async def get_or_create_profile(self, user_id: str):
         db = SessionLocal()
         try:

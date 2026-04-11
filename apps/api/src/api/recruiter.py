@@ -54,6 +54,12 @@ class RegistrationUpdate(BaseModel):
 class BioRequest(BaseModel):
     website: str
 
+class EmailAnalysisRequest(BaseModel):
+    email: str
+
+class CompanyDetailsRequest(BaseModel):
+    company_name: str
+
 class CompanyDetailsUpdate(BaseModel):
     company_id: str
     name: str
@@ -351,6 +357,34 @@ async def generate_bio(data: BioRequest):
     except Exception as e:
         print(f"ERROR in generate_bio: {str(e)}")
         return {"bio": "", "success": False, "error": str(e)}
+
+@router.post("/analyze-email")
+async def analyze_email(data: EmailAnalysisRequest):
+    """
+    Analyze recruiter email to detect company name and domain.
+    AI-powered email parsing with fallback to domain parsing.
+    """
+    try:
+        print(f"DEBUG: Analyzing email: {data.email}")
+        result = await recruiter_service.analyze_email_and_detect_company(data.email)
+        return result
+    except Exception as e:
+        print(f"ERROR in analyze_email: {str(e)}")
+        return {"company_name": "", "domain": "", "confidence": "low", "error": str(e)}
+
+@router.post("/find-company-details")
+async def find_company_details(data: CompanyDetailsRequest):
+    """
+    Find company website and auto-generate description.
+    AI-powered company lookup with automatic bio generation.
+    """
+    try:
+        print(f"DEBUG: Finding details for company: {data.company_name}")
+        result = await recruiter_service.find_company_details_by_name(data.company_name)
+        return result
+    except Exception as e:
+        print(f"ERROR in find_company_details: {str(e)}")
+        return {"website": "", "description": "", "found": False, "error": str(e)}
 
 @router.get("/assessment-questions")
 async def get_assessment_questions(user: dict = Depends(get_current_user)):
@@ -678,6 +712,13 @@ async def candidate_pool(db: Session = Depends(get_db)):
             "skills": resume.skills if resume and resume.skills else [],
             "profile_photo_url": S3Service.get_signed_url(candidate.profile_photo_url) if candidate.profile_photo_url else None,
             "resume_path": S3Service.get_signed_url(candidate.resume_path) if candidate.resume_path else None,
+            # ========== CRO FIELDS (Career Readiness & Opportunity Focus) ==========
+            "career_readiness_score": candidate.career_readiness_score or 0,
+            "role_urgency_level": candidate.role_urgency_level or "passive",
+            "employment_readiness_status": candidate.employment_readiness_status or "not_specified",
+            "notice_period_required_days": candidate.notice_period_required_days,
+            "job_opportunity_type": candidate.job_opportunity_type or [],
+            "career_readiness_metadata": candidate.career_readiness_metadata or {},
         })
     return results
 

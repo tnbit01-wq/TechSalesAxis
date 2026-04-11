@@ -126,7 +126,7 @@ export default function ReportMessageModal({
                     value={r}
                     checked={reason === r}
                     onChange={(e) => setReason(e.target.value)}
-                    className="w-4 h-4 text-primary cursor-pointer"
+                    className="w-4 h-4 text-blue-600 cursor-pointer"
                   />
                   <span className="text-sm font-medium text-slate-700">{r}</span>
                 </label>

@@ -37,6 +37,7 @@ declare global {
 export const useVoice = () => {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState("");
+  const [interimTranscript, setInterimTranscript] = useState(""); // Real-time transcription
   const [hasSupport, setHasSupport] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
 
@@ -49,41 +50,62 @@ export const useVoice = () => {
       Promise.resolve().then(() => setHasSupport(true));
       const rec = new SpeechRecognition() as SpeechRecognitionInstance;
       rec.continuous = false;
-      rec.interimResults = false;
+      rec.interimResults = true; // Enable interim results for live transcription
       rec.lang = "en-US";
 
       rec.onresult = (event: SpeechRecognitionEvent) => {
-        let text = event.results[0][0].transcript;
+        let interimText = "";
+        let finalText = "";
 
-        // Initial trim and remove trailing period (often auto-inserted by speech engines)
-        text = text.trim();
-        if (text.endsWith(".")) {
-          text = text.slice(0, -1);
+        // Collect all interim and final results
+        const results = event.results as any;
+        const resultsLength = results.length;
+        for (let i = resultsLength - 1; i >= 0; i--) {
+          const transcript = results[i][0].transcript;
+          if (results[i].isFinal) {
+            finalText = transcript;
+          } else {
+            interimText = transcript;
+          }
         }
 
-        // Normalize technical inputs (especially emails)
-        // Convert " dot " to ".", " at " to "@", etc.
-        text = text
-          .toLowerCase()
-          .replace(/\s+dot\s+/gi, ".")
-          .replace(/\s+at\s+/gi, "@")
-          .replace(/\s+underscore\s+/gi, "_")
-          .replace(/\s+dash\s+/gi, "-")
-          .replace(/\s+hyphen\s+/gi, "-");
-
-        // Remove spaces if it looks like an email attempt
-        if (text.includes("@") || text.includes(".")) {
-          text = text.replace(/\s+/g, "");
+        // Display interim results (what we're hearing in real-time)
+        if (interimText) {
+          setInterimTranscript(interimText);
         }
 
-        // Final sanity check: remove any trailing dot that might have persisted
-        // after space removal (e.g., "gmail . com ." -> "gmail.com.")
-        if (text.endsWith(".")) {
-          text = text.slice(0, -1);
-        }
+        // Process final result
+        if (finalText) {
+          let text = finalText.trim();
+          
+          // Remove trailing period (often auto-inserted by speech engines)
+          if (text.endsWith(".")) {
+            text = text.slice(0, -1);
+          }
 
-        setTranscript(text);
-        setIsListening(false);
+          // Normalize technical inputs (especially emails)
+          // Convert " dot " to ".", " at " to "@", etc.
+          text = text
+            .toLowerCase()
+            .replace(/\s+dot\s+/gi, ".")
+            .replace(/\s+at\s+/gi, "@")
+            .replace(/\s+underscore\s+/gi, "_")
+            .replace(/\s+dash\s+/gi, "-")
+            .replace(/\s+hyphen\s+/gi, "-");
+
+          // Remove spaces if it looks like an email attempt
+          if (text.includes("@") || text.includes(".")) {
+            text = text.replace(/\s+/g, "");
+          }
+
+          // Final sanity check: remove any trailing dot that might have persisted
+          if (text.endsWith(".")) {
+            text = text.slice(0, -1);
+          }
+
+          setTranscript(text);
+          setInterimTranscript(""); // Clear interim when we get final
+        }
       };
 
       rec.onerror = () => {
@@ -106,6 +128,7 @@ export const useVoice = () => {
       }
       try {
         setTranscript("");
+        setInterimTranscript("");
         setIsListening(true);
         recognitionRef.current.start();
       } catch (e) {
@@ -127,6 +150,7 @@ export const useVoice = () => {
   return {
     isListening,
     transcript,
+    interimTranscript, // New: real-time transcription
     startListening,
     stopListening,
     hasSupport,

@@ -99,7 +99,7 @@ export default function ProfileAnalyticsPage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
         <div className="flex flex-col items-center gap-4">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
           <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Loading Profile Analytics...</p>
         </div>
       </div>

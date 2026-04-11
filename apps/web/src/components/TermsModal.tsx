@@ -69,7 +69,7 @@ export function TermsModal({ isOpen, onClose }: TermsModalProps) {
         <div className="p-4 bg-slate-50 border-t flex justify-end">
           <button
             onClick={onClose}
-            className="px-6 py-2 bg-primary text-white font-semibold rounded-xl hover:bg-primary-dark transition-colors shadow-sm"
+            className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors shadow-sm"
           >
             I Understand
           </button>

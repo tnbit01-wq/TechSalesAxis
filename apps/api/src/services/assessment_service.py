@@ -92,38 +92,42 @@ class AssessmentService:
         # Determine experience band from profile
         band = "fresher"
         if profile:
-            # CHECK RESUME DATA IF PROFILE IS EMPTY
-            exp_val = profile.years_of_experience
-            # If profile has no experience but resume exists, try to infer from resume
-            if not exp_val and resume:
-                try:
-                    # Use raw_experience from ResumeData instead of deleted structured_data
-                    if resume.raw_experience:
-                        # Simple heuristic or just keep as is for now
+            # PRIORITIZE EXPLICIT BAND SELECTION (experience column)
+            if profile.experience and profile.experience.lower() in ['senior', 'mid', 'leadership', 'fresher']:
+                band = profile.experience.lower()
+            else:
+                # CHECK RESUME DATA IF PROFILE IS EMPTY
+                exp_val = profile.years_of_experience
+                # If profile has no experience but resume exists, try to infer from resume
+                if not exp_val and resume:
+                    try:
+                        # Use raw_experience from ResumeData instead of deleted structured_data
+                        if resume.raw_experience:
+                            # Simple heuristic or just keep as is for now
+                            pass
+                    except:
                         pass
-                except:
-                    pass
 
-            if isinstance(exp_val, (int, float)):
-                if exp_val > 10: band = "leadership"
-                elif exp_val > 5: band = "senior"
-                elif exp_val > 1: band = "mid"
-                else: band = "fresher"
-            elif exp_val: # Handle string case
-                try:
-                    # Try to extract number from string like "5 years"
-                    import re
-                    match = re.search(r'(\d+)', str(exp_val))
-                    if match:
-                        num = int(match.group(1))
-                        if num > 10: band = "leadership"
-                        elif num > 5: band = "senior"
-                        elif num > 1: band = "mid"
-                        else: band = "fresher"
-                    else:
-                        band = str(exp_val).lower()
-                except:
-                    band = "fresher"
+                if isinstance(exp_val, (int, float)):
+                    if exp_val > 10: band = "leadership"
+                    elif exp_val > 5: band = "senior"
+                    elif exp_val > 1: band = "mid"
+                    else: band = "fresher"
+                elif exp_val: # Handle string case
+                    try:
+                        # Try to extract number from string like "5 years"
+                        import re
+                        match = re.search(r'(\d+)', str(exp_val))
+                        if match:
+                            num = int(match.group(1))
+                            if num > 10: band = "leadership"
+                            elif num > 5: band = "senior"
+                            elif num > 1: band = "mid"
+                            else: band = "fresher"
+                        else:
+                            band = str(exp_val).lower()
+                    except:
+                        band = "fresher"
         
         # Normalize band
         band = band.lower()
@@ -143,16 +147,55 @@ class AssessmentService:
             # Sync band if it changed or profile updated
             if session.experience_band != band and session.current_step <= 1:
                 session.experience_band = band
-                db.commit()
+                # Also sync budget if it's a first-step update
+                budgets = {"fresher": 8, "mid": 10, "senior": 13, "leadership": 16}
+                session.total_budget = budgets.get(band, 8)
+            
+            # ========== FAST-TRACK QUEUE INITIALIZATION ==========
+            # Ensure SLA is set (for existing sessions that may not have it)
+            if not session.expected_completion_sla and session.status == 'started':
+                from datetime import timedelta
+                # Check if candidate qualifies for fast-track
+                if profile and profile.career_readiness_score and profile.career_readiness_score >= 80:
+                    session.queue_priority = 'fast_track'
+                    session.queue_priority_reason = 'career_readiness_high'
+                    session.expected_completion_sla = session.started_at + timedelta(hours=4)
+                else:
+                    session.queue_priority = 'standard'
+                    session.expected_completion_sla = session.started_at + timedelta(hours=24)
+            
+            db.commit()
             return session
             
         budgets = {"fresher": 8, "mid": 10, "senior": 13, "leadership": 16}
+        
+        # ========== FAST-TRACK QUEUE DETERMINATION (NEW SESSIONS) ==========
+        from datetime import timedelta
+        queue_priority = 'standard'
+        queue_priority_reason = None
+        expected_completion_sla = None
+        
+        # Check if candidate qualifies for fast-track based on career readiness
+        if profile and profile.career_readiness_score and profile.career_readiness_score >= 80:
+            queue_priority = 'fast_track'
+            queue_priority_reason = 'career_readiness_high'
+            # Fast-track: 4-hour SLA
+            from datetime import datetime
+            expected_completion_sla = datetime.utcnow() + timedelta(hours=4)
+        else:
+            # Standard: 24-hour SLA
+            from datetime import datetime
+            expected_completion_sla = datetime.utcnow() + timedelta(hours=24)
+        
         new_session = AssessmentSession(
             candidate_id=user_id,
             experience_band=band,
             status="started",
             total_budget=budgets.get(band, 8),
-            current_step=1
+            current_step=1,
+            queue_priority=queue_priority,
+            queue_priority_reason=queue_priority_reason,
+            expected_completion_sla=expected_completion_sla
         )
         db.add(new_session)
         db.commit()

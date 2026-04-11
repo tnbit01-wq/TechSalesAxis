@@ -129,3 +129,106 @@ async def retake_assessment(user: dict = Depends(get_current_user), db: Session 
     db.commit()
     
     return assessment_service.get_or_create_session(user_id, db)
+
+# ========== ASSESSMENT QUEUE MANAGEMENT ENDPOINTS ==========
+
+@router.get("/queue/status")
+async def get_queue_status(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Get the current assessment queue status for the logged-in user"""
+    user_id = user["sub"]
+    session = db.query(AssessmentSession).filter(AssessmentSession.candidate_id == user_id).first()
+    
+    if not session:
+        return {"queue_priority": "none", "status": "not_started"}
+    
+    return {
+        "queue_priority": session.queue_priority or "standard",
+        "queue_priority_reason": session.queue_priority_reason,
+        "status": session.status,
+        "expected_completion_sla": session.expected_completion_sla.isoformat() if session.expected_completion_sla else None,
+        "current_step": session.current_step,
+        "total_budget": session.total_budget,
+        "started_at": session.started_at.isoformat() if session.started_at else None,
+    }
+
+@router.get("/queue/summary")
+async def get_queue_summary(db: Session = Depends(get_db)):
+    """
+    Get overall assessment queue summary (for admin/recruiter dashboards)
+    Returns counts of candidates by queue priority and status
+    """
+    from sqlalchemy import func
+    
+    # Count by queue priority and status
+    summary = db.query(
+        AssessmentSession.queue_priority,
+        AssessmentSession.status,
+        func.count(AssessmentSession.id).label("count")
+    ).group_by(
+        AssessmentSession.queue_priority,
+        AssessmentSession.status
+    ).all()
+    
+    result = {
+        "fast_track": {"started": 0, "completed": 0, "total": 0},
+        "standard": {"started": 0, "completed": 0, "total": 0}
+    }
+    
+    for row in summary:
+        priority = row.queue_priority or "standard"
+        status = row.status or "started"
+        count = row.count
+        
+        if priority not in result:
+            result[priority] = {"started": 0, "completed": 0, "total": 0}
+        
+        if status in result[priority]:
+            result[priority][status] = count
+        else:
+            result[priority]["started"] = count
+        
+        result[priority]["total"] += count
+    
+    return result
+
+@router.get("/queue/fast-track")
+async def get_fast_track_candidates(db: Session = Depends(get_db)):
+    """
+    Get list of candidates in fast-track queue
+    Returns candidates prioritized for urgent review
+    """
+    from datetime import datetime
+    
+    fast_track_sessions = db.query(AssessmentSession).filter(
+        AssessmentSession.queue_priority == 'fast_track',
+        AssessmentSession.status == 'started'
+    ).order_by(
+        AssessmentSession.expected_completion_sla
+    ).all()
+    
+    candidates = []
+    for session in fast_track_sessions:
+        profile = db.query(CandidateProfile).filter(
+            CandidateProfile.user_id == session.candidate_id
+        ).first()
+        
+        if profile:
+            minutes_remaining = None
+            if session.expected_completion_sla:
+                delta = session.expected_completion_sla - datetime.utcnow()
+                minutes_remaining = int(delta.total_seconds() / 60)
+            
+            candidates.append({
+                "user_id": str(session.candidate_id),
+                "full_name": profile.full_name,
+                "experience_band": session.experience_band,
+                "queue_priority_reason": session.queue_priority_reason,
+                "career_readiness_score": profile.career_readiness_score,
+                "role_urgency_level": profile.role_urgency_level,
+                "expected_completion_sla": session.expected_completion_sla.isoformat() if session.expected_completion_sla else None,
+                "minutes_remaining": minutes_remaining,
+                "started_at": session.started_at.isoformat() if session.started_at else None,
+            })
+    
+    return candidates
+

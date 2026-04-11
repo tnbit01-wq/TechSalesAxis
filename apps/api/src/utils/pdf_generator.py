@@ -2,6 +2,9 @@ from xhtml2pdf import pisa
 from jinja2 import Environment, FileSystemLoader
 import io
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 class PDFGenerator:
     @staticmethod
@@ -13,21 +16,38 @@ class PDFGenerator:
         # 1. Setup Jinja2 environment
         template_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "templates", "resumes")
         env = Environment(loader=FileSystemLoader(template_dir))
+        env.lstrip_blocks = True
+        env.trim_blocks = True
         
         try:
             template = env.get_template(f"{template_name}.html")
-        except:
-            # Fallback to professional
-            template = env.get_template("professional.html")
+        except Exception as e:
+            logger.warning(f"Template {template_name}.html not found, falling back to professional: {e}")
+            try:
+                template = env.get_template("professional.html")
+            except Exception as fallback_e:
+                logger.error(f"Failed to load professional template: {fallback_e}")
+                raise
         
         # 2. Render HTML
-        html_content = template.render(**data)
+        try:
+            html_content = template.render(**data)
+            logger.debug(f"HTML rendered successfully for resume PDF")
+        except Exception as e:
+            logger.error(f"Failed to render template: {e}")
+            raise Exception(f"Template rendering failed: {str(e)}")
         
         # 3. Create PDF
-        pdf_buffer = io.BytesIO()
-        pisa_status = pisa.CreatePDF(io.StringIO(html_content), dest=pdf_buffer)
-        
-        if pisa_status.err:
-            raise Exception("Failed to generate PDF")
+        try:
+            pdf_buffer = io.BytesIO()
+            pisa_status = pisa.CreatePDF(io.StringIO(html_content), dest=pdf_buffer)
             
-        return pdf_buffer.getvalue()
+            if pisa_status.err:
+                logger.error(f"PDF generation errors: {pisa_status.err}")
+                raise Exception(f"PDF generation failed with {len(pisa_status.err)} errors")
+            
+            logger.info(f"PDF generated successfully ({len(pdf_buffer.getvalue())} bytes)")
+            return pdf_buffer.getvalue()
+        except Exception as e:
+            logger.error(f"PDF creation failed: {e}")
+            raise Exception(f"Failed to generate PDF: {str(e)}")

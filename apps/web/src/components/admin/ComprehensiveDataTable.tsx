@@ -212,7 +212,7 @@ export default function ComprehensiveDataTable({ files, batchName }: Props) {
               placeholder="Search name, email, role, location, skills..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-white text-slate-900 placeholder:text-slate-400 pl-11 pr-4 py-2.5 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 text-sm font-medium outline-none transition-all"
+              className="w-full bg-white text-slate-900 placeholder:text-slate-400 pl-11 pr-4 py-2.5 rounded-lg border border-slate-300 focus:border-[#1a56db] focus:ring-2 focus:ring-[#1a56db]/20 text-sm font-medium outline-none transition-all"
             />
           </div>
           <div className="relative group">
@@ -228,7 +228,7 @@ export default function ComprehensiveDataTable({ files, batchName }: Props) {
                       type="checkbox"
                       checked={visibleColumns.has(col.id)}
                       onChange={() => handleToggleColumn(col.id)}
-                      className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      className="w-4 h-4 rounded border-slate-300 text-[#1a56db] focus:ring-[#1a56db]"
                     />
                     <span className="text-sm font-medium text-slate-700">{col.label}</span>
                   </label>
@@ -250,7 +250,7 @@ export default function ComprehensiveDataTable({ files, batchName }: Props) {
                     type="checkbox"
                     checked={selectedRows.size === filteredAndSortedFiles.length && filteredAndSortedFiles.length > 0}
                     onChange={handleSelectAll}
-                    className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    className="w-4 h-4 rounded border-slate-300 text-[#1a56db] focus:ring-[#1a56db]"
                   />
                 </th>
                 <th className="px-4 py-4 w-10"></th>
@@ -264,7 +264,7 @@ export default function ComprehensiveDataTable({ files, batchName }: Props) {
                     <div className="flex items-center gap-2 font-bold text-slate-700">
                       <span>{col.label}</span>
                       {col.sortable && sortConfig.key === col.id && (
-                        sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-600" /> : <ChevronDown className="w-3 h-3 text-blue-600" />
+                        sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3 text-[#1a56db]" /> : <ChevronDown className="w-3 h-3 text-[#1a56db]" />
                       )}
                     </div>
                   </th>
@@ -274,13 +274,13 @@ export default function ComprehensiveDataTable({ files, batchName }: Props) {
             <tbody className="divide-y divide-slate-200">
               {filteredAndSortedFiles.map((file) => (
                 <React.Fragment key={file.id}>
-                  <tr className="hover:bg-blue-50 transition-colors">
+                  <tr className="hover:bg-slate-50 transition-colors">
                     <td className="px-4 py-4">
                       <input
                         type="checkbox"
                         checked={selectedRows.has(file.id)}
                         onChange={() => handleSelectRow(file.id)}
-                        className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        className="w-4 h-4 rounded border-slate-300 text-[#1a56db] focus:ring-[#1a56db]"
                       />
                     </td>
                     <td className="px-4 py-4">
@@ -298,14 +298,14 @@ export default function ComprehensiveDataTable({ files, batchName }: Props) {
                             file.status === 'parsed' ? 'bg-emerald-100 text-emerald-700' :
                             file.status === 'error' ? 'bg-red-100 text-red-700' :
                             file.status === 'scanning' ? 'bg-amber-100 text-amber-700' :
-                            'bg-blue-100 text-blue-700'
+                            'bg-blue-50 text-[#1a56db]'
                           }`}>
                             {file.status}
                           </span>
                         ) : col.id === 'skills' ? (
                           <div className="flex flex-wrap gap-1.5">
                             {(file.parsed_data?.skills || []).slice(0, 2).map((s, i) => (
-                              <span key={i} className="bg-blue-100 text-blue-700 px-2.5 py-1 rounded-full text-xs font-semibold">
+                              <span key={i} className="bg-blue-50 text-[#1a56db] px-2.5 py-1 rounded-full text-xs font-semibold">
                                 {s}
                               </span>
                             ))}
@@ -324,7 +324,7 @@ export default function ComprehensiveDataTable({ files, batchName }: Props) {
                   
                   {/* Expanded Detail Row */}
                   {expandedRow === file.id && (
-                    <tr className="bg-gradient-to-r from-blue-50 to-white border-b-2 border-blue-200">
+                    <tr className="bg-gradient-to-r from-blue-50 to-white border-b-2 border-[#1a56db]/20">
                       <td colSpan={COLUMNS.filter(c => visibleColumns.has(c.id)).length + 2} className="px-6 py-5">
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                           <div className="bg-white border border-slate-200 rounded-lg p-4">
@@ -337,7 +337,7 @@ export default function ComprehensiveDataTable({ files, batchName }: Props) {
                               file.status === 'parsed' ? 'bg-emerald-100 text-emerald-700' :
                               file.status === 'error' ? 'bg-red-100 text-red-700' :
                               file.status === 'scanning' ? 'bg-amber-100 text-amber-700' :
-                              'bg-blue-100 text-blue-700'
+                              'bg-blue-50 text-[#1a56db]'
                             }`}>
                               {file.status}
                             </span>
@@ -377,7 +377,7 @@ export default function ComprehensiveDataTable({ files, batchName }: Props) {
                                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-3">All Skills ({file.parsed_data.skills?.length || 0})</label>
                                 <div className="flex flex-wrap gap-2">
                                   {(file.parsed_data.skills || []).map((skill, i) => (
-                                    <span key={i} className="bg-blue-100 text-blue-800 px-3 py-1.5 rounded-full text-xs font-semibold">
+                                    <span key={i} className="bg-blue-50 text-[#1a56db] px-3 py-1.5 rounded-full text-xs font-semibold">
                                       {skill}
                                     </span>
                                   ))}
@@ -418,7 +418,7 @@ export default function ComprehensiveDataTable({ files, batchName }: Props) {
       <div className="bg-slate-50 px-6 py-4 border-t border-slate-200 flex justify-between items-center">
         <p className="text-sm text-slate-600 font-medium">
           Showing {filteredAndSortedFiles.length} of {files.length} records
-          {selectedRows.size > 0 && <span className="ml-4 text-blue-600 font-semibold">{selectedRows.size} selected</span>}
+          {selectedRows.size > 0 && <span className="ml-4 text-[#1a56db] font-semibold">{selectedRows.size} selected</span>}
         </p>
       </div>
     </div>

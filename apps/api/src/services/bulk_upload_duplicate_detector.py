@@ -334,6 +334,31 @@ class DuplicateDetector:
         match_details = {}
         total_score = 0.0
         
+        # ===== PHONE CHECK FIRST (PRIORITY) =====
+        # If phone matches exactly, this is a definite duplicate
+        # regardless of email being different (handles multi-email scenario)
+        phone_match, phone_confidence, phone_reason = self._check_phone_match(
+            new_candidate,
+            existing_candidate.get('phone_number', '')
+        )
+        
+        if phone_match and phone_confidence == 1.0:
+            # Exact phone match = definite duplicate (person with multiple emails)
+            match_details['phone_match'] = {
+                'matched': True,
+                'confidence': phone_confidence,
+                'reason': phone_reason
+            }
+            return DuplicateMatch(
+                matched_candidate_id=existing_candidate.get('user_id'),
+                matched_candidate_name=existing_candidate.get('full_name'),
+                match_type="exact_match",
+                match_confidence=0.95,
+                match_reason="Phone number match - Same candidate (possibly different emails)",
+                match_details={'phone_match': match_details['phone_match'], 'primary_match': 'phone'},
+                admin_review_required=False
+            )
+        
         # ===== EMAIL CHECK (Highest confidence) =====
         email_match, email_confidence, email_reason = self._check_email_match(
             new_candidate, 
@@ -473,11 +498,30 @@ class DuplicateDetector:
         """
         Find the best matching candidate from a list.
         
+        Priority:
+        1. Exact phone match → Return immediately (definite duplicate)
+        2. Exact email match → Return (high confidence)
+        3. Best combined score above threshold
+        
         Returns the match with highest confidence, or no_match if all < 50%.
         """
         best_match = None
         best_score = 0.0
         
+        # OPTIMIZATION: Check for exact phone match first and return immediately
+        # This handles the case where candidate has multiple emails
+        for existing_candidate in existing_candidates:
+            phone_match, phone_confidence, _ = self._check_phone_match(
+                new_candidate,
+                existing_candidate.get('phone_number', '')
+            )
+            if phone_match and phone_confidence == 1.0:
+                # Found exact phone match, score it and return
+                match = self.score_duplicate_match(new_candidate, existing_candidate)
+                if match.match_type == "exact_match":
+                    return match  # Return immediately for definite duplicate
+        
+        # If no exact phone match, continue with normal scoring
         for existing_candidate in existing_candidates:
             match = self.score_duplicate_match(new_candidate, existing_candidate)
             

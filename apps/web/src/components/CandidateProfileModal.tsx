@@ -232,7 +232,7 @@ export default function CandidateProfileModal({
                 <div
                   className={`px-2 py-0.5 rounded-full text-[9px] font-black flex items-center gap-0.5 border shadow-sm ${
                     isDiscovery && score
-                      ? "bg-primary text-white border-primary"
+                      ? "bg-blue-600 text-white border-blue-600"
                       : "bg-amber-50 text-amber-700 border-amber-100"
                   }`}
                 >
@@ -303,12 +303,12 @@ export default function CandidateProfileModal({
                   onClick={() => setActiveTab(tab.id)}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
                     activeTab === tab.id
-                      ? "bg-white text-primary shadow-sm"
+                      ? "bg-white text-blue-600 shadow-sm"
                       : "text-slate-500 hover:bg-slate-300/50"
                   }`}
                 >
                   <tab.icon
-                    className={`w-3 h-3 ${activeTab === tab.id ? "text-primary" : "text-slate-400"}`}
+                    className={`w-3 h-3 ${activeTab === tab.id ? "text-blue-600" : "text-slate-400"}`}
                   />
                   {tab.label}
                 </button>
@@ -364,9 +364,9 @@ export default function CandidateProfileModal({
                                     key={idx}
                                     className="relative pl-4 border-l-2 border-slate-100 pb-1 group"
                                   >
-                                    <div className="absolute -left-1.25 top-1 w-2 h-2 rounded-full bg-slate-200 group-hover:bg-primary transition-colors" />
+                                    <div className="absolute -left-1.25 top-1 w-2 h-2 rounded-full bg-slate-200 group-hover:bg-blue-600 transition-colors" />
                                     <div className="flex justify-between items-start mb-0.5">
-                                      <h4 className="font-black text-slate-900 text-[11px] tracking-tight group-hover:text-primary transition-colors">
+                                      <h4 className="font-black text-slate-900 text-[11px] tracking-tight group-hover:text-blue-600 transition-colors">
                                         {exp.role || exp.title}
                                       </h4>
                                       <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest">
@@ -409,7 +409,7 @@ export default function CandidateProfileModal({
                               ).map((skill: string, i: number) => (
                                 <span
                                   key={i}
-                                  className="px-2.5 py-1 bg-white text-primary text-[8px] font-black rounded-lg border border-primary-light uppercase tracking-tighter hover:bg-primary hover:text-white transition-colors cursor-default"
+                                  className="px-2.5 py-1 bg-white text-blue-600 text-[8px] font-black rounded-lg border border-blue-100 uppercase tracking-tighter hover:bg-blue-600 hover:text-white transition-colors cursor-default"
                                 >
                                   {skill}
                                 </span>
@@ -433,7 +433,7 @@ export default function CandidateProfileModal({
                         href={candidate.resume_path || "#"}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest flex items-center gap-2 shadow-lg transition-all active:scale-95"
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest flex items-center gap-2 shadow-lg transition-all active:scale-95"
                       >
                         <Download className="w-3 h-3" />
                         Download Original
@@ -456,8 +456,8 @@ export default function CandidateProfileModal({
                   <div className="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm">
                     <div className="flex items-center justify-between mb-8">
                       <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-primary-light rounded-xl flex items-center justify-center">
-                          <ClipboardList className="w-6 h-6 text-primary" />
+                        <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+                          <ClipboardList className="w-6 h-6 text-blue-600" />
                         </div>
                         <div>
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">
@@ -483,7 +483,7 @@ export default function CandidateProfileModal({
                         <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
                           Match Score
                         </span>
-                        <span className="text-sm font-black text-primary">
+                        <span className="text-sm font-black text-blue-600">
                           {(score / 20).toFixed(1)} / 5.0
                         </span>
                       </div>
@@ -558,8 +558,8 @@ export default function CandidateProfileModal({
 
               {activeTab === "interview" && (
                 <div className="p-12 text-center flex flex-col items-center">
-                  <div className="w-16 h-16 bg-primary-light rounded-2xl flex items-center justify-center mb-6">
-                    <Video className="w-8 h-8 text-primary" />
+                  <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mb-6">
+                    <Video className="w-8 h-8 text-blue-600" />
                   </div>
                   <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight mb-2">
                     Interview Intelligence
@@ -586,20 +586,20 @@ export default function CandidateProfileModal({
                         activeInterview.status === "in_progress"
                           ? "bg-emerald-50 border-emerald-100/50"
                           : activeInterview.status === "scheduled" 
-                            ? "bg-primary-light border-primary-light/50" 
+                            ? "bg-blue-100 border-blue-100/50" 
                             : "bg-slate-50 border-slate-100"
                       }`}>
                         <div className="flex items-center gap-3 mb-2">
                           {activeInterview.status === "in_progress" ? (
                             <div className="h-4 w-4 rounded-full bg-emerald-500 animate-pulse" />
                           ) : (
-                            <Clock className={`h-4 w-4 ${activeInterview.status === "scheduled" ? "text-primary" : "text-slate-400"}`} />
+                            <Clock className={`h-4 w-4 ${activeInterview.status === "scheduled" ? "text-blue-600" : "text-slate-400"}`} />
                           )}
                           <p className={`text-[9px] font-black uppercase tracking-widest ${
                             activeInterview.status === "in_progress" 
                               ? "text-emerald-700" 
                               : activeInterview.status === "scheduled" 
-                                ? "text-primary-dark" 
+                                ? "text-blue-700" 
                                 : "text-slate-500"
                           }`}>
                             {activeInterview.status === "in_progress" ? "Live: Interview in Progress" : activeInterview.status === "scheduled" ? "Scheduled Transmission" : "Proposed Slots"}
@@ -688,7 +688,7 @@ export default function CandidateProfileModal({
                       </p>
                       <button
                         onClick={() => setShowScheduler(true)}
-                        className="bg-primary hover:bg-primary-dark text-white px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] shadow-lg shadow-primary/20 transition-all active:scale-95"
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] shadow-lg shadow-blue-600/20 transition-all active:scale-95"
                       >
                         Schedule New Session
                       </button>
@@ -708,10 +708,10 @@ export default function CandidateProfileModal({
                         {completedInterviews.map((int) => (
                           <div 
                             key={int.id}
-                            className="p-5 bg-slate-50/50 border border-slate-100/50 rounded-2xl relative overflow-hidden group hover:bg-white hover:border-primary-light transition-all"
+                            className="p-5 bg-slate-50/50 border border-slate-100/50 rounded-2xl relative overflow-hidden group hover:bg-white hover:border-blue-100 transition-all"
                           >
                             <div className="flex items-center justify-between mb-3">
-                              <span className="text-[8px] font-black text-primary bg-primary-light px-2 py-0.5 rounded-full uppercase tracking-widest">
+                              <span className="text-[8px] font-black text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full uppercase tracking-widest">
                                 Round {int.round_number}
                               </span>
                               <span className="text-[8px] font-bold text-slate-400 uppercase">
@@ -749,7 +749,7 @@ export default function CandidateProfileModal({
                   label="Candidate Email"
                   value={candidate.email?.toLowerCase() || "Not Available"}
                   icon={Mail}
-                  color="text-primary bg-primary-light"
+                  color="text-blue-600 bg-blue-50"
                 />
                 <MiniInfoItem
                   label="Verified Phone"

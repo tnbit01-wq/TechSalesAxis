@@ -90,7 +90,7 @@ export default function InterviewFeedbackModal({
         <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/30">
           <div>
             <h2 className="text-2xl font-black text-slate-900 uppercase italic tracking-tighter">
-              Post-Interview <span className="text-primary">Evaluation</span>
+              Post-Interview <span className="text-blue-600">Evaluation</span>
             </h2>
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-1">
               Mission Debrief: {candidateName} - {roundName}
@@ -152,12 +152,12 @@ export default function InterviewFeedbackModal({
                   p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 group
                   ${!recruiterAttended ? "opacity-40 cursor-not-allowed" : ""}
                   ${decision === "shortlisted" 
-                    ? "border-primary bg-primary-light shadow-lg shadow-primary-light" 
-                    : "border-slate-100 hover:border-primary-light bg-white"}
+                    ? "border-blue-600 bg-blue-100 shadow-lg shadow-blue-200" 
+                    : "border-slate-100 hover:border-blue-100 bg-white"}
                 `}
               >
-                <FastForward className={`h-6 w-6 ${decision === "shortlisted" ? "text-primary" : "text-slate-300 group-hover:text-primary"}`} />
-                <span className={`text-[9px] font-black uppercase tracking-widest ${decision === "shortlisted" ? "text-primary-dark" : "text-slate-500"}`}>
+                <FastForward className={`h-6 w-6 ${decision === "shortlisted" ? "text-blue-600" : "text-slate-300 group-hover:text-blue-600"}`} />
+                <span className={`text-[9px] font-black uppercase tracking-widest ${decision === "shortlisted" ? "text-blue-700" : "text-slate-500"}`}>
                   Next Round
                 </span>
               </button>
@@ -221,7 +221,7 @@ export default function InterviewFeedbackModal({
           {/* Feedback Input */}
           <div className="space-y-4">
             <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 flex items-center gap-2">
-              <MessageCircle className="h-3.5 w-3.5 text-primary" />
+              <MessageCircle className="h-3.5 w-3.5 text-blue-600" />
               Detailed Feedback / Candidate Debrief
             </h3>
             <div className="relative">
@@ -253,7 +253,7 @@ export default function InterviewFeedbackModal({
                 flex-[2] py-4 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] transition-all shadow-xl
                 ${loading || !decision || (decision !== "no_show" && decision !== "not_conducted" && !feedback.trim())
                   ? "bg-slate-200 text-slate-400 cursor-not-allowed"
-                  : "bg-primary text-white hover:bg-primary-dark shadow-primary/20 active:scale-[0.98]"}
+                  : "bg-blue-600 text-white hover:bg-blue-700 shadow-blue-600/20 active:scale-[0.98]"}
               `}
             >
               {loading ? (

@@ -58,6 +58,8 @@ export default function AssessmentExam() {
   const [identityVerified, setIdentityVerified] = useState(false);
   const [aadhaarFile, setAadhaarFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [showResumeUpload, setShowResumeUpload] = useState(false);
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
 
   // Tab switch detection
   useEffect(() => {
@@ -125,7 +127,7 @@ export default function AssessmentExam() {
           if (isVerified) {
             router.replace("/dashboard/candidate");
           } else {
-            setShowAadhaar(true);
+            setShowResumeUpload(true);  // ✅ Show resume upload FIRST
           }
           setIsLoading(false);
           return;
@@ -143,7 +145,7 @@ export default function AssessmentExam() {
           if (isVerified) {
             router.replace("/dashboard/candidate");
           } else {
-            setShowAadhaar(true);
+            setShowResumeUpload(true);  // ✅ Show resume upload FIRST
           }
         } else {
           setCurrentQuestion(qRes);
@@ -261,7 +263,7 @@ export default function AssessmentExam() {
                 router.replace("/dashboard/candidate");
                 return;
              } else {
-                setShowAadhaar(true);
+                setShowResumeUpload(true);  // ✅ Show resume upload FIRST
                 return;
              }
         }
@@ -277,7 +279,7 @@ export default function AssessmentExam() {
             setIsFinishing(true);
             router.replace("/dashboard/candidate");
           } else {
-            setShowAadhaar(true);
+            setShowResumeUpload(true);  // ✅ Show resume upload FIRST
           }
         } else {
           // Sync session progress again just in case
@@ -324,6 +326,60 @@ export default function AssessmentExam() {
 
     return () => clearInterval(timer);
   }, [timeLeft, currentQuestion, showAadhaar, isBlocked, isFinishing, isLoading, handleNext]);
+
+  const handleResumeUpload = async () => {
+    if (!resumeFile) return;
+
+    // Client-side size restriction (5MB)
+    if (resumeFile.size > 5 * 1024 * 1024) {
+      alert("Resume file is too large! Maximum allowed is 5MB.");
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const user = awsAuth.getUser();
+      if (!user) {
+        alert("Session expired. Please login again.");
+        router.replace("/login");
+        return;
+      }
+
+      const token = awsAuth.getToken();
+      if (!token) throw new Error("No session found");
+
+      // Step 1: Upload resume to S3
+      const formData = new FormData();
+      formData.append("file", resumeFile);
+
+      const uploadResponse = await apiClient.post(
+        "/storage/upload/resume",
+        formData,
+        token,
+      );
+
+      const resumePath = uploadResponse.path || uploadResponse.url;
+
+      // Step 2: Trigger resume parsing via /candidate/resume endpoint
+      const parseResponse = await apiClient.post(
+        "/candidate/resume",
+        { resume_path: resumePath },
+        token,
+      );
+
+      alert("Resume uploaded! AI extraction running in background.");
+      setShowResumeUpload(false);
+      setResumeFile(null);
+      setShowAadhaar(true);  // ✅ Now show Aadhaar verification
+    } catch (err: unknown) {
+      console.error("Resume upload error:", err);
+      const errorMessage =
+        err instanceof Error ? err.message : "An unknown error occurred";
+      alert(`Resume upload failed: ${errorMessage}`);
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const handleAadhaarUpload = async () => {
     if (!aadhaarFile) return;
@@ -413,12 +469,88 @@ export default function AssessmentExam() {
     );
   }
 
+  if (showResumeUpload) {
+    return (
+      <div className="min-h-screen bg-black flex flex-col items-center justify-center p-6">
+        <div className="max-w-xl w-full bg-[#111] rounded-[40px] p-12 shadow-2xl border border-white/5 text-center">
+          <div className="h-20 w-20 bg-[#10b981]/10 rounded-[20px] flex items-center justify-center mx-auto mb-8">
+            <div className="h-10 w-10 text-[#10b981]">
+               <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+               </svg>
+            </div>
+          </div>
+          <h1 className="text-4xl font-black text-white mb-4 tracking-tight">
+            Upload Your Resume
+          </h1>
+          <p className="text-gray-400 mb-10 leading-relaxed text-lg">
+            Upload your resume (PDF) so we can extract your skills, experience, and education profile.
+          </p>
+
+          <div className="relative group mb-10">
+            <input
+              type="file"
+              accept=".pdf"
+              onChange={(e) => setResumeFile(e.target.files?.[0] || null)}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+            />
+            <div
+              className={`border-2 border-dashed rounded-3xl p-12 transition-all ${resumeFile ? "border-[#10b981] bg-[#10b981]/5" : "border-white/10 bg-white/5 group-hover:bg-white/10"}`}
+            >
+              <div className="flex flex-col items-center gap-4">
+                <svg
+                  className={`h-12 w-12 ${resumeFile ? "text-[#10b981]" : "text-gray-600"}`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                  />
+                </svg>
+                <div className="flex flex-col gap-1">
+                  <span className="text-sm font-black text-white tracking-wide">
+                    {resumeFile ? resumeFile.name : "Resume Upload (PDF only)"}
+                  </span>
+                  <span className="text-[10px] font-bold text-gray-500 tracking-widest uppercase">
+                    PDF (MAX 5MB)
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={handleResumeUpload}
+            disabled={!resumeFile || isUploading}
+            className={`w-full py-5 rounded-2xl font-black text-sm tracking-[0.2em] transform transition-all active:scale-[0.98] mb-4 ${!resumeFile ? "bg-slate-200 text-slate-700 cursor-not-allowed" : "bg-[#10b981] text-white hover:bg-[#059669] shadow-xl shadow-[#10b981]/20"}`}
+          >
+            {isUploading ? "UPLOADING..." : "UPLOAD RESUME"}
+          </button>
+
+          <button
+            onClick={() => {
+              setShowResumeUpload(false);
+              setShowAadhaar(true);  // ✅ Show Aadhaar even if skipped
+            }}
+            className="w-full py-3 rounded-2xl font-black text-sm tracking-[0.2em] text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 transition-all"
+          >
+            SKIP FOR NOW
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (showAadhaar) {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center p-6">
         <div className="max-w-xl w-full bg-[#111] rounded-[40px] p-12 shadow-2xl border border-white/5 text-center">
-          <div className="h-20 w-20 bg-blue-600/10 rounded-[20px] flex items-center justify-center mx-auto mb-8">
-            <div className="h-10 w-10 text-blue-500">
+          <div className="h-20 w-20 bg-[#1a56db]/10 rounded-[20px] flex items-center justify-center mx-auto mb-8">
+            <div className="h-10 w-10 text-[#1a56db]">
                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                </svg>
@@ -440,11 +572,11 @@ export default function AssessmentExam() {
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
             />
             <div
-              className={`border-2 border-dashed rounded-3xl p-12 transition-all ${aadhaarFile ? "border-blue-500 bg-blue-500/5" : "border-white/10 bg-white/5 group-hover:bg-white/10"}`}
+              className={`border-2 border-dashed rounded-3xl p-12 transition-all ${aadhaarFile ? "border-[#1a56db] bg-[#1a56db]/5" : "border-white/10 bg-white/5 group-hover:bg-white/10"}`}
             >
               <div className="flex flex-col items-center gap-4">
                 <svg
-                  className={`h-12 w-12 ${aadhaarFile ? "text-blue-500" : "text-gray-600"}`}
+                  className={`h-12 w-12 ${aadhaarFile ? "text-[#1a56db]" : "text-gray-600"}`}
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -471,7 +603,7 @@ export default function AssessmentExam() {
           <button
             onClick={handleAadhaarUpload}
             disabled={!aadhaarFile || isUploading || isFinishing}
-            className={`w-full py-5 rounded-2xl font-black text-sm tracking-[0.2em] transform transition-all active:scale-[0.98] ${!aadhaarFile ? "bg-slate-200 text-slate-700 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-500 shadow-xl shadow-blue-600/20"}`}
+            className={`w-full py-5 rounded-2xl font-black text-sm tracking-[0.2em] transform transition-all active:scale-[0.98] ${!aadhaarFile ? "bg-slate-200 text-slate-700 cursor-not-allowed" : "bg-[#1a56db] text-white hover:bg-[#1e40af] shadow-xl shadow-[#1a56db]/20"}`}
           >
             {isUploading
               ? "ENCRYPTING..."
@@ -497,7 +629,7 @@ export default function AssessmentExam() {
           </button>
           
           <div className="flex items-center gap-3.5">
-            <div className="h-11 w-11 bg-blue-600 rounded-[14px] flex items-center justify-center shadow-2xl shadow-blue-900/40">
+            <div className="h-11 w-11 bg-[#1a56db] rounded-[14px] flex items-center justify-center shadow-2xl shadow-[#1a56db]/40">
               <div className="h-5 w-5 bg-black rounded-md transform rotate-45" />
             </div>
             <span className="text-xl font-black tracking-[0.1em] text-white">TECHSALES AXIS</span>
@@ -517,7 +649,7 @@ export default function AssessmentExam() {
                
                <button 
                 onClick={() => handleNext(true)}
-                className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-xl font-black text-[10px] tracking-[0.2em] uppercase transition-all shadow-lg shadow-blue-900/20 active:scale-95"
+                className="bg-[#1a56db] hover:bg-[#1e40af] text-white px-6 py-2 rounded-xl font-black text-[10px] tracking-[0.2em] uppercase transition-all shadow-lg shadow-[#1a56db]/20 active:scale-95"
               >
                 skip
               </button>
@@ -534,7 +666,7 @@ export default function AssessmentExam() {
               </div>
               <div className="h-1 w-32 bg-white/5 rounded-full overflow-hidden">
                 <div 
-                  className="h-full bg-blue-600 transition-all duration-500 ease-out shadow-[0_0_8px_rgba(37,99,235,0.8)]"
+                  className="h-full bg-[#1a56db] transition-all duration-500 ease-out shadow-[0_0_8px_rgba(26,86,219,0.8)]"
                   style={{ width: `${((session?.current_step || 0) / (session?.total_budget || 1)) * 100}%` }}
                 />
               </div>
@@ -583,7 +715,7 @@ export default function AssessmentExam() {
           <div className="w-full space-y-4 animate-in fade-in duration-700">
             <div className="flex flex-col gap-2">
                <div className="flex items-center gap-3">
-                 <div className="h-[2px] w-6 bg-blue-600" />
+                 <div className="h-[2px] w-6 bg-[#1a56db]" />
                  <span className="text-[10px] font-bold text-gray-500 tracking-[0.3em] uppercase">
                     SYSTEM_ORIGIN: ASSESSMENT_DRIVERS
                  </span>
@@ -600,9 +732,9 @@ export default function AssessmentExam() {
       {/* Styled Sticky Footer with Chat Bar */}
       <footer className="fixed bottom-0 left-0 right-0 p-6 pb-8 bg-gradient-to-t from-black via-black to-transparent pointer-events-none z-50">
         <div className="max-w-5xl mx-auto pointer-events-auto relative group">
-          <div className="absolute -inset-1 bg-gradient-to-r from-blue-600/20 to-blue-500/10 rounded-[28px] blur-xl opacity-0 group-focus-within:opacity-100 transition duration-700" />
+          <div className="absolute -inset-1 bg-gradient-to-r from-[#1a56db]/20 to-[#0ea5e9]/10 rounded-[28px] blur-xl opacity-0 group-focus-within:opacity-100 transition duration-700" />
           
-          <div className="relative bg-[#0F0F0F] border border-white/10 group-focus-within:border-blue-500/40 rounded-3xl overflow-hidden transition-all duration-300">
+          <div className="relative bg-[#0F0F0F] border border-white/10 group-focus-within:border-[#1a56db]/40 rounded-3xl overflow-hidden transition-all duration-300">
             <textarea
               autoFocus
               disabled={isLoading || !currentQuestion}
@@ -644,7 +776,7 @@ export default function AssessmentExam() {
                 className={`flex items-center gap-3 px-6 py-3 rounded-2xl font-bold text-xs tracking-widest uppercase transition-all shadow-2xl ${
                   !answer.trim() || isLoading 
                     ? "bg-gray-800/10 text-gray-700" 
-                    : "bg-blue-600 text-white hover:bg-blue-500 hover:shadow-blue-600/20 shadow-blue-900/40"
+                    : "bg-[#1a56db] text-white hover:bg-[#1e40af] hover:shadow-[#1a56db]/20 shadow-[#1a56db]/40"
                 }`}
               >
                 {isLoading ? (
@@ -663,7 +795,7 @@ export default function AssessmentExam() {
           <div className="mt-4 flex justify-between items-center px-4 pb-2 opacity-60">
              <div className="flex gap-4 text-[10px] font-bold text-gray-600 tracking-widest uppercase">
                 <span className="flex items-center gap-2">
-                   <div className="h-1 w-1 bg-blue-600 rounded-full animate-pulse" />
+                   <div className="h-1 w-1 bg-[#1a56db] rounded-full animate-pulse" />
                    EVALUATION_MODE: ACTIVE
                 </span>
                 <span className="flex items-center gap-2">

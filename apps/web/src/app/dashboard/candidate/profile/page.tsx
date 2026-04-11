@@ -59,6 +59,8 @@ interface ProfileData {
   bio?: string;
   profile_photo_url?: string;
   current_role?: string;
+  target_role?: string;
+  long_term_goal?: string;
   years_of_experience?: number;
   primary_industry_focus?: string;
   current_employment_status?: string;
@@ -246,7 +248,7 @@ export default function CandidateProfilePage() {
     setMessage(null);
 
     try {
-      const token = awsAuth.getToken();
+      const token = awsAuth.getToken() || undefined;
       const result = await apiClient.patch(
         "/candidate/profile",
         profile,
@@ -275,7 +277,7 @@ export default function CandidateProfilePage() {
       return;
 
     try {
-      const token = awsAuth.getToken();
+      const token = awsAuth.getToken() || undefined;
       await apiClient.post("/assessment/retake", {}, token);
       router.push("/assessment/candidate");
     } catch (err) {
@@ -288,7 +290,7 @@ export default function CandidateProfilePage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white font-sans">
         <div className="flex flex-col items-center gap-4">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
           <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">
             Loading Profile...
           </p>
@@ -305,7 +307,7 @@ export default function CandidateProfilePage() {
           {/* Mirror Banner Card */}
           <div className="relative mb-10 overflow-hidden bg-slate-900 rounded-4xl p-10 shadow-2xl">
             <div className="absolute top-0 right-0 w-1/2 h-full bg-linear-to-l from-primary/20 to-transparent pointer-none" />
-            <div className="absolute -bottom-24 -right-24 w-64 h-64 bg-primary/30 rounded-full blur-[80px]" />
+            <div className="absolute -bottom-24 -right-24 w-64 h-64 bg-blue-600/30 rounded-full blur-[80px]" />
             <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
               <div>
                 <h1 className="text-4xl font-black text-white tracking-tight mb-2">
@@ -329,12 +331,12 @@ export default function CandidateProfilePage() {
                 </div>
                 <div className="flex items-end gap-3 mb-2">
                   <div className="text-3xl font-black text-white">{profile?.completion_score || 0}%</div>
-                  <div className="text-primary text-xs font-bold mb-1">
+                  <div className="text-blue-600 text-xs font-bold mb-1">
                     READY
                   </div>
                 </div>
                 <div className="w-48 h-1.5 bg-white/10 rounded-full overflow-hidden">
-                  <div className="h-full bg-primary shadow-[0_0_10px_rgba(99,102,241,0.5)] transition-all duration-700" style={{ width: `${profile?.completion_score || 0}%` }} />
+                  <div className="h-full bg-blue-600 shadow-[0_0_10px_rgba(30,144,255,0.5)] transition-all duration-700" style={{ width: `${profile?.completion_score || 0}%` }} />
                 </div>
               </div>
             </div>
@@ -362,7 +364,7 @@ export default function CandidateProfilePage() {
                 <div className="flex flex-col items-center gap-4 group">
                   <div
                     onClick={() => fileInputRef.current?.click()}
-                    className="h-32 w-32 rounded-3xl bg-slate-100 border-2 border-dashed border-slate-200 flex items-center justify-center cursor-pointer overflow-hidden relative transition-all group-hover:border-primary group-hover:bg-white"
+                    className="h-32 w-32 rounded-3xl bg-slate-100 border-2 border-dashed border-slate-200 flex items-center justify-center cursor-pointer overflow-hidden relative transition-all group-hover:border-blue-600 group-hover:bg-white"
                   >
                     {profile?.profile_photo_url ? (
                       <Image 
@@ -377,12 +379,12 @@ export default function CandidateProfilePage() {
                     )}
                     {uploading && (
                       <div className="absolute inset-0 bg-white/80 flex items-center justify-center">
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
                       </div>
                     )}
                   </div>
                   <input type="file" ref={fileInputRef} onChange={handlePhotoUpload} className="hidden" accept="image/*" />
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 group-hover:text-primary transition-colors">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 group-hover:text-blue-600 transition-colors">
                     {uploading ? "Uploading..." : "Click to change photo"}
                   </span>
                 </div>

@@ -344,14 +344,29 @@ def initialize_profile(
         if request.role == "candidate":
             existing_prof = db.query(CandidateProfile).filter(CandidateProfile.user_id == user_id).first()
             if not existing_prof:
-                new_prof = CandidateProfile(user_id=user_id, experience_band="fresher")
+                new_prof = CandidateProfile(
+                    user_id=user_id,
+                    experience_band="fresher",
+                    full_name=request.display_name
+                )
                 db.add(new_prof)
+                db.commit()
+            else:
+                # Update existing profile with display_name
+                existing_prof.full_name = request.display_name
                 db.commit()
         elif request.role == "recruiter":
             existing_prof = db.query(RecruiterProfile).filter(RecruiterProfile.user_id == user_id).first()
             if not existing_prof:
-                new_prof = RecruiterProfile(user_id=user_id)
+                new_prof = RecruiterProfile(
+                    user_id=user_id,
+                    full_name=request.display_name
+                )
                 db.add(new_prof)
+                db.commit()
+            else:
+                # Update existing profile with display_name
+                existing_prof.full_name = request.display_name
                 db.commit()
             
         return {"status": "initialized"}

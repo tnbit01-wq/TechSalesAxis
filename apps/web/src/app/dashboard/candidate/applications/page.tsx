@@ -233,7 +233,7 @@ export default function CandidateApplicationsPage() {
 
               {app.active_interview?.status === "scheduled" && app.active_interview?.meeting_link && (() => {
                 const now = new Date();
-                const confirmedSlot = app.active_interview.slots?.find((s: any) => s.is_selected);
+                const confirmedSlot = app.active_interview.interview_slots?.find((s: any) => s.is_selected);
                 if (!confirmedSlot) return null;
 
                 const start = new Date(confirmedSlot.start_time);

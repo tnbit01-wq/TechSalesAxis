@@ -73,6 +73,18 @@ class CandidateProfile(Base):
     social_links = Column(JSONB)
     bulk_file_id = Column(UUID(as_uuid=True), ForeignKey('bulk_upload_files.id'), nullable=True)
     is_shadow_profile = Column(Boolean, default=False)
+    # Career Readiness Feature
+    job_search_mode = Column(String, default='exploring')  # 'exploring', 'passive', 'active'
+    notice_period_days = Column(Integer, default=None)  # 0, 7, 14, 30, 60, 90, 180
+    notice_period_required_days = Column(Integer, default=None)  # Alias for notice_period_days
+    availability_date = Column(DateTime, default=None)  # Calculated: now + notice_period
+    career_readiness_timestamp = Column(DateTime, default=func.now())  # When last updated
+    career_readiness_metadata = Column(JSONB, default={})  # {exploration_trigger, visa_needed, salary_flexibility, etc}
+    career_readiness_score = Column(Numeric, default=0)  # 0-100 readiness score
+    role_urgency_level = Column(String, default='passive')  # 'passive', 'active', 'urgent_30days', 'urgent_immediate'
+    employment_readiness_status = Column(String, default='not_specified')  # Overall readiness status
+    willing_to_relocate = Column(Boolean, default=False)
+    job_opportunity_type = Column(ARRAY(String), default=[])  # ['Full-time', 'Contract', 'Part-time', etc]
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     created_at = Column(DateTime, default=func.now())
 
@@ -202,6 +214,19 @@ class ProfileScore(Base):
     final_score = Column(Integer)
     calculated_at = Column(DateTime, default=func.now())
 
+class CareerReadinessHistory(Base):
+    __tablename__ = 'career_readiness_history'
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
+    old_job_search_mode = Column(Text)
+    new_job_search_mode = Column(Text)
+    old_notice_period_days = Column(Integer)
+    new_notice_period_days = Column(Integer)
+    changed_at = Column(DateTime, default=func.now())
+    reason = Column(Text, default='self_update')
+    ip_address = Column(Text)
+    user_agent = Column(Text)
+
 class ProfileMatch(Base):
     __tablename__ = 'profile_matches'
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -304,6 +329,9 @@ class AssessmentSession(Base):
     overall_score = Column(Numeric, default=0.0)
     component_scores = Column(JSONB, default={})
     driver_confidence = Column(JSONB, default={})
+    queue_priority = Column(String, default='standard')  # 'standard' or 'fast_track'
+    queue_priority_reason = Column(Text)  # Reason for queue priority
+    expected_completion_sla = Column(DateTime)  # Expected completion deadline
     started_at = Column(DateTime, default=func.now())
     completed_at = Column(DateTime)
 
@@ -698,3 +726,46 @@ class BulkUploadAuditLog(Base):
     action_details = Column(Text)
     
     created_at = Column(DateTime, default=func.now())
+
+# ============================================================================
+# CONVERSATIONAL ONBOARDING - Natural Language Chat-Based Flow
+# ============================================================================
+
+class ConversationalOnboardingSession(Base):
+    """
+    Track conversational onboarding sessions for intelligent, chat-based flow
+    LEAN SCHEMA - only columns that are actually used
+    """
+    __tablename__ = 'conversational_onboarding_sessions'
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    candidate_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
+    
+    # Conversation data (required)
+    conversation_messages = Column(JSONB, nullable=False, default={})  # [{user: '...', assistant: '...', timestamp: ...}]
+    total_messages = Column(Integer, default=0)
+    conversation_status = Column(String, default='in_progress')  # in_progress, completed
+    
+    # Extracted career readiness info (populated as conversation progresses)
+    extracted_employment_status = Column(Text)
+    extracted_job_search_mode = Column(Text)
+    extracted_notice_period_days = Column(Integer)
+    extracted_current_role = Column(Text)
+    extracted_years_experience = Column(Integer)
+    extracted_willing_to_relocate = Column(Boolean)
+    extracted_visa_sponsorship_needed = Column(Boolean)
+    extracted_metadata = Column(JSONB, default={})  # Any additional extracted data
+    
+    # Information completeness and quality
+    completeness_score = Column(Numeric(5, 2), default=0.0)  # 0-100
+    missing_critical_fields = Column(ARRAY(Text), default=[])
+    average_ai_confidence = Column(Numeric(5, 2), default=0.0)  # 0-100
+    
+    # Outcomes
+    successfully_completed = Column(Boolean, default=False)
+    
+    # Timing
+    started_at = Column(DateTime, default=func.now())
+    completed_at = Column(DateTime)
+    
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())

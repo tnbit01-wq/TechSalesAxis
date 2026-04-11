@@ -208,8 +208,7 @@ export default function NewJobPage() {
       console.error("Match potential check failed:", err);
       setMatchPotential({
         count: 0,
-        message: "Unable to check match potential. Please try again.",
-        error: true
+        message: "Unable to check match potential. Please try again."
       });
     } finally {
       setCheckingPotential(false);
@@ -219,7 +218,7 @@ export default function NewJobPage() {
   if (checkingLock) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50/50">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
       </div>
     );
   }
@@ -253,8 +252,8 @@ export default function NewJobPage() {
             onClick={() => setShowAiAssistant(!showAiAssistant)}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
               showAiAssistant
-                ? "bg-primary text-white shadow-lg shadow-primary-light"
-                : "bg-primary-light text-primary hover:bg-primary-light border border-primary-light"
+                ? "bg-blue-600 text-white shadow-lg shadow-blue-200"
+                : "bg-blue-100 text-blue-600 hover:bg-blue-100 border border-blue-100"
             }`}
           >
             <Sparkles className="w-3.5 h-3.5" />
@@ -296,13 +295,13 @@ export default function NewJobPage() {
           <div className="max-w-4xl mx-auto p-4">
             <div className="bg-white rounded-2xl shadow-2xl p-6 border border-slate-200 relative overflow-hidden ring-1 ring-slate-200/50">
               <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none">
-                <Sparkles className="w-32 h-32 text-primary" />
+                <Sparkles className="w-32 h-32 text-blue-600" />
               </div>
               <div className="relative z-10">
                 <div className="flex justify-between items-start mb-4">
                   <div>
                     <h2 className="text-slate-900 font-black text-sm uppercase tracking-widest flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-primary" />
+                      <Sparkles className="w-4 h-4 text-blue-600" />
                       Smart Role Architect
                     </h2>
                     <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest opacity-80 mt-1">
@@ -327,7 +326,7 @@ export default function NewJobPage() {
                   <button
                     onClick={handleAIGenerate}
                     disabled={aiLoading || !aiPrompt}
-                    className="bg-primary text-white px-8 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-primary-dark transition-all active:scale-95 disabled:opacity-50 shadow-lg shadow-primary-light self-end h-16"
+                    className="bg-blue-600 text-white px-8 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-700 transition-all active:scale-95 disabled:opacity-50 shadow-lg shadow-blue-200 self-end h-16"
                   >
                     {aiLoading ? (
                       <div className="flex items-center gap-2">
@@ -349,9 +348,7 @@ export default function NewJobPage() {
       <main className="p-8 max-w-4xl mx-auto w-full pb-20">
         {matchPotential && (
           <div className={`mb-8 rounded-2xl p-6 flex flex-col gap-4 animate-in fade-in slide-in-from-top-4 border ${
-            matchPotential.error 
-              ? "bg-red-50 border-red-100" 
-              : matchPotential.count === 0 
+            matchPotential.count === 0 
               ? "bg-amber-50 border-amber-100"
               : "bg-emerald-50 border-emerald-100"
           }`}>
@@ -359,9 +356,7 @@ export default function NewJobPage() {
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
               <div className="flex items-center gap-4">
                 <div className={`p-3 rounded-xl shadow-sm border ${
-                  matchPotential.error 
-                    ? "bg-white text-red-600 border-red-50" 
-                    : matchPotential.count === 0 
+                  matchPotential.count === 0 
                     ? "bg-white text-amber-600 border-amber-50"
                     : "bg-white text-emerald-600 border-emerald-50"
                 }`}>
@@ -371,7 +366,7 @@ export default function NewJobPage() {
                   <p className="text-sm font-bold text-slate-900">{matchPotential.message}</p>
                   <div className="flex items-center gap-4 mt-2">
                     <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">
-                      {matchPotential.error ? "⚠️ Check Connection" : "✓ AI Assessment Complete"}
+                      ✓ AI Assessment Complete
                     </p>
                     {matchPotential.count > 0 && (
                       <span className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full ${
@@ -387,7 +382,7 @@ export default function NewJobPage() {
                   </div>
                 </div>
               </div>
-              {!matchPotential.error && matchPotential.count > 0 && (
+              {matchPotential.count > 0 && (
                 <button
                   type="button"
                   onClick={() => {
@@ -403,30 +398,6 @@ export default function NewJobPage() {
               )}
             </div>
 
-            {/* Top Candidates Preview */}
-            {!matchPotential.error && matchPotential.data && matchPotential.data.length > 0 && (
-              <div className="mt-4 pt-4 border-t border-emerald-200">
-                <p className="text-[10px] text-slate-600 uppercase font-black tracking-widest mb-3">📌 Top Matching Candidates</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {matchPotential.data.slice(0, 3).map((candidate: any, idx: number) => (
-                    <div key={idx} className="bg-white rounded-lg p-3 border border-emerald-100 hover:shadow-md transition-all">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold text-slate-900 truncate">{candidate.full_name || 'Candidate'}</p>
-                          <p className="text-[10px] text-slate-500 truncate">{candidate.current_role || 'Professional'}</p>
-                        </div>
-                        <span className="text-xs font-bold text-white bg-emerald-600 px-2 py-1 rounded whitespace-nowrap">
-                          {Math.round(candidate.culture_match_score || 0)}%
-                        </span>
-                      </div>
-                      <div className="mt-2 flex items-center gap-3 text-[9px] text-slate-600">
-                        <span>📍 {candidate.years_of_experience || 0}y exp</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         )}
         <form onSubmit={handleCreateJob} className="space-y-8">
@@ -570,7 +541,7 @@ export default function NewJobPage() {
                     type="button"
                     onClick={handleRecalculateSalary}
                     disabled={salaryLoading || !formData.location}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-primary hover:text-primary hover:bg-white rounded-md transition-all shadow-sm disabled:opacity-30 disabled:grayscale group-hover:scale-110 active:scale-95 border border-transparent hover:border-slate-100"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-blue-600 hover:text-blue-600 hover:bg-white rounded-md transition-all shadow-sm disabled:opacity-30 disabled:grayscale group-hover:scale-110 active:scale-95 border border-transparent hover:border-slate-100"
                     title="Recalculate salary based on location & experience"
                   >
                     <Sparkles className={`w-3.5 h-3.5 ${salaryLoading ? "animate-spin" : ""}`} />
@@ -598,7 +569,7 @@ function Section({
   return (
     <div className="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm hover:shadow-md transition-shadow">
       <h2 className="text-sm font-black text-slate-900 mb-8 flex items-center gap-3 uppercase tracking-widest">
-        <div className="p-2 bg-primary-light rounded-lg text-primary">
+        <div className="p-2 bg-blue-100 rounded-lg text-blue-600">
           <Icon className="w-4 h-4" />
         </div>
         {title}

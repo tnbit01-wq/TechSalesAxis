@@ -126,7 +126,7 @@ export default function CareerGPSPage() {
     const newStatus =
       currentStatus === "completed" ? "not-started" : "completed";
     try {
-      const token = awsAuth.getToken();
+      const token = awsAuth.getToken() || undefined;
       await apiClient.patch(
         `/candidate/career-gps/milestone/${id}`,
         { status: newStatus },
@@ -171,7 +171,7 @@ export default function CareerGPSPage() {
   if (loading) {
     return (
       <div className="flex bg-slate-50 min-h-screen items-center justify-center">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
       </div>
     );
   }
@@ -180,7 +180,7 @@ export default function CareerGPSPage() {
     <div className="max-w-5xl mx-auto">
       <header className="mb-8">
         <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
-          <MapIcon className="text-primary" /> Career GPS
+          <MapIcon className="text-blue-600" /> Career GPS
         </h1>
         <p className="text-slate-500 mt-2">
           Personalized roadmap to your dream IT Tech Sales career.
@@ -189,7 +189,7 @@ export default function CareerGPSPage() {
 
       {!gpsData ? (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-10 text-center">
-          <div className="w-20 h-20 bg-primary-light text-primary rounded-full flex items-center justify-center mx-auto mb-6">
+          <div className="w-20 h-20 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6">
             <Rocket className="w-10 h-10" />
           </div>
           <h2 className="text-2xl font-bold text-slate-900 mb-2">
@@ -266,7 +266,7 @@ export default function CareerGPSPage() {
                 !inputs.career_interests ||
                 !inputs.long_term_goal
               }
-              className="w-full bg-primary hover:bg-primary-dark text-white font-bold py-4 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {isGenerating ? (
                 <>
@@ -284,7 +284,7 @@ export default function CareerGPSPage() {
           <div className="lg:col-span-1 space-y-6 lg:sticky lg:top-8 self-start">
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
               <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
-                <Target className="w-5 h-5 text-primary" /> Current Vision
+                <Target className="w-5 h-5 text-blue-600" /> Current Vision
               </h3>
               <div className="space-y-4">
                 <div>
@@ -300,14 +300,14 @@ export default function CareerGPSPage() {
                     Status
                   </span>
                   <div className="mt-1">
-                    <span className="px-2 py-1 bg-primary-light text-primary rounded text-[10px] font-bold uppercase tracking-widest">
+                    <span className="px-2 py-1 bg-blue-100 text-blue-600 rounded text-[10px] font-bold uppercase tracking-widest">
                       In Orbit
                     </span>
                   </div>
                 </div>
                 <button
                   onClick={() => setGpsData(null)}
-                  className="text-primary text-sm font-medium hover:underline mt-2 flex items-center gap-1 group"
+                  className="text-blue-600 text-sm font-medium hover:underline mt-2 flex items-center gap-1 group"
                 >
                   Redefine Vision{" "}
                   <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
@@ -317,7 +317,7 @@ export default function CareerGPSPage() {
 
             <div className="bg-slate-900 p-6 rounded-2xl shadow-lg text-white">
               <h3 className="font-bold mb-2 flex items-center gap-2">
-                <Rocket className="w-5 h-5 text-primary" /> Progress Status
+                <Rocket className="w-5 h-5 text-blue-600" /> Progress Status
               </h3>
               <div className="flex items-end gap-2 mb-1">
                 <span className="text-3xl font-bold">
@@ -341,7 +341,7 @@ export default function CareerGPSPage() {
                   animate={{
                     width: `${(milestones.filter((m) => m.status === "completed").length / milestones.length) * 100}%`,
                   }}
-                  className="bg-primary h-full shadow-[0_0_10px_rgba(99,102,241,0.5)]"
+                  className="bg-blue-600 h-full shadow-[0_0_10px_rgba(30,144,255,0.5)]"
                 />
               </div>
               <p className="text-[10px] text-slate-500 mt-4 leading-relaxed italic">
@@ -369,7 +369,7 @@ export default function CareerGPSPage() {
                     {/* Milestone Indicator */}
                     <div
                       className={`absolute left-0 md:left-[1.15rem] top-1 w-6 h-6 rounded-full border-4 flex items-center justify-center transition-colors z-10
-                          ${milestone.status === "completed" ? "bg-primary border-primary-light" : "bg-white border-slate-300"}
+                          ${milestone.status === "completed" ? "bg-blue-600 border-blue-100" : "bg-white border-slate-300"}
                           hidden md:flex
                         `}
                     >
@@ -380,7 +380,7 @@ export default function CareerGPSPage() {
 
                     <div
                       className={`bg-white p-6 rounded-2xl shadow-sm border transition-all duration-300
-                          ${milestone.status === "completed" ? "border-green-200 bg-green-50/20" : "border-slate-200 group-hover:border-primary-light"}
+                          ${milestone.status === "completed" ? "border-green-200 bg-green-50/20" : "border-slate-200 group-hover:border-blue-100"}
                         `}
                     >
                       <div className="flex justify-between items-start gap-4 mb-4">
@@ -403,7 +403,7 @@ export default function CareerGPSPage() {
                           onClick={() =>
                             toggleMilestone(milestone.id, milestone.status)
                           }
-                          className={`p-2 rounded-full transition-colors ${milestone.status === "completed" ? "text-green-600 bg-green-100" : "text-slate-300 hover:text-primary hover:bg-primary-light"}`}
+                          className={`p-2 rounded-full transition-colors ${milestone.status === "completed" ? "text-green-600 bg-green-100" : "text-slate-300 hover:text-blue-600 hover:bg-blue-100"}`}
                         >
                           <CheckCircle className="w-6 h-6" />
                         </button>
@@ -470,7 +470,7 @@ export default function CareerGPSPage() {
                                   </p>
                                 </div>
                               </div>
-                              <ExternalLink className="w-4 h-4 text-slate-300 group-hover/link:text-primary transition-colors" />
+                              <ExternalLink className="w-4 h-4 text-slate-300 group-hover/link:text-blue-600 transition-colors" />
                             </a>
                           ))}
                         </div>

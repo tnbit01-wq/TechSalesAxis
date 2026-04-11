@@ -272,7 +272,7 @@ function matchCandidate(candidate: CandidateData, criteria: Record<string, any>)
   // 2. LOCATION - Hard filter
   if (criteria.locations.length > 0) {
     const tier = getCityTier(candidate.location);
-    const locationMatches = criteria.locations.some(loc => {
+    const locationMatches = criteria.locations.some((loc: string) => {
       const locLower = loc.toLowerCase();
       const tierLower = tier.toLowerCase();
       const candLocLower = candidate.location.toLowerCase();
@@ -296,7 +296,7 @@ function matchCandidate(candidate: CandidateData, criteria: Record<string, any>)
   // 3. SKILLS - Hard filter with semantic matching
   if (criteria.skills.length > 0) {
     const candidateSkills = (candidate.skills || []).map(s => s.toLowerCase());
-    const skillMatches = [];
+    const skillMatches: string[] = [];
 
     // Create skill groups for semantic matching
     const skillGroups: Record<string, string[]> = {
@@ -312,7 +312,7 @@ function matchCandidate(candidate: CandidateData, criteria: Record<string, any>)
       'communication': ['communication', 'presentation', 'public speaking', 'stakeholder management', 'interpersonal'],
     };
 
-    criteria.skills.forEach(requiredSkill => {
+    criteria.skills.forEach((requiredSkill: string) => {
       const skillLower = requiredSkill.toLowerCase();
       
       // Direct substring match
@@ -366,7 +366,7 @@ function matchCandidate(candidate: CandidateData, criteria: Record<string, any>)
     const targetRoleStr = (candidate.target_role || "").toLowerCase();
     const combinedRoleStr = `${currentRoleStr} ${targetRoleStr}`;
 
-    const roleMatches = criteria.roles.some(role => 
+    const roleMatches = criteria.roles.some((role: string) => 
       combinedRoleStr.includes(role.toLowerCase())
     );
 

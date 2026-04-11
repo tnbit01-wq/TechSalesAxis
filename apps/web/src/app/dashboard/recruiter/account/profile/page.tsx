@@ -197,7 +197,7 @@ export default function RecruiterProfilePage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
         <div className="flex flex-col items-center gap-4">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
           <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">
             Loading Profile...
           </p>
@@ -249,7 +249,7 @@ export default function RecruiterProfilePage() {
                         p ? { ...p, full_name: e.target.value } : null,
                       )
                     }
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-blue-200 focus:border-blue-600 transition-all outline-none"
                   />
                 </Field>
                 <Field label="Job Title" icon={Briefcase}>
@@ -261,7 +261,7 @@ export default function RecruiterProfilePage() {
                         p ? { ...p, job_title: e.target.value } : null,
                       )
                     }
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-blue-200 focus:border-blue-600 transition-all outline-none"
                   />
                 </Field>
                 <Field label="LinkedIn Profile" icon={Linkedin}>
@@ -275,7 +275,7 @@ export default function RecruiterProfilePage() {
                         )
                       }
                       placeholder="linkedin.com/in/username"
-                      className="w-full bg-slate-50/50 border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
+                      className="w-full bg-slate-50/50 border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-blue-200 focus:border-blue-600 transition-all outline-none"
                     />
                     <Linkedin className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   </div>
@@ -290,7 +290,7 @@ export default function RecruiterProfilePage() {
                       )
                     }
                     placeholder="Brief professional intro..."
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none resize-none"
+                      className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-blue-200 focus:border-blue-600 transition-all outline-none resize-none"
                   />
                 </Field>
               </div>
@@ -320,7 +320,7 @@ export default function RecruiterProfilePage() {
                           : null,
                       )
                     }
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-blue-200 focus:border-blue-600 transition-all outline-none"
                   />
                 </Field>
                 <Field label="Official Website" icon={Globe}>
@@ -340,7 +340,7 @@ export default function RecruiterProfilePage() {
                           : null,
                       )
                     }
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-blue-200 focus:border-blue-600 transition-all outline-none"
                   />
                 </Field>
                 <Field label="Headquarters" icon={MapPin}>
@@ -360,7 +360,7 @@ export default function RecruiterProfilePage() {
                           : null,
                       )
                     }
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-blue-200 focus:border-blue-600 transition-all outline-none"
                   />
                 </Field>
                 <Field label="Industry / Domain" icon={Tag}>
@@ -381,7 +381,7 @@ export default function RecruiterProfilePage() {
                       )
                     }
                     placeholder="e.g. Fintech, SaaS, HealthTech"
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
+                      className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-blue-200 focus:border-blue-600 transition-all outline-none"
                   />
                 </Field>
                 <Field label="Core Sales Model" icon={Target}>
@@ -400,7 +400,7 @@ export default function RecruiterProfilePage() {
                           : null,
                       )
                     }
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none appearance-none"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-blue-200 focus:border-blue-600 transition-all outline-none appearance-none"
                   >
                     <option value="">Select Model</option>
                     <option value="Inbound">Inbound Intelligence</option>
@@ -424,7 +424,7 @@ export default function RecruiterProfilePage() {
                           : null,
                       )
                     }
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none appearance-none"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-blue-200 focus:border-blue-600 transition-all outline-none appearance-none"
                   >
                     <option value="">Range Configuration</option>
                     <option value="< $10k">Under $10k</option>
@@ -452,16 +452,16 @@ export default function RecruiterProfilePage() {
                         )
                       }
                       placeholder="What makes your company a great place for sales talent?"
-                      className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none resize-none"
+                      className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-blue-200 focus:border-blue-600 transition-all outline-none resize-none"
                     />
                     <button
                       type="button"
                       onClick={handleSuggestBio}
                       disabled={generatingBio}
-                      className="absolute right-4 top-4 px-3 py-1.5 bg-primary-light text-primary rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-primary hover:text-white transition-all shadow-sm border border-primary-light disabled:opacity-50"
+                      className="absolute right-4 top-4 px-3 py-1.5 bg-blue-100 text-blue-600 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-blue-600 hover:text-white transition-all shadow-sm border border-blue-100 disabled:opacity-50"
                     >
                       {generatingBio ? (
-                        <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                        <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
                       ) : (
                         <CheckCircle2 className="w-3 h-3" />
                       )}
@@ -497,7 +497,7 @@ export default function RecruiterProfilePage() {
                           : null,
                       )
                     }
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all outline-none"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-purple-500/20 focus:border-blue-600 transition-all outline-none"
                   />
                 </Field>
                 <Field label="Hiring Style" icon={Target}>
@@ -553,7 +553,7 @@ export default function RecruiterProfilePage() {
                       )
                     }
                     placeholder="e.g. English, Spanish"
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-purple-500/20 focus:border-primary transition-all outline-none"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-purple-500/20 focus:border-blue-600 transition-all outline-none"
                   />
                 </Field>
                 <Field label="Recruitment Specialization" icon={Tag}>
@@ -600,7 +600,7 @@ export default function RecruiterProfilePage() {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="relative group overflow-hidden px-10 py-2.5 bg-primary text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-primary-dark transition-all shadow-xl shadow-primary-light active:scale-95 disabled:opacity-70"
+                  className="relative group overflow-hidden px-10 py-2.5 bg-blue-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-200 active:scale-95 disabled:opacity-70"
                 >
                   <span className="relative z-10">
                     {saving ? "SAVING..." : "UPDATE"}
@@ -630,7 +630,7 @@ function Section({
     <div className="bg-white rounded-4xl border border-slate-200 p-10 shadow-sm transition-all hover:shadow-xl hover:shadow-slate-200/50">
       <div className="mb-10">
         <h2 className="text-2xl font-black text-slate-900 flex items-center gap-4 mb-2">
-          <div className="p-3 bg-primary-light rounded-2xl text-primary shadow-sm border border-primary-light/50">
+          <div className="p-3 bg-blue-100 rounded-2xl text-blue-600 shadow-sm border border-blue-100/50">
             <Icon className="w-6 h-6" />
           </div>
           {title}
@@ -657,7 +657,7 @@ function Field({
 }) {
   return (
     <div className={fullWidth ? "md:col-span-2" : "group"}>
-      <label className="flex items-center text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1 group-focus-within:text-primary transition-colors">
+      <label className="flex items-center text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1 group-focus-within:text-blue-600 transition-colors">
         <Icon className="w-3.5 h-3.5 mr-2 opacity-70" />
         {label}
       </label>

@@ -4,9 +4,9 @@ from .database import SessionLocal
 from .models import User
 import asyncio
 
-async def verify_token(token: str) -> dict:
+async def verify_token(token: str) -> str:
     """
-    Verifies the AWS RDS JWT token and returns standard user payload.
+    Verifies the AWS RDS JWT token and returns the user ID (UUID string).
     """
     try:
         if not token:
@@ -37,11 +37,8 @@ async def verify_token(token: str) -> dict:
                     detail="User no longer exists",
                 )
             
-            return {
-                "sub": str(user.id),
-                "email": user.email,
-                "role": user.role
-            }
+            # Return just the user ID (UUID string) on success
+            return str(user.id)
         finally:
             db.close()
 

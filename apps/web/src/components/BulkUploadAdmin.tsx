@@ -877,11 +877,3 @@ const BulkUploadStatusDashboardWrapper: React.FC<{
 };
 
 export default BulkUploadAdmin;
-
-// Also export named components for direct usage if needed
-export {
-  BulkUploadInitialize,
-  BulkUploadFileUpload,
-  BulkUploadDuplicateReview,
-  BulkUploadStatusDashboard,
-};

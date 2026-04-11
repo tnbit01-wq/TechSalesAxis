@@ -117,6 +117,35 @@ def log_profile_event(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/profile/{candidate_id}/view")
+def track_profile_view(
+    candidate_id: UUID,
+    user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Track a recruiter viewing a candidate's profile."""
+    recruiter_id = user.get("sub")
+    
+    try:
+        event = AnalyticsService.log_profile_analytics(
+            db=db,
+            candidate_id=candidate_id,
+            recruiter_id=recruiter_id,
+            event_type="profile_view",
+            metadata=None
+        )
+        return {
+            "status": "success",
+            "message": "Profile view tracked",
+            "event_id": str(event.id)
+        }
+    except Exception as e:
+        print(f"❌ Failed to track profile view: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/profile/{candidate_id}/analytics")
 def get_candidate_profile_analytics(
     candidate_id: UUID,
@@ -165,6 +194,60 @@ def get_recruiter_analytics(
             "analytics": analytics
         }
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/recruiter/recent-job-views")
+def get_recruiter_recent_job_views(
+    limit: int = 10,
+    user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get recent job views for recruiter's posted jobs."""
+    recruiter_id = user.get("sub")
+    
+    try:
+        from sqlalchemy import desc
+        from src.core.models import JobView
+        
+        # Get jobs posted by this recruiter
+        recruiter_jobs = db.query(Job).filter(Job.recruiter_id == recruiter_id).all()
+        job_ids = [job.id for job in recruiter_jobs]
+        
+        if not job_ids:
+            return {
+                "recruiter_id": recruiter_id,
+                "recent_views": [],
+                "total_views": 0
+            }
+        
+        # Get recent job views for these jobs
+        recent_views = db.query(JobView).filter(
+            JobView.job_id.in_(job_ids)
+        ).order_by(desc(JobView.created_at)).limit(limit).all()
+        
+        total_views = db.query(JobView).filter(
+            JobView.job_id.in_(job_ids)
+        ).count()
+        
+        return {
+            "recruiter_id": recruiter_id,
+            "recent_views": [
+                {
+                    "id": str(view.id),
+                    "job_id": str(view.job_id),
+                    "candidate_id": str(view.candidate_id) if view.candidate_id else None,
+                    "viewer_ip": view.viewer_ip,
+                    "created_at": view.created_at.isoformat() if view.created_at else None
+                }
+                for view in recent_views
+            ],
+            "total_views": total_views
+        }
+    except Exception as e:
+        print(f"❌ Error getting recruiter recent job views: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 

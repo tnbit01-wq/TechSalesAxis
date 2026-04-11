@@ -27,7 +27,7 @@ export default function LogoutPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50">
       <div className="flex flex-col items-center gap-4 text-center">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
         <h1 className="text-sm font-bold uppercase tracking-widest text-slate-500">
           Clearing Sessions...
         </h1>

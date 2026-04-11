@@ -16,8 +16,8 @@ Write-Host "📦 Activating virtual environment..." -ForegroundColor Yellow
 & c:\Users\Admin\Desktop\Projects\TALENTFLOW\.venv\Scripts\Activate.ps1
 
 # Start API
-Write-Host "🔧 Starting API on port 8000..." -ForegroundColor Green
-python -m uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
+Write-Host "[*] Starting API on port 8005..." -ForegroundColor Green
+python -m uvicorn src.main:app --reload --host 127.0.0.1 --port 8005
 
 Write-Host "✓ API Server Started!" -ForegroundColor Green
 Write-Host "📍 API URL: http://localhost:8000" -ForegroundColor Cyan

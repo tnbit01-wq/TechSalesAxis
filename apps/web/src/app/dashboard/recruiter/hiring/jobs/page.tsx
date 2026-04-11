@@ -169,7 +169,7 @@ export default function JobsManagement() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
         <div className="flex flex-col items-center gap-4">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
           <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Loading Jobs...</p>
         </div>
       </div>
@@ -192,7 +192,7 @@ export default function JobsManagement() {
 
             <Link
               href="/dashboard/recruiter/hiring/jobs/new"
-              className="px-6 py-2.5 bg-primary text-white rounded-xl text-sm font-bold hover:bg-slate-900 transition-colors shadow-md flex items-center justify-center gap-2 w-full md:w-auto"
+              className="px-6 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-slate-900 transition-colors shadow-md flex items-center justify-center gap-2 w-full md:w-auto"
             >
               <Plus className="h-4 w-4" />
               Post a Job
@@ -268,7 +268,7 @@ export default function JobsManagement() {
               <p className="text-slate-500 text-sm mt-1">Post your first job to get started recruiting.</p>
               <Link
                 href="/dashboard/recruiter/hiring/jobs/new"
-                className="mt-6 inline-flex px-6 py-2.5 bg-primary text-white rounded-xl text-sm font-bold hover:bg-slate-900 transition-colors gap-2"
+                className="mt-6 inline-flex px-6 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-slate-900 transition-colors gap-2"
               >
                 <Plus className="h-4 w-4" />
                 Post a Job
@@ -285,8 +285,8 @@ export default function JobsManagement() {
                   }
                 >
                   <div className="flex justify-between items-start mb-4">
-                    <div className="h-12 w-12 bg-slate-50 rounded-2xl flex items-center justify-center border border-slate-100 group-hover:bg-primary-light transition-colors">
-                      <Briefcase className="h-6 w-6 text-slate-400 group-hover:text-primary" />
+                    <div className="h-12 w-12 bg-slate-50 rounded-2xl flex items-center justify-center border border-slate-100 group-hover:bg-blue-100 transition-colors">
+                      <Briefcase className="h-6 w-6 text-slate-400 group-hover:text-blue-600" />
                     </div>
                     <div className="relative">
                       <button
@@ -337,7 +337,7 @@ export default function JobsManagement() {
                                 `/dashboard/recruiter/hiring/jobs/${job.id}/edit`,
                               );
                             }}
-                            className="w-full text-left px-4 py-2.5 rounded-xl text-[10px] font-bold text-slate-600 hover:bg-slate-50 hover:text-primary transition-colors flex items-center gap-2"
+                            className="w-full text-left px-4 py-2.5 rounded-xl text-[10px] font-bold text-slate-600 hover:bg-slate-50 hover:text-blue-600 transition-colors flex items-center gap-2"
                           >
                             <Edit3 className="w-4 h-4" />
                             Edit
@@ -372,11 +372,11 @@ export default function JobsManagement() {
                   </div>
 
                   <div className="flex-1">
-                    <h2 className="text-lg font-bold text-slate-900 line-clamp-1 group-hover:text-primary transition-colors">
+                    <h2 className="text-lg font-bold text-slate-900 line-clamp-1 group-hover:text-blue-600 transition-colors">
                       {job.title}
                     </h2>
                     <div className="flex items-center gap-2 mt-2">
-                      <span className="text-xs font-bold text-primary uppercase tracking-wider">
+                      <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">
                         {profile?.companies?.name || "Company"}
                       </span>
                       <span className="h-1 w-1 rounded-full bg-slate-200" />

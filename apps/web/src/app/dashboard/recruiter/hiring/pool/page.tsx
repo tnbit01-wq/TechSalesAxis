@@ -21,6 +21,7 @@ import {
 import LockedView from "@/components/dashboard/LockedView";
 import CandidateProfileModal from "@/components/CandidateProfileModal";
 import JobInviteModal from "@/components/JobInviteModal";
+import { CROUrgencyBadge, CROInlineCompact, CROQuickView } from "@/components/CROBadges";
 import { toast } from "sonner";
 
 interface Candidate {
@@ -36,6 +37,13 @@ interface Candidate {
   skills: string[];
   profile_photo_url?: string;
   resume_path?: string;
+  // ========== CRO Fields ==========
+  career_readiness_score?: number;
+  role_urgency_level?: string;
+  employment_readiness_status?: string;
+  notice_period_required_days?: number | null;
+  job_opportunity_type?: string[];
+  career_readiness_metadata?: Record<string, any>;
 }
 
 interface RecruiterProfile {
@@ -56,6 +64,7 @@ export default function CandidatePoolPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isFetchingProfile, setIsFetchingProfile] = useState(false);
   const [filterExperience, setFilterExperience] = useState<string>("all");
+  const [filterCRO, setFilterCRO] = useState<string>("all"); // "all" | "ready_now" | "active" | "passive"
   const [profileModal, setProfileModal] = useState<{
     isOpen: boolean;
     candidate: Candidate | null;
@@ -239,16 +248,37 @@ export default function CandidatePoolPage() {
         (s || "").toLowerCase().includes(searchTerm.toLowerCase()),
       );
 
-    const matchesFilter =
+    const matchesExperience =
       filterExperience === "all" || c.experience === filterExperience;
-    return matchesSearch && matchesFilter;
+
+    // CRO Filter
+    let matchesCRO = true;
+    if (filterCRO !== "all") {
+      const urgency = (c.role_urgency_level || "").toLowerCase();
+      if (filterCRO === "ready_now") {
+        matchesCRO = urgency === "urgent_immediate" || urgency === "urgent_30days";
+      } else if (filterCRO === "active") {
+        matchesCRO = urgency === "active";
+      } else if (filterCRO === "passive") {
+        matchesCRO = urgency === "passive";
+      }
+    }
+
+    return matchesSearch && matchesExperience && matchesCRO;
+  });
+
+  // Sort by career readiness score (descending) to prioritize ready candidates
+  const sortedAndFilteredCandidates = [...filteredCandidates].sort((a, b) => {
+    const scoreA = a.career_readiness_score || 0;
+    const scoreB = b.career_readiness_score || 0;
+    return scoreB - scoreA; // Descending order (highest readiness first)
   });
 
   const bands = {
-    leadership: filteredCandidates.filter((c) => c.experience === "leadership"),
-    senior: filteredCandidates.filter((c) => c.experience === "senior"),
-    mid: filteredCandidates.filter((c) => c.experience === "mid"),
-    fresher: filteredCandidates.filter((c) => c.experience === "fresher"),
+    leadership: sortedAndFilteredCandidates.filter((c) => c.experience === "leadership"),
+    senior: sortedAndFilteredCandidates.filter((c) => c.experience === "senior"),
+    mid: sortedAndFilteredCandidates.filter((c) => c.experience === "mid"),
+    fresher: sortedAndFilteredCandidates.filter((c) => c.experience === "fresher"),
   };
 
   if (loading) {
@@ -295,7 +325,7 @@ export default function CandidatePoolPage() {
             </header>
 
             {/* Search & Filters */}
-            <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm mb-8">
+            <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm mb-8 space-y-4">
               <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center">
                 <div className="flex-1 relative">
                   <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -323,6 +353,29 @@ export default function CandidatePoolPage() {
                   ))}
                 </div>
               </div>
+
+              {/* CRO Filters */}
+              <div className="flex gap-3 flex-wrap items-center border-t border-slate-100 pt-4">
+                <span className="text-sm font-medium text-slate-600">Career Readiness:</span>
+                {[
+                  { value: "all", label: "All Candidates" },
+                  { value: "ready_now", label: "🔴 Ready Now" },
+                  { value: "active", label: "🟢 Actively Looking" },
+                  { value: "passive", label: "⚪ Passive" },
+                ].map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => setFilterCRO(option.value)}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                      filterCRO === option.value
+                        ? "bg-blue-100 text-blue-700 border border-blue-300"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-100"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
             </section>
 
             {/* Results */}
@@ -333,15 +386,15 @@ export default function CandidatePoolPage() {
                   <p className="text-slate-500 text-sm">Loading candidates...</p>
                 </div>
               </div>
-            ) : filteredCandidates.length > 0 ? (
+            ) : sortedAndFilteredCandidates.length > 0 ? (
               <>
                 <div className="mb-4 flex items-center justify-between">
                   <p className="text-sm text-slate-600">
-                    Showing <span className="font-semibold text-slate-900">{filteredCandidates.length}</span> candidate{filteredCandidates.length !== 1 ? 's' : ''}
+                    Showing <span className="font-semibold text-slate-900">{sortedAndFilteredCandidates.length}</span> candidate{sortedAndFilteredCandidates.length !== 1 ? 's' : ''}
                   </p>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {filteredCandidates.map((candidate) => (
+                  {sortedAndFilteredCandidates.map((candidate) => (
                     <CandidateCard
                       key={candidate.user_id}
                       candidate={candidate}
@@ -506,6 +559,47 @@ function CandidateCard({
           )}
         </div>
       </div>
+
+      {/* ========== CRO Display ========== */}
+      {(candidate.career_readiness_score || candidate.role_urgency_level) && (
+        <div className="bg-blue-50 rounded-xl p-2.5 mb-4 border border-blue-100/50 space-y-2">
+          <div className="text-[7px] font-black text-blue-900 uppercase tracking-widest">
+            Career Readiness
+          </div>
+          
+          <div className="space-y-1.5">
+            {/* Urgency Badge */}
+            {candidate.role_urgency_level && (
+              <div className="flex items-center gap-1.5">
+                <CROUrgencyBadge urgencyLevel={candidate.role_urgency_level} />
+              </div>
+            )}
+
+            {/* Readiness Score */}
+            {candidate.career_readiness_score && candidate.career_readiness_score > 0 && (
+              <div className="flex items-center justify-between text-[7px]">
+                <span className="text-slate-600 font-medium">Readiness:</span>
+                <div className="h-1.5 w-16 bg-slate-200 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-blue-500 to-blue-600 transition-all"
+                    style={{ width: `${Math.min(100, candidate.career_readiness_score)}%` }}
+                  />
+                </div>
+                <span className="text-blue-700 font-bold">{candidate.career_readiness_score}%</span>
+              </div>
+            )}
+
+            {/* Notice Period */}
+            {candidate.notice_period_required_days !== undefined && (
+              <div className="text-[7px] text-slate-600 font-medium">
+                {candidate.notice_period_required_days === null || candidate.notice_period_required_days === 0
+                  ? "⚡ Immediate"
+                  : `📅 ${candidate.notice_period_required_days}d notice`}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center gap-2 mt-auto pt-4 border-t border-slate-50">
         <button

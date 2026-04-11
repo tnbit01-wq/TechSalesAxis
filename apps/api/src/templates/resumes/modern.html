@@ -72,22 +72,32 @@
 <body>
     <div class="sidebar">
         <div class="name">{{ full_name }}</div>
-        <div class="role">{{ current_role }}</div>
+        {% if current_role %}<div class="role">{{ current_role }}</div>{% elif timeline %}<div class="role">{{ timeline[0].role }}</div>{% endif %}
         
         <div class="section-title">Contact</div>
         <div class="contact-item"><b>Email:</b> {{ email }}</div>
         <div class="contact-item"><b>Phone:</b> {{ phone }}</div>
         <div class="contact-item"><b>Location:</b> {{ location }}</div>
         
+        {% if skills and skills|length > 0 %}
         <div class="section-title">Skills</div>
         {% for skill in skills %}
         <span class="skill-pill">{{ skill }}</span>
         {% endfor %}
+        {% endif %}
 
         <div class="section-title">Education</div>
-        <div style="font-size: 10pt; font-weight: bold;">{{ education.degree }}</div>
-        <div style="font-size: 9pt;">{{ education.institution }}</div>
-        <div style="font-size: 9pt; color: #718096;">{{ education.year }}</div>
+        {% if education %}
+        {% for edu in education %}
+        {% if edu.degree or edu.institution %}
+        <div style="font-size: 10pt; font-weight: bold; margin-bottom: 8px;">{{ edu.degree or 'Degree' }}</div>
+        <div style="font-size: 9pt;">{{ edu.institution or 'Institution' }}</div>
+        {% if edu.field %}<div style="font-size: 9pt; color: #718096;">{{ edu.field }}</div>{% endif %}
+        {% if edu.year and edu.year != 'N/A' and edu.year != 'N/A - N/A' %}<div style="font-size: 9pt; color: #718096;">{{ edu.year }}</div>{% endif %}
+        {% if not loop.last %}<hr style="margin: 10px 0; border: none; border-top: 1px solid #e2e8f0;">{% endif %}
+        {% endif %}
+        {% endfor %}
+        {% endif %}
     </div>
 
     <div class="main">
@@ -95,15 +105,17 @@
         <p style="font-size: 10pt;">{{ bio }}</p>
 
         <div class="section-title">Experience</div>
+        {% if timeline %}
         {% for job in timeline %}
+        {% if job.role or job.company %}
         <div style="margin-bottom: 15px;">
-            <div class="job-title">{{ job.role }}</div>
-            <div class="job-meta">{{ job.company }} | {{ job.start }} - {{ job.end }}</div>
-            <div style="font-size: 10pt;">
-                {{ job.description }}
-            </div>
+            <div class="job-title">{{ job.role or 'Position' }}</div>
+            <div class="job-meta">{{ job.company or 'Company' }} {% if job.start or job.end %}| {{ job.start }} - {{ job.end }}{% endif %}</div>
+            {% if job.description %}<div style="font-size: 10pt;">{{ job.description }}</div>{% endif %}
         </div>
+        {% endif %}
         {% endfor %}
+        {% endif %}
     </div>
 </body>
 </html>

@@ -33,7 +33,7 @@ export default function CompanyCultureGallery({ urls, companyName }: CompanyCult
           <div 
             key={index}
             onClick={() => setSelectedMedia(url)}
-            className={`group relative overflow-hidden rounded-2xl cursor-zoom-in bg-slate-100 border border-slate-200 transition-all hover:shadow-lg hover:shadow-primary-light ${
+            className={`group relative overflow-hidden rounded-2xl cursor-zoom-in bg-slate-100 border border-slate-200 transition-all hover:shadow-lg hover:shadow-blue-200 ${
               index === 0 ? "col-span-2 row-span-2 aspect-square md:aspect-video" : "aspect-square"
             }`}
           >

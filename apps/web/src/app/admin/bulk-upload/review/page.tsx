@@ -116,7 +116,7 @@ export default function DuplicateReviewPage() {
       <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-primary-light">
         <div className="text-center">
           <div className="mb-4">
-            <div className="w-12 h-12 border-4 border-primary-light border-t-primary rounded-full animate-spin mx-auto"></div>
+            <div className="w-12 h-12 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin mx-auto"></div>
           </div>
           <p className="text-gray-600">Loading duplicates...</p>
         </div>
@@ -130,7 +130,7 @@ export default function DuplicateReviewPage() {
       <div className="mb-8">
         <button
           onClick={() => router.back()}
-          className="text-primary hover:text-primary-dark font-bold mb-4"      
+          className="text-blue-600 hover:text-blue-700 font-bold mb-4"      
         >
           ← Back
         </button>

@@ -707,7 +707,10 @@ class CandidateProfileMapper:
         """
         Transform extracted data to CandidateProfile update dict
         Only includes fields that have values
+        Properly handles JSON/JSONB fields for PostgreSQL
         """
+        import json
+        
         profile_update = {
             "last_resume_parse_at": datetime.utcnow(),
             "resume_uploaded": True,
@@ -723,22 +726,121 @@ class CandidateProfileMapper:
                 
                 # Ensure proper types and normalize ENUM fields
                 if target_field == "years_of_experience" and value is not None:
-                    profile_update[target_field] = int(value)
+                    profile_update[target_field] = int(value) if value else 0
                 elif target_field == "graduation_year" and value is not None:
-                    profile_update[target_field] = int(value)
+                    profile_update[target_field] = int(value) if value else None
                 elif target_field == "gpa_score" and value is not None:
-                    profile_update[target_field] = float(value)
+                    profile_update[target_field] = float(value) if value else None
                 elif target_field == "expected_salary" and value is not None:
-                    profile_update[target_field] = float(value)
+                    profile_update[target_field] = float(value) if value else None
                 elif target_field == "ai_extraction_confidence" and value is not None:
-                    profile_update[target_field] = float(value)
+                    profile_update[target_field] = float(value) if value else None
                 elif target_field in ["job_type", "current_employment_status"]:
                     # Normalize ENUM fields to valid database values
                     normalized_value = CandidateProfileMapper.normalize_enum_values(target_field, value)
-                    # Only add if normalization produced a valid result
                     if normalized_value is not None:
                         profile_update[target_field] = normalized_value
+                
+                # ===== SPECIAL HANDLING FOR JSON/JSONB FIELDS =====
+                elif target_field == "certifications":
+                    # certifications: list of dicts → TEXT[] array (extract names only)
+                    # Schema expects ARRAY(Text), not ARRAY(JSONB), so extract cert names
+                    cert_names = []
+                    if isinstance(value, str):
+                        try:
+                            cert_list = json.loads(value)
+                            if isinstance(cert_list, list):
+                                for cert in cert_list:
+                                    if isinstance(cert, dict):
+                                        name = cert.get('name') or cert.get('title')
+                                        if name:
+                                            cert_names.append(str(name))
+                                    elif isinstance(cert, str):
+                                        cert_names.append(cert)
+                        except:
+                            pass
+                    elif isinstance(value, list):
+                        for cert in value:
+                            if isinstance(cert, dict):
+                                name = cert.get('name') or cert.get('title')
+                                if name:
+                                    cert_names.append(str(name))
+                            elif isinstance(cert, str):
+                                cert_names.append(cert)
+                    
+                    profile_update[target_field] = cert_names if cert_names else []
+                
+                elif target_field == "career_gap_report":
+                    # career_gap_report: stringified JSON → JSON dict
+                    if isinstance(value, str):
+                        try:
+                            gap_dict = json.loads(value)
+                            profile_update[target_field] = gap_dict
+                        except:
+                            profile_update[target_field] = {"gaps_found": False, "gap_details": [], "summary": None}
+                    elif isinstance(value, dict):
+                        profile_update[target_field] = value
+                    else:
+                        profile_update[target_field] = {"gaps_found": False, "gap_details": [], "summary": None}
+                
+                elif target_field == "education_history":
+                    # education_history: stringified JSON → JSON array
+                    if isinstance(value, str):
+                        try:
+                            edu_list = json.loads(value)
+                            profile_update[target_field] = edu_list if isinstance(edu_list, list) else [edu_list]
+                        except:
+                            profile_update[target_field] = []
+                    elif isinstance(value, list):
+                        profile_update[target_field] = value if value else []
+                    else:
+                        profile_update[target_field] = []
+                
+                elif target_field == "experience_history":
+                    # experience_history: stringified JSON → JSON array
+                    if isinstance(value, str):
+                        try:
+                            exp_list = json.loads(value)
+                            profile_update[target_field] = exp_list if isinstance(exp_list, list) else [exp_list]
+                        except:
+                            profile_update[target_field] = []
+                    elif isinstance(value, list):
+                        profile_update[target_field] = value if value else []
+                    else:
+                        profile_update[target_field] = []
+                
+                elif target_field == "projects":
+                    # projects: stringified JSON → JSON array
+                    if isinstance(value, str):
+                        try:
+                            proj_list = json.loads(value)
+                            profile_update[target_field] = proj_list if isinstance(proj_list, list) else [proj_list]
+                        except:
+                            profile_update[target_field] = []
+                    elif isinstance(value, list):
+                        profile_update[target_field] = value if value else []
+                    else:
+                        profile_update[target_field] = []
+                
+                # Arrays/TEXT[] fields
+                elif target_field in ["skills", "career_interests"]:
+                    # Ensure these are lists of strings
+                    if isinstance(value, str):
+                        # If stringified JSON, parse it
+                        try:
+                            arr = json.loads(value)
+                            profile_update[target_field] = arr if isinstance(arr, list) else [value]
+                        except:
+                            # Otherwise treat as single value
+                            profile_update[target_field] = [value] if value else []
+                    elif isinstance(value, list):
+                        # Convert all items to strings
+                        profile_update[target_field] = [str(v) for v in value if v]
+                    else:
+                        profile_update[target_field] = [str(value)] if value else []
+                
                 else:
+                    # Default: pass through as-is
                     profile_update[target_field] = value
         
         return profile_update

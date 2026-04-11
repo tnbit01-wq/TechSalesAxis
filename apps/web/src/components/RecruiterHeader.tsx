@@ -165,7 +165,7 @@ export default function RecruiterHeader() {
           className="relative p-2 bg-white rounded-2xl border border-slate-200 hover:bg-slate-50 transition-all shadow-sm group active:scale-95"
         >
           <Bell
-            className={`h-5 w-5 ${unreadCount > 0 ? "text-primary animate-pulse" : "text-slate-500"}`}
+            className={`h-5 w-5 ${unreadCount > 0 ? "text-blue-600 animate-pulse" : "text-slate-500"}`}
           />
           {unreadCount > 0 && (
             <span className="absolute top-1.5 right-1.5 h-2 w-2 bg-red-500 rounded-full ring-2 ring-white"></span>
@@ -181,7 +181,7 @@ export default function RecruiterHeader() {
               {unreadCount > 0 && (
                 <button
                   onClick={markAllRead}
-                  className="text-[10px] font-bold text-primary hover:text-primary-dark bg-primary-light px-2.5 py-1 rounded-full flex items-center gap-1 transition-colors"
+                  className="text-[10px] font-bold text-blue-600 hover:text-blue-700 bg-blue-100 px-2.5 py-1 rounded-full flex items-center gap-1 transition-colors"
                 >
                   <Check className="h-3 w-3" />
                   Mark All
@@ -204,7 +204,7 @@ export default function RecruiterHeader() {
                   {notifications.map((notif) => (
                     <div
                       key={notif.id}
-                      className={`p-5 transition-colors hover:bg-slate-50/50 flex gap-4 ${!notif.is_read ? "bg-primary-light/20" : ""}`}
+                      className={`p-5 transition-colors hover:bg-slate-50/50 flex gap-4 ${!notif.is_read ? "bg-blue-100/20" : ""}`}
                       onClick={() => !notif.is_read && markAsRead(notif.id)}
                     >
                       <div
@@ -222,7 +222,7 @@ export default function RecruiterHeader() {
                               ? "text-amber-500"
                               : notif.type === "INTERVIEW_CONFIRMED"
                                 ? "text-emerald-500"
-                                : "text-primary"
+                                : "text-blue-600"
                           }`}
                         />
                       </div>
@@ -234,7 +234,7 @@ export default function RecruiterHeader() {
                             {notif.title}
                           </p>
                           {!notif.is_read && (
-                            <div className="h-2 w-2 bg-primary rounded-full"></div>
+                            <div className="h-2 w-2 bg-blue-600 rounded-full"></div>
                           )}
                         </div>
                         <p className="text-xs text-slate-500 leading-relaxed font-medium mb-2">
@@ -320,7 +320,7 @@ export default function RecruiterHeader() {
                     }}
                     className="w-full flex items-center gap-3 px-4 py-2.5 text-slate-700 hover:bg-slate-50 transition-colors rounded-xl text-sm font-medium"
                   >
-                    <User className="h-4 w-4 text-primary" />
+                    <User className="h-4 w-4 text-blue-600" />
                     View Profile
                   </button>
                   <button
