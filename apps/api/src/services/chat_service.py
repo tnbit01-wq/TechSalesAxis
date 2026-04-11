@@ -1,3 +1,4 @@
+from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
 from src.core.database import SessionLocal
