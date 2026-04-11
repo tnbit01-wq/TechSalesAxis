@@ -99,3 +99,15 @@ pyclamd==0.4.0
 # Environment & Configuration
 python-dotenv==1.2.1
 
+# Database & Core
+sqlalchemy==2.0.38
+alembic==1.14.1
+psycopg2-binary==2.9.10
+pytz==2025.1
+python-slugify==8.0.4
+pandas==2.2.3
+openpyxl==3.1.5
+passlib[bcrypt]==1.7.4
+python-jose[cryptography]==3.5.0
+lxml==6.0.3
+
