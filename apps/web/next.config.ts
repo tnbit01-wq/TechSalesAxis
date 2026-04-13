@@ -13,11 +13,11 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: 'https',
-        hostname: 'talentflow-files.s3.amazonaws.com',
+        hostname: 'techsalesaxis-storage.s3.amazonaws.com',
       },
       {
         protocol: 'https',
-        hostname: 'talentflow-files.s3.ap-southeast-2.amazonaws.com',
+        hostname: 'techsalesaxis-storage.s3.ap-south-1.amazonaws.com',
       },
     ],
   },
