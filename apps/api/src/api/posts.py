@@ -21,7 +21,7 @@ def create_post(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    user_id = user["sub"]
+    user_id = UUID(user["sub"])
     
     new_post = Post(
         user_id=user_id,
@@ -44,7 +44,7 @@ def get_feed(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    current_user_id = user["sub"]
+    current_user_id = UUID(user["sub"])
     
     try:
         # 1. Fetch main feed (most recent 50)
@@ -197,7 +197,7 @@ def update_post(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    user_id = user["sub"]
+    user_id = UUID(user["sub"])
     try:
         post = db.query(Post).filter(Post.id == post_id).first()
         if not post or post.user_id != user_id:
@@ -220,7 +220,7 @@ def delete_post(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    user_id = user["sub"]
+    user_id = UUID(user["sub"])
     try:
         post = db.query(Post).filter(Post.id == post_id).first()
         if not post or post.user_id != user_id:
@@ -241,7 +241,7 @@ def like_post(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    user_id = user["sub"]
+    user_id = UUID(user["sub"])
     try:
         from src.core.models import PostLike
         existing = db.query(PostLike).filter(PostLike.user_id == user_id, PostLike.post_id == post_id).first()
@@ -262,7 +262,7 @@ def unlike_post(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    user_id = user["sub"]
+    user_id = UUID(user["sub"])
     try:
         from src.core.models import PostLike
         db.query(PostLike).filter(PostLike.user_id == user_id, PostLike.post_id == post_id).delete()
@@ -279,7 +279,7 @@ def add_comment(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    user_id = user["sub"]
+    user_id = UUID(user["sub"])
     try:
         from src.core.models import PostComment
         new_comment = PostComment(
@@ -320,7 +320,7 @@ def delete_comment(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    user_id = user["sub"]
+    user_id = UUID(user["sub"])
     try:
         from src.core.models import PostComment
         comment = db.query(PostComment).filter(
@@ -349,7 +349,7 @@ def follow_user(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    follower_id = user["sub"]
+    follower_id = UUID(user["sub"])
     try:
         existing = db.query(Follow).filter(
             Follow.follower_id == follower_id,
@@ -370,7 +370,7 @@ def unfollow_user(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    follower_id = user["sub"]
+    follower_id = UUID(user["sub"])
     try:
         db.query(Follow).filter(
             Follow.follower_id == follower_id,
@@ -388,7 +388,7 @@ def pin_post(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    user_id = user["sub"]
+    user_id = UUID(user["sub"])
     try:
         existing = db.query(UserPinnedPost).filter(
             UserPinnedPost.user_id == user_id,
@@ -409,7 +409,7 @@ def unpin_post(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    user_id = user["sub"]
+    user_id = UUID(user["sub"])
     try:
         db.query(UserPinnedPost).filter(
             UserPinnedPost.user_id == user_id,

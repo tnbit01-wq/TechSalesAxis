@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 # CONFIGURATION
 # ============================================================================
 
-AWS_REGION = os.getenv('AWS_REGION', 'us-east-1')
+AWS_REGION = os.getenv('MY_AWS_REGION', 'ap-south-1')
 AWS_SES_SENDER_EMAIL = os.getenv(
     'AWS_SES_SENDER_EMAIL',
     'noreply@techsalesaxis.ai'

@@ -16,7 +16,7 @@ S3_BUCKETS = {
     "id-proofs": os.getenv("S3_BUCKET_ID_PROOFS", "techsalesaxis-storage"),
     "company-assets": os.getenv("S3_BUCKET_COMPANY_ASSETS", "techsalesaxis-storage"),
     "posts": os.getenv("S3_BUCKET_POSTS", "techsalesaxis-storage"),
-    "uploads": os.getenv("S3_BUCKET_NAME", "techsalesaxis-storage") # Fallback
+    "uploads": os.getenv("MY_S3_BUCKET_NAME", "techsalesaxis-storage") # Fallback
 }
 
 async def _upload_to_s3(file: UploadFile, file_path: str, bucket_key: str = "uploads"):
@@ -46,16 +46,26 @@ async def _upload_to_s3(file: UploadFile, file_path: str, bucket_key: str = "upl
     if folder_prefix and not file_path.startswith(folder_prefix):
         file_path = f"{folder_prefix}{file_path}"
 
-    print(f"DEBUG S3: Uploading to {target_bucket} with key: {file_path}")
+    print(f"[S3 UPLOAD] Target bucket: {target_bucket}, Key: {file_path}, File size: {len(content)} bytes")
 
-    uploaded = S3Service.upload_file(
-        content,
-        file_path,
-        file.content_type or "application/octet-stream",
-        bucket_name=target_bucket
-    )
-    if not uploaded:
-        raise HTTPException(status_code=500, detail="Failed to upload file")
+    try:
+        uploaded = S3Service.upload_file(
+            content,
+            file_path,
+            file.content_type or "application/octet-stream",
+            bucket_name=target_bucket
+        )
+        
+        if not uploaded:
+            print(f"[S3 UPLOAD] ❌ Upload returned False for {file_path}")
+            raise HTTPException(status_code=500, detail="Failed to upload file to S3")
+        
+        print(f"[S3 UPLOAD] ✅ Successfully uploaded to S3: {file_path}")
+    except Exception as e:
+        print(f"[S3 UPLOAD] ❌ S3Service error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise
     
     # Return path MUST match the S3 Key exactly
     return {
@@ -109,10 +119,22 @@ async def upload_resume(
     file: UploadFile = File(...),
     user: dict = Depends(get_current_user),
 ):
-    user_id = user["sub"]
-    # Path relative to folder
-    file_path = f"{user_id}/{uuid.uuid4()}-{file.filename}"
-    return await _upload_to_s3(file, file_path, bucket_key="resumes")
+    try:
+        user_id = user["sub"]
+        # Path relative to folder
+        file_path = f"{user_id}/{uuid.uuid4()}-{file.filename}"
+        print(f"[RESUME UPLOAD] Starting upload for user {user_id}, file: {file.filename}")
+        result = await _upload_to_s3(file, file_path, bucket_key="resumes")
+        print(f"[RESUME UPLOAD] ✅ Success: {result}")
+        return result
+    except HTTPException as e:
+        print(f"[RESUME UPLOAD] ❌ HTTP Exception: {e.detail}")
+        raise e
+    except Exception as e:
+        print(f"[RESUME UPLOAD] ❌ Unexpected error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Resume upload failed: {str(e)}")
 
 @router.post("/upload")
 async def upload_generic(

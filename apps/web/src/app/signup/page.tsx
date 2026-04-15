@@ -23,7 +23,7 @@ type SignupState =
   | "INITIAL"
   | "AWAITING_EMAIL"
   | "AWAITING_OTP"
-  | "AWAITING_PASSWORD"
+  | "AWAITING_PASSWORD_SET"
   | "COMPLETED";
 
 function SignupForm() {
@@ -37,6 +37,7 @@ function SignupForm() {
   const [userName, setUserName] = useState("");
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [customPassword, setCustomPassword] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const initialized = useRef(false);
 
@@ -184,31 +185,51 @@ function SignupForm() {
         try {
           const authRes = await awsAuth.verifyOtp(email, workingInput);
           addMessage(
-            "Email verified! Your account is ready. Taking you to the next step...",
+            "Email verified! Now let's set a secure password for your account. Please enter a password (at least 8 characters).",
+            "bot",
+          );
+          setState("AWAITING_PASSWORD_SET");
+        } catch (err: any) {
+          addMessage(
+            "That code didn't work. Please try again or check your email.",
+            "bot",
+          );
+        }
+      } else if (state === "AWAITING_PASSWORD_SET") {
+        const password = workingInput.trim();
+        if (password.length < 8) {
+          addMessage(
+            "Password must be at least 8 characters long. Please try again.",
+            "bot",
+          );
+          setIsLoading(false);
+          return;
+        }
+
+        try {
+          // Update user's password in the backend
+          const token = awsAuth.getToken();
+          if (token) {
+            await apiClient.post(
+              "/auth/update-password",
+              { new_password: password },
+              token,
+            );
+          }
+
+          addMessage(
+            "Perfect! Your password has been set. Redirecting to login...",
             "bot",
           );
           setState("COMPLETED");
 
-          // Initialize profile in backend after verification
-          setTimeout(async () => {
-            try {
-              const res = await apiClient.post(
-                "/auth/initialize",
-                {
-                  role,
-                  display_name: userName,
-                },
-                authRes.access_token,
-              );
-              router.replace(res.next_step);
-            } catch (err: any) {
-              console.error("Initialization Error:", err);
-              router.replace("/onboarding");
-            }
+          // After password set, redirect to login
+          setTimeout(() => {
+            router.replace("/login");
           }, 1500);
         } catch (err: any) {
           addMessage(
-            "That code didn't work. Please try again or check your email.",
+            `Failed to set password: ${err.message || "Please try again."}`,
             "bot",
           );
         }
@@ -271,8 +292,8 @@ function SignupForm() {
             <div
               className={`max-w-[80%] rounded-2xl px-4 py-3 shadow-sm ${
                 msg.sender === "user"
-                  ? "bg-primary text-white rounded-tr-none"
-                  : "bg-white text-slate-800 border border-slate-100 rounded-tl-none"
+                  ? "bg-blue-600 text-white rounded-tr-none"
+                  : "bg-white text-slate-800 border border-slate-200 rounded-tl-none"
               }`}
             >
               <p className="text-sm leading-relaxed">{msg.text}</p>

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from src.core.auth_utils import get_password_hash, verify_password, create_access_token
 from src.services.email_service import send_otp_email, generate_otp
 from pydantic import BaseModel, EmailStr
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import uuid
 from fastapi.responses import RedirectResponse
 
@@ -33,6 +33,9 @@ class UpdatePasswordRequest(BaseModel):
     old_password: str
     new_password: str
 
+class SetPasswordRequest(BaseModel):
+    new_password: str
+
 class ForgotPasswordRequest(BaseModel):
     email: str
 
@@ -53,7 +56,7 @@ async def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(
     # Generate reset token (using a UUID for simplicity, or we could reuse OTP logic)
     token = str(uuid.uuid4())
     user.reset_token = token
-    user.reset_token_expires_at = datetime.utcnow() + timedelta(hours=1)
+    user.reset_token_expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
     db.commit()
 
     # Create reset link
@@ -122,7 +125,7 @@ async def signup(request: SignupRequest):
             hashed_password=get_password_hash(request.password),
             is_verified=False,
             otp_code=otp,
-            otp_expires_at=datetime.utcnow() + timedelta(minutes=10)
+            otp_expires_at=datetime.now(timezone.utc) + timedelta(minutes=10)
         )
         db.add(new_user)
         db.commit()
@@ -148,11 +151,13 @@ async def verify_otp(request: OTPVerifyRequest):
         if user.otp_code != request.otp:
             raise HTTPException(status_code=400, detail="Invalid verification code")
 
-        if datetime.utcnow() > (user.otp_expires_at or datetime.min):
+        # Fix timezone comparison: use timezone-aware UTC datetime
+        now_utc = datetime.now(timezone.utc)
+        if user.otp_expires_at and now_utc > user.otp_expires_at:
             raise HTTPException(status_code=400, detail="Verification code expired")
 
         user.is_verified = True
-        user.otp_code = None # Clear OTP
+        user.otp_code = None  # Clear OTP
         db.commit()
 
         access_token = create_access_token(data={"sub": str(user.id), "email": user.email, "role": user.role})
@@ -166,10 +171,17 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
     AWS Login: Verify password and issue JWT token.
     """
     user = db.query(User).filter(User.email == request.email).first()
-    if not user or not verify_password(request.password, user.hashed_password):
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
+            detail="You do not have an account. Please sign up first.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    if not verify_password(request.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect password. Please check your credentials and try again.",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
@@ -177,7 +189,7 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
         # Resend OTP if not verified
         otp = generate_otp()
         user.otp_code = otp
-        user.otp_expires_at = datetime.utcnow() + timedelta(minutes=10)
+        user.otp_expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
         db.commit()
         send_otp_email(user.email, otp)
         return {"status": "unverified", "message": "Account not verified. New OTP sent."}
@@ -186,6 +198,24 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
         data={"sub": str(user.id), "email": user.email, "role": user.role}
     )
     return {"access_token": access_token, "token_type": "bearer"}
+
+@router.post("/update-password")
+async def update_password(request: SetPasswordRequest, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    """
+    Update user password after OTP verification during signup.
+    """
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == current_user["sub"]).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        user.hashed_password = get_password_hash(request.new_password)
+        db.commit()
+        
+        return {"status": "success", "message": "Password updated successfully"}
+    finally:
+        db.close()
 
 @router.post("/validate-email")
 def validate_email(request: EmailValidationRequest):

@@ -1,10 +1,6 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
 
-const API_FALLBACK_URLS = [
-  API_URL,
-  "http://127.0.0.1:8000",
-  "http://localhost:8000",
-].filter((value, index, arr) => arr.indexOf(value) === index);
+const API_FALLBACK_URLS = [API_URL];
 
 type FetchOptions = {
   method?: string;
@@ -106,9 +102,16 @@ export const apiClient = {
       });
 
       return response.json();
-    } catch (err) {
+    } catch (err: any) {
       const errorMessage = err instanceof Error ? err.message : "Unknown error";
-      console.error(`API PATCH Error [${url}]:`, errorMessage);
+      
+      // Suppress authorization errors from console
+      const isAuthError = err.status === 403 || (errorMessage && errorMessage.includes("authorized"));
+      
+      if (!isAuthError) {
+        console.error(`API PATCH Error [${url}]:`, errorMessage);
+      }
+      
       throw err;
     }
   },
@@ -156,9 +159,16 @@ export const apiClient = {
       });
 
       return response.json();
-    } catch (err) {
+    } catch (err: any) {
       const errorMessage = err instanceof Error ? err.message : "Unknown error";
-      console.error(`API DELETE Error [${url}]:`, errorMessage);
+      
+      // Suppress authorization errors from console (403, ownership validation)
+      const isAuthError = err.status === 403 || (errorMessage && errorMessage.includes("authorized"));
+      
+      if (!isAuthError) {
+        console.error(`API DELETE Error [${url}]:`, errorMessage);
+      }
+      
       throw err;
     }
   },

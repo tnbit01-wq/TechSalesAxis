@@ -2,8 +2,7 @@ from typing import Dict, Any, List
 from sqlalchemy.orm import Session
 from src.core.database import SessionLocal
 from src.core.models import CandidateProfile, CareerGPS, CareerMilestone
-from google import genai
-from src.core.config import GOOGLE_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY
+from src.core.config import OPENAI_API_KEY
 import json
 import httpx
 import asyncio
@@ -68,7 +67,7 @@ class CareerGPSService:
         prompt = CareerGPSService.get_prompt(profile.__dict__, candidate_info)
         
         data = None
-        # 1. Primary OpenAI Fallback
+        # Call OpenAI GPT-4o
         if OPENAI_API_KEY:
             try:
                 async with httpx.AsyncClient(timeout=45.0) as client:
@@ -86,22 +85,7 @@ class CareerGPSService:
                         data = json.loads(content)
             except Exception as e:
                 print(f"DEBUG: GPS OpenAI Failed: {e}")
-
-        # 2. Secondary Gemini (Back up)
-        if not data and GOOGLE_API_KEY:
-            try:
-                ai_client = genai.Client(api_key=GOOGLE_API_KEY)
-                response = await asyncio.to_thread(
-                    ai_client.models.generate_content,
-                    model="gemini-2.0-flash",
-                    contents=prompt
-                )
-                text = response.text.strip()
-                if "```json" in text:
-                    text = text.split("```json")[-1].split("```")[0].strip()
-                data = json.loads(text)
-            except Exception as e:
-                print(f"DEBUG: GPS Gemini Failed: {e}")
+                raise Exception("AI generation failed to produce valid career data. Please try again.")
 
         if not data:
              raise Exception("AI generation failed to produce valid career data. Please try again.")

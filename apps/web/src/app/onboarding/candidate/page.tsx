@@ -2626,7 +2626,7 @@ function OnboardingContent() {
                   color: "#374151",  // Explicit dark gray fallback
                   backgroundColor: "#f8fafc"  // Explicit light gray fallback
                 } : msg.sender === "user" ? {
-                  color: "#ffffff"  // Explicit white for user messages
+                  color: "#374151"  // Explicit white for user messages
                 } : {}}
               >
                 {msg.text}
@@ -2887,4 +2887,3 @@ export default function CandidateOnboarding() {
     </Suspense>
   );
 }
-

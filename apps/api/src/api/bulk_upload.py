@@ -38,7 +38,7 @@ S3_BUCKETS = {
     "bulk-resumes": "techsalesaxis-storage", # Explicitly use the requested bucket
     "id-proofs": os.getenv("S3_BUCKET_ID_PROOFS", "techsalesaxis-storage"),
     "company-assets": os.getenv("S3_BUCKET_COMPANY_ASSETS", "techsalesaxis-storage"),
-    "uploads": os.getenv("S3_BUCKET_NAME", "techsalesaxis-storage") 
+    "uploads": os.getenv("MY_S3_BUCKET_NAME", "techsalesaxis-storage") 
 }
 
 # Subfolder for bulk resumes as requested

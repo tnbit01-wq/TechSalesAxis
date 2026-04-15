@@ -121,7 +121,7 @@ export const BulkUploadInitialize: React.FC = () => {
 interface UploadProgress {
   fileId: string;
   filename: string;
-  status: 'uploading' | 'queued' | 'processing' | 'completed' | 'failed';
+  status: 'uploading' | 'processing' | 'completed' | 'failed';
   progress: number; // 0-100
   error?: string;
 }
@@ -141,12 +141,10 @@ export const BulkUploadFileUpload: React.FC<{ bulkUploadId: string; onUploadComp
 
   const handleFiles = async (files: FileList) => {
     setUploading(true);
-    
-    // Convert FileList to Array to process sequentially
-    const fileArray = Array.from(files);
 
-    for (const [index, file] of fileArray.entries()) {
-      const fileId = `${Date.now()}-${index}`;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const fileId = `${Date.now()}-${i}`;
 
       // Add to progress tracking
       setUploadProgress((prev) => [
@@ -157,14 +155,14 @@ export const BulkUploadFileUpload: React.FC<{ bulkUploadId: string; onUploadComp
       // Upload file
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('upload_token', 'bulk_upload_v1'); 
+      formData.append('upload_token', 'token123'); // Get actual token
 
       try {
         const xhr = new XMLHttpRequest();
 
         xhr.upload.addEventListener('progress', (e) => {
           if (e.lengthComputable) {
-            const progress = Math.round((e.loaded / e.total) * 100);
+            const progress = (e.loaded / e.total) * 100;
             setUploadProgress((prev) =>
               prev.map((p) => (p.fileId === fileId ? { ...p, progress } : p))
             );
@@ -172,27 +170,20 @@ export const BulkUploadFileUpload: React.FC<{ bulkUploadId: string; onUploadComp
         });
 
         xhr.addEventListener('load', () => {
-          if (xhr.status === 200 || xhr.status === 201) {
-            const response = JSON.parse(xhr.responseText);
+          if (xhr.status === 200) {
             setUploadProgress((prev) =>
               prev.map((p) =>
                 p.fileId === fileId
-                  ? { ...p, status: response.status || 'queued', progress: 100 }
+                  ? { ...p, status: 'processing', progress: 100 }
                   : p
               )
             );
             setAllUploadedCount((c) => c + 1);
           } else {
-            let errorMessage = 'Upload failed';
-            try {
-               const errData = JSON.parse(xhr.responseText);
-               errorMessage = errData.detail || errorMessage;
-            } catch {}
-            
             setUploadProgress((prev) =>
               prev.map((p) =>
                 p.fileId === fileId
-                  ? { ...p, status: 'failed', error: errorMessage }
+                  ? { ...p, status: 'failed', error: 'Upload failed' }
                   : p
               )
             );
@@ -203,13 +194,13 @@ export const BulkUploadFileUpload: React.FC<{ bulkUploadId: string; onUploadComp
           setUploadProgress((prev) =>
             prev.map((p) =>
               p.fileId === fileId
-                ? { ...p, status: 'failed', error: 'Network Connection Error' }
+                ? { ...p, status: 'failed', error: 'Network error' }
                 : p
             )
           );
         });
 
-        const token = typeof window !== 'undefined' ? localStorage.getItem('tf_token') : '';
+        const token = typeof window !== 'undefined' ? localStorage.getItem('tf_token') : null;
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8005';
         xhr.open('POST', `${apiUrl}/api/v1/bulk-upload/${bulkUploadId}/upload`);
         
@@ -223,7 +214,7 @@ export const BulkUploadFileUpload: React.FC<{ bulkUploadId: string; onUploadComp
         setUploadProgress((prev) =>
           prev.map((p) =>
             p.fileId === fileId
-              ? { ...p, status: 'failed', error: 'Internal Error' }
+              ? { ...p, status: 'failed', error: 'Upload error' }
               : p
           )
         );
@@ -877,3 +868,11 @@ const BulkUploadStatusDashboardWrapper: React.FC<{
 };
 
 export default BulkUploadAdmin;
+
+// Also export named components for direct usage if needed
+export {
+  BulkUploadInitialize,
+  BulkUploadFileUpload,
+  BulkUploadDuplicateReview,
+  BulkUploadStatusDashboard,
+};

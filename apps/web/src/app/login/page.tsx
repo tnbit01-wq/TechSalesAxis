@@ -179,11 +179,11 @@ function LoginForm() {
             }
           }
         } catch (err: any) {
-          addMessage(
-            `Login failed: ${err.message}. Please check your credentials and try again.`,
-            "bot",
-          );
-          addMessage("Lost your password? Just type 'forgot password' or tell me your email again.", "bot");
+          const errorMessage = err.message || "Login failed. Please try again.";
+          addMessage(errorMessage, "bot");
+          if (!errorMessage.includes("do not have an account")) {
+            addMessage("Lost your password? Just type 'forgot password' or tell me your email again.", "bot");
+          }
           setState("AWAITING_EMAIL");
         }
       }
@@ -252,8 +252,8 @@ function LoginForm() {
             <div
               className={`max-w-[80%] rounded-2xl px-4 py-3 shadow-sm ${
                 msg.sender === "user"
-                  ? "bg-primary text-white rounded-tr-none"
-                  : "bg-white text-slate-800 border border-slate-100 rounded-tl-none"
+                  ? "bg-blue-600 text-white rounded-tr-none"
+                  : "bg-white text-slate-800 border border-slate-200 rounded-tl-none"
               }`}
             >
               <p className="text-sm leading-relaxed">{msg.text}</p>
@@ -262,8 +262,8 @@ function LoginForm() {
         ))}
         {isLoading && (
           <div className="flex justify-start">
-            <div className="bg-white border border-slate-100 rounded-2xl rounded-tl-none px-4 py-3 shadow-sm">
-              <div className="flex gap-1 animate-pulse">...</div>
+            <div className="bg-white border border-slate-200 rounded-2xl rounded-tl-none px-4 py-3 shadow-sm">
+              <div className="flex gap-1 animate-pulse text-slate-600">...</div>
             </div>
           </div>
         )}

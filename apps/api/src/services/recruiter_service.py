@@ -16,8 +16,7 @@ from bs4 import BeautifulSoup
 from typing import List, Dict, Optional, Any
 from datetime import datetime
 import re
-from google import genai
-from src.core.config import GOOGLE_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY
+from src.core.config import OPENAI_API_KEY
 import uuid
 
 # --- Utility for City Tiering ---
@@ -34,90 +33,40 @@ def getCityTier(location: str | None) -> str:
 class RecruiterService:
     def __init__(self):
         self._client = httpx.AsyncClient(timeout=30.0)
-        self.ai_client = genai.Client(api_key=GOOGLE_API_KEY)
         self.openai_key = OPENAI_API_KEY
-        self.model_name = 'gemini-2.0-flash'
 
     async def _call_ai(self, prompt: str, system_message: str = "You are a helpful recruitment assistant.") -> str:
-        """
-        Unified High-Precision AI Caller (OpenAI Primary + Gemini Secondary + OpenRouter Fallback).
-        """
-        # 1. Primary OpenAI Call
-        if self.openai_key:
-            try:
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    response = await client.post(
-                        "https://api.openai.com/v1/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {self.openai_key}",
-                            "Content-Type": "application/json",
-                        },
-                        json={
-                            "model": "gpt-4o",
-                            "messages": [
-                                {"role": "system", "content": system_message},
-                                {"role": "user", "content": prompt}
-                            ],
-                            "temperature": 0.7
-                        }
-                    )
-                    if response.status_code == 200:
-                        data = response.json()
-                        return data['choices'][0]['message']['content'].strip()
-                    else:
-                        print(f"DEBUG: Recruiter OpenAI Failed ({response.status_code}): {response.text}")
-            except Exception as oai_e:
-                print(f"DEBUG: Recruiter OpenAI Exception: {str(oai_e)}")
+        """Call OpenAI GPT-4o for recruiter operations."""
+        if not self.openai_key:
+            print("DEBUG: No OpenAI API key configured")
+            return ""
 
-        # 2. Secondary Gemini Call
         try:
-            import google.generativeai as genai
-            from google.generativeai import types
-            
-            # Use synchronous execute in thread to avoid event loop issues with some versions of the SDK
-            def generate():
-                return self.ai_client.models.generate_content(
-                    model=self.model_name,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        system_instruction=system_message,
-                        temperature=0.7,
-                    )
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self.openai_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": "gpt-4o",
+                        "messages": [
+                            {"role": "system", "content": system_message},
+                            {"role": "user", "content": prompt}
+                        ],
+                        "temperature": 0.7
+                    }
                 )
-            
-            response = await asyncio.to_thread(generate)
-            if response and response.text:
-                return response.text.strip()
-        except Exception as e:
-            print(f"DEBUG: Recruiter Gemini Secondary Failed: {str(e)}. Falling back to OpenRouter...")
-
-        # 3. Tertiary OpenRouter Call (Async)
-        if OPENROUTER_API_KEY:
-            try:
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    response = await client.post(
-                        "https://openrouter.ai/api/v1/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                            "Content-Type": "application/json",
-                            "X-Title": "TechSales Axis"
-                        },
-                        json={
-                            "model": "openai/gpt-4o-mini",
-                            "messages": [
-                                {"role": "system", "content": system_message},
-                                {"role": "user", "content": prompt}
-                            ],
-                            "temperature": 0.4
-                        }
-                    )
-                    if response.status_code == 200:
-                        data = response.json()
-                        return data['choices'][0]['message']['content'].strip()
-            except Exception as or_e:
-                print(f"DEBUG: Recruiter OpenRouter Critical Failure: {str(or_e)}")
-        
-        return ""
+                if response.status_code == 200:
+                    data = response.json()
+                    return data['choices'][0]['message']['content'].strip()
+                else:
+                    print(f"DEBUG: OpenAI Failed ({response.status_code}): {response.text}")
+                    return ""
+        except Exception as oai_e:
+            print(f"DEBUG: OpenAI Exception: {str(oai_e)}")
+            return ""
 
     async def _call_ai_json(self, prompt: str, system_message: str = "You are a helpful recruitment assistant.") -> Dict[str, Any]:
         res_text = await self._call_ai(prompt, system_message)
@@ -379,9 +328,10 @@ Respond with ONLY the domain in format: domain.com (no https://, no www., just t
                 return None
 
             # Create default profile if not exists
+            # Start at INITIAL so frontend can trigger EMAIL_ANALYSIS
             new_profile = RecruiterProfile(
                 user_id=user_id,
-                onboarding_step="REGISTRATION",
+                onboarding_step="INITIAL",
                 assessment_status="not_started"
             )
             db.add(new_profile)
@@ -574,21 +524,41 @@ Respond with ONLY the domain in format: domain.com (no https://, no www., just t
             db.close()
 
     async def get_assessment_questions(self, user_id: str):
+        """
+        Get 5 assessment questions - one randomly selected from each of the 5 categories.
+        Ensures no category repetition for each recruiter.
+        """
         db = SessionLocal()
         try:
             from src.core.models import RecruiterAssessmentQuestion
             import random
-            questions = db.query(RecruiterAssessmentQuestion).all()
-            if not questions: return []
-            selected = random.sample(questions, min(len(questions), 5))
-            return [
-                {
-                    "id": str(q.id),
-                    "category": q.category,
-                    "driver": q.driver,
-                    "question_text": q.question_text
-                } for q in selected
-            ]
+            
+            # Fetch all questions
+            all_questions = db.query(RecruiterAssessmentQuestion).all()
+            if not all_questions:
+                return []
+            
+            # Group questions by category
+            questions_by_category = {}
+            for q in all_questions:
+                if q.category not in questions_by_category:
+                    questions_by_category[q.category] = []
+                questions_by_category[q.category].append(q)
+            
+            # Select one random question from each category
+            selected_questions = []
+            for category, questions in questions_by_category.items():
+                if questions:
+                    selected_question = random.choice(questions)
+                    selected_questions.append({
+                        "id": str(selected_question.id),
+                        "category": selected_question.category,
+                        "driver": selected_question.driver,
+                        "question_text": selected_question.question_text
+                    })
+            
+            # Return the selected questions (should be 5 if all 5 categories exist)
+            return selected_questions
         finally:
             db.close()
 

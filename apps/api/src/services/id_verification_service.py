@@ -4,9 +4,8 @@ import json
 import httpx
 import boto3
 from botocore.exceptions import ClientError
-from google import genai
 import base64
-from src.core.config import S3_BUCKET_NAME, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, OPENAI_API_KEY, GOOGLE_API_KEY
+from src.core.config import S3_BUCKET_NAME, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, OPENAI_API_KEY
 
 class IDVerificationService:
     @staticmethod
@@ -85,62 +84,11 @@ class IDVerificationService:
                 except Exception as oai_err:
                     print(f"DEBUG: OpenAI Vision Error: {oai_err}")
 
-            # 3. Fallback to Gemini Vision
-            google_key = GOOGLE_API_KEY # Or GROQ/OpenRouter for OCR
-            if google_key:
-                try:
-                    client = genai.Client(api_key=google_key)
-                    # Use Gemini for Vision
-                    model_name = 'gemini-2.0-flash'
-                    
-                    # Construct part for Gemini
-                    content = [
-                        "Analyze this image and determine if it is a valid government-issued identity proof (like a Passport, Driver's License, Aadhaar Card, PAN Card, or National ID).",
-                        "Respond ONLY with a JSON object in this format: "
-                        "{ \"verified\": boolean, \"document_type\": string, \"reason\": string, \"confidence_score\": number }",
-                        "If it is not a clear ID document (e.g., it's a random image, a document with no photo/name), set verified to false."
-                    ]
-                    
-                    # Image processing for Gemini
-                    # Detect mime type from extension
-                    import mimetypes
-                    mime_type, _ = mimetypes.guess_type(id_path)
-                    if not mime_type or not mime_type.startswith("image/"):
-                        # Gemini only accepts images or PDFs for this Vision model.
-                        # For now, let's assume image/jpeg for common use but try to be flexible.
-                        mime_type = "image/jpeg"
-                    
-                    image_part = {
-                      "mime_type": mime_type,
-                      "data": file_res
-                    }
-                    
-                    try:
-                        response = client.models.generate_content(model=model_name, contents=[*content, image_part])
-                        text_response = response.text.replace("```json", "").replace("```", "").strip()
-                        result = json.loads(text_response)
-                        return result
-                    except Exception as gen_err:
-                        print(f"DEBUG: Gemini Vision Generation Error: {gen_err}")
-                        raise gen_err
-                except Exception as vision_err:
-                    print(f"VISION AI ERROR (Probably Quota): {vision_err}")
-                    # If it's a quota error (429), we continue to fallback 
-                    if not ("429" in str(vision_err) or "RESOURCE_EXHAUSTED" in str(vision_err)):
-                        # If it's NOT a quota error, return manual review
-                        return {
-                            "verified": True, 
-                            "document_type": "Manual Review (Error)", 
-                            "reason": f"AI Error: {str(vision_err)}",
-                            "confidence_score": 0.5
-                        }
-            
-            # 4. Fallback: OCR-based keyword check (Simplified logic if Vision AI fails or no key)
-            # This is a basic safety net
+            # Fallback: Manual review pending if OpenAI fails
             return {
                 "verified": True, 
                 "document_type": "Manual Review Pending", 
-                "reason": "Vision AI bypassed. Document type requires manual check.",
+                "reason": "Vision AI verification pending. Document type requires manual check.",
                 "confidence_score": 0.5
             }
 

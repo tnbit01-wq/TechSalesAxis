@@ -210,7 +210,7 @@ def parse_resume_file(self, file_id: str, file_path: str, file_name: str, bucket
         
         # 1. Download from S3 to temp local file
         s3 = S3Service.get_client()
-        target_bucket = bucket_name or os.getenv("S3_BUCKET_NAME", "talentflow-files")
+        target_bucket = bucket_name or os.getenv("MY_S3_BUCKET_NAME", "techsalesaxis-storage")
         
         # Use tempfile to handle large files safely
         suffix = os.path.splitext(file_name)[1]

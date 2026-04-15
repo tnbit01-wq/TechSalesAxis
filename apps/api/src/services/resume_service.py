@@ -10,8 +10,7 @@ from sqlalchemy import func
 import json
 import os
 import re
-from google import genai
-from src.core.config import OPENAI_API_KEY, GOOGLE_API_KEY, OPENROUTER_API_KEY
+from src.core.config import OPENAI_API_KEY, OPENROUTER_API_KEY
 from src.services.comprehensive_extractor import ComprehensiveResumeExtractor
 from src.services.enhanced_resume_extractor import EnhancedResumeExtractor, CandidateProfileMapper
 from typing import Optional
@@ -421,15 +420,12 @@ def _postprocess_parsed_data(parsed_data: dict, raw_text: str) -> dict:
 
 class ResumeService:
     @staticmethod
-    async def parse_resume(user_id: str, resume_path: str, google_key: str = None):
+    async def parse_resume(user_id: str, resume_path: str):
         import time
         overall_start = time.time()
         
         # 0. Check for OpenAI Key (Primary)
         openai_key = OPENAI_API_KEY
-        # If google_key passed as param is None, use config
-        if not google_key:
-            google_key = GOOGLE_API_KEY
 
         # 0.5 VALIDATE AWS CREDENTIALS ARE CONFIGURED
         if not AWS_ACCESS_KEY_ID or not AWS_SECRET_ACCESS_KEY:
@@ -765,94 +761,7 @@ Resume text:
                 traceback.print_exc()
                 print(f"{'='*80}\n")
 
-        # 5. Fallback Path: Gemini 
-        print(f"\n{'='*80}")
-        print(f"[FALLBACK PARSING] Trying Google Gemini...")
-        if google_key:
-            print(f"[FALLBACK PARSING] Google API KEY: YES (length: {len(google_key)})")
-            try:
-                # Create async client for Gemini
-                client = genai.AsyncClient(api_key=google_key)
-                model_name = 'models/gemini-2.0-flash'
-                
-                gemini_prompt = f"""Extract resume data as valid JSON. Return ONLY the JSON object with these fields:
-{{
-  "full_name": "string",
-  "email": "string or null",
-  "phone": "string or null",
-  "location": "string or null",
-  "location_tier": "metro|tier1|tier2|tier3|rural",
-  "current_role": "string or null",
-  "years_of_experience": "integer or null",
-  "experience_band": "fresher|mid|senior|leadership",
-  "primary_industry_focus": "string or null",
-  "job_type": "remote|hybrid|onsite",
-  "current_employment_status": "Employed|Unemployed|Student",
-  "bio": "string (max 500 chars or null)",
-  "target_role": "string or null",
-  "graduation_status": "graduated|pursuing",
-  "graduation_year": "integer or null",
-  "qualification_held": "string or null",
-  "major_achievements": "string or null",
-  "key_responsibilities": "string or null",
-  "long_term_goal": "string or null",
-  "skills": ["string"],
-  "career_interests": ["string"],
-  "certifications": ["string"],
-  "education_history": [{{"degree": "string", "institution": "string", "year": "integer or null"}}],
-  "experience_history": [{{"position": "string", "company": "string", "start_date": "string", "end_date": "string"}}],
-  "projects": [{{"name": "string", "description": "string"}}],
-  "career_gap_report": {{"gaps_found": boolean, "gap_details": [], "summary": "string or null"}}
-}}
-
-Resume text:
-{text[:14000]}"""
-                
-                response = await client.models.generate_content(model=model_name, contents=gemini_prompt)
-                raw_content = response.text.strip()
-                
-                # Try to extract JSON if wrapped in markdown code blocks
-                if "```json" in raw_content:
-                    raw_content = raw_content.split("```json")[1].split("```")[0].strip()
-                elif "```" in raw_content:
-                    raw_content = raw_content.split("```")[1].split("```")[0].strip()
-                
-                parsed_data = json.loads(raw_content)
-                
-                print(f"[FALLBACK PARSING] ✅ Gemini parsing succeeded")
-                parsed_data = _postprocess_parsed_data(parsed_data, text)
-                await ResumeService._store_data(user_id, text, parsed_data)
-                print(f"{'='*80}\n")
-                return parsed_data
-            except Exception as e:
-                print(f"[FALLBACK PARSING] ❌ Gemini failed: {type(e).__name__}: {str(e)}")
-                
-                # Simple recovery attempt
-                try:
-                    print(f"[FALLBACK PARSING] Attempting minimal recovery...")
-                    recovery_prompt = f"Extract as JSON: name, email, phone from: {text[:2000]}"
-                    loop = asyncio.get_event_loop()
-                    
-                    async def gemini_recover():
-                        client = genai.AsyncClient(api_key=google_key)
-                        resp = await client.models.generate_content(
-                            model='models/gemini-2.0-flash',
-                            contents=recovery_prompt
-                        )
-                        return resp.text
-                    
-                    rec_text = await gemini_recover()
-                    rec_json = json.loads(rec_text.strip())
-                    rec_json = _postprocess_parsed_data(rec_json, text)
-                    await ResumeService._store_data(user_id, text, rec_json)
-                    print(f"[FALLBACK PARSING] ✅ Minimal recovery succeeded")
-                    print(f"{'='*80}\n")
-                    return rec_json
-                except:
-                    print(f"[FALLBACK PARSING] ❌ Recovery also failed")
-                    print(f"{'='*80}\n")
-
-        # 6. Final Fallback: Comprehensive NLP-based extraction when all AI APIs fail
+        # 5. Final Fallback: Comprehensive NLP-based extraction when all AI APIs fail
         print(f"[FALLBACK PARSING] All AI APIs failed. Using NLP extraction...")
         print(f"{'='*80}\n")
         parsed_data = ComprehensiveResumeExtractor.extract_all(text)
@@ -1065,7 +974,7 @@ Resume text:
             db.close()
     
     @staticmethod
-    def parse_resume_sync(user_id: str, resume_path: str, google_key: str = None):
+    def parse_resume_sync(user_id: str, resume_path: str):
         """
         Synchronous wrapper for parse_resume() for use with BackgroundTasks
         Handles async execution safely in a thread pool context
@@ -1094,13 +1003,13 @@ Resume text:
                 # If loop already running, schedule as task (shouldn't happen in BackgroundTasks)
                 with concurrent.futures.ThreadPoolExecutor() as executor:
                     future = executor.submit(asyncio.run, 
-                        ResumeService.parse_resume(user_id, resume_path, google_key))
+                        ResumeService.parse_resume(user_id, resume_path))
                     result = future.result()
             else:
                 print(f"[RESUME PARSING] Event loop is not running, using run_until_complete")
                 # Normal case: loop exists but not running, use run_until_complete
                 result = loop.run_until_complete(
-                    ResumeService.parse_resume(user_id, resume_path, google_key)
+                    ResumeService.parse_resume(user_id, resume_path)
                 )
             
             print(f"\n[RESUME PARSING] ✅ Resume parsing completed for user {user_id}")

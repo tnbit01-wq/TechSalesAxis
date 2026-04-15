@@ -10,12 +10,207 @@ import logging
 from datetime import datetime
 
 from src.core.database import SessionLocal, get_db
-from src.core.models import CandidateProfile
+from src.core.models import CandidateProfile, ConversationalOnboardingSession
 from src.services.ai_intelligence_service import get_ai_intelligence_service
 from src.core.auth import verify_token
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/intelligence", tags=["AI Intelligence"])
+
+# ============================================================================
+# DATA TYPE NORMALIZATION
+# ============================================================================
+
+def normalize_extracted_data(extracted: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Convert AI-extracted string values to proper Python/SQL types
+    AI returns strings like "true", "false", "not_mentioned"
+    But database expects proper booleans/integers
+    
+    Args:
+        extracted: Raw extraction from AI
+        
+    Returns:
+        Normalized extraction with proper types
+    """
+    normalized = extracted.copy()
+    
+    # Boolean fields: "true"/"false"/"yes"/"no"/"not_mentioned" → True/False/None
+    bool_fields = ["willing_to_relocate", "visa_sponsorship_needed"]
+    for field in bool_fields:
+        if field in normalized:
+            value = normalized[field]
+            if isinstance(value, bool):
+                # Already boolean, keep as is
+                pass
+            elif isinstance(value, str):
+                value_lower = value.lower().strip()
+                if value_lower in ["true", "yes", "1"]:
+                    normalized[field] = True
+                elif value_lower in ["false", "no", "0"]:
+                    normalized[field] = False
+                elif value_lower in ["not_mentioned", "unknown", "none", ""]:
+                    normalized[field] = None
+                else:
+                    # Unknown value, treat as None (not mentioned)
+                    logger.warning(f"Unknown boolean value for {field}: {value}")
+                    normalized[field] = None
+            elif value is None:
+                normalized[field] = None
+            else:
+                normalized[field] = None
+    
+    # Integer fields: years_experience, notice_period_days
+    int_fields = {
+        "years_experience": "years_experience",
+        "notice_period_days": "notice_period_days"
+    }
+    for field in int_fields:
+        if field in normalized:
+            value = normalized[field]
+            if isinstance(value, int):
+                # Already integer, keep as is
+                pass
+            elif isinstance(value, str):
+                value_clean = value.strip()
+                if value_clean.lower() in ["not_mentioned", "unknown", "none", ""]:
+                    normalized[field] = None
+                else:
+                    try:
+                        # Try to extract number from string (e.g., "8 years" → 8)
+                        import re
+                        match = re.search(r'\d+', value_clean)
+                        if match:
+                            normalized[field] = int(match.group())
+                        else:
+                            normalized[field] = None
+                    except (ValueError, AttributeError):
+                        normalized[field] = None
+            elif value is None or value == 0:
+                normalized[field] = None
+            else:
+                try:
+                    normalized[field] = int(value)
+                except (ValueError, TypeError):
+                    normalized[field] = None
+    
+    # Mark fields that are "not_mentioned" as None
+    for field in ["employment_status", "job_search_mode", "current_role"]:
+        if field in normalized:
+            value = normalized[field]
+            if isinstance(value, str):
+                if value.lower().strip() in ["not_mentioned", "unknown", ""]:
+                    normalized[field] = None
+    
+    return normalized
+
+
+async def sync_conversation_to_profile(session: ConversationalOnboardingSession, db) -> bool:
+    """
+    Sync extracted conversation data to candidate profile
+    Called when conversation is successfully completed
+    
+    Transfers:
+    - years_experience
+    - notice_period_days
+    - willing_to_relocate
+    - job_search_mode
+    - employment_status
+    - current_role
+    
+    Args:
+        session: Completed ConversationalOnboardingSession
+        db: Database session
+        
+    Returns:
+        True if sync successful, False otherwise
+    """
+    try:
+        # Get the candidate profile
+        profile = db.query(CandidateProfile).filter(
+            CandidateProfile.user_id == session.candidate_id
+        ).first()
+        
+        if not profile:
+            logger.warning(f"[SYNC] Profile not found for candidate {session.candidate_id}")
+            return False
+        
+        # Sync extracted fields from conversation to profile
+        updates_made = False
+        
+        # 1. Years of Experience
+        if session.extracted_years_experience is not None:
+            if profile.years_of_experience != session.extracted_years_experience:
+                logger.info(f"[SYNC] Updating years_of_experience: {profile.years_of_experience} → {session.extracted_years_experience}")
+                profile.years_of_experience = session.extracted_years_experience
+                updates_made = True
+        
+        # 2. Notice Period (Days)
+        if session.extracted_notice_period_days is not None:
+            if profile.notice_period_days != session.extracted_notice_period_days:
+                logger.info(f"[SYNC] Updating notice_period_days: {profile.notice_period_days} → {session.extracted_notice_period_days}")
+                profile.notice_period_days = session.extracted_notice_period_days
+                updates_made = True
+        
+        # 3. Willing to Relocate
+        if session.extracted_willing_to_relocate is not None:
+            if profile.willing_to_relocate != session.extracted_willing_to_relocate:
+                logger.info(f"[SYNC] Updating willing_to_relocate: {profile.willing_to_relocate} → {session.extracted_willing_to_relocate}")
+                profile.willing_to_relocate = session.extracted_willing_to_relocate
+                updates_made = True
+        
+        # 4. Job Search Mode / Career Readiness
+        if session.extracted_job_search_mode is not None:
+            # Map extracted mode to job_search_mode
+            mode_map = {
+                "exploring": "exploring",
+                "passive": "passive",
+                "active": "active",
+                "not_mentioned": None
+            }
+            mapped_mode = mode_map.get(session.extracted_job_search_mode, session.extracted_job_search_mode)
+            if mapped_mode and profile.job_search_mode != mapped_mode:
+                logger.info(f"[SYNC] Updating job_search_mode: {profile.job_search_mode} → {mapped_mode}")
+                profile.job_search_mode = mapped_mode
+                updates_made = True
+        
+        # 5. Employment Status - Map to enum values
+        if session.extracted_employment_status is not None:
+            # Database enum values are: 'Employed', 'Unemployed', 'Student'
+            status_map = {
+                "employed": "Employed",
+                "unemployed": "Unemployed",
+                "student": "Student",
+                "between_roles": "Unemployed",
+            }
+            extracted_lower = session.extracted_employment_status.lower()
+            mapped_status = status_map.get(extracted_lower, session.extracted_employment_status)
+            if profile.current_employment_status != mapped_status:
+                logger.info(f"[SYNC] Updating current_employment_status: {profile.current_employment_status} → {mapped_status}")
+                profile.current_employment_status = mapped_status
+                updates_made = True
+        
+        # 6. Current Role
+        if session.extracted_current_role is not None:
+            if profile.current_role != session.extracted_current_role:
+                logger.info(f"[SYNC] Updating current_role: {profile.current_role} → {session.extracted_current_role}")
+                profile.current_role = session.extracted_current_role
+                updates_made = True
+        
+        # Update timestamp
+        if updates_made:
+            profile.updated_at = datetime.utcnow()
+            db.commit()
+            logger.info(f"[SYNC] ✅ Successfully synced conversation data to profile for {session.candidate_id}")
+            return True
+        else:
+            logger.info(f"[SYNC] No updates needed for {session.candidate_id}")
+            return False
+        
+    except Exception as e:
+        logger.error(f"[SYNC] ❌ Error syncing conversation to profile: {str(e)}")
+        db.rollback()
+        return False
 
 # ============================================================================
 # REQUEST/RESPONSE MODELS
@@ -44,6 +239,7 @@ class PersonalizedRecommendationsRequest(BaseModel):
 class ConversationalOnboardingRequest(BaseModel):
     user_message: str = Field(..., description="Natural language input from candidate (e.g., 'I work as a developer...')")
     conversation_history: Optional[List[Dict[str, str]]] = Field(default=None, description="Previous messages in this conversation [{user: '...', assistant: '...'}]")
+    asked_questions: Optional[List[str]] = Field(default=None, description="Questions already asked in this conversation (e.g., ['employment_status', 'job_search_mode'])")
 
 # ============================================================================
 # ENDPOINTS
@@ -64,34 +260,9 @@ async def process_conversational_onboarding(
     3. Tracks what we know vs. what's missing
     4. Asks ONLY critical missing information in conversational way
     5. Maintains context across conversation
+    6. SAVES everything to database for audit trail
     
     The flow is INTELLIGENT and NATURAL - not form-based.
-    
-    Example:
-    User: "I'm a developer with 5 years experience, currently working at TCS, but I'm looking to move into tech sales"
-    Response: {
-        "extracted_info": {
-            "employment_status": "employed",
-            "current_role": "Developer",
-            "years_experience": 5
-        },
-        "completeness_score": 0.6,
-        "missing_critical_fields": ["job_search_mode", "notice_period_days"],
-        "next_question": "How serious are you about making this move? Are you just exploring...",
-        "confidence": 0.88
-    }
-    
-    Returns:
-    {
-        "status": "analyzed",
-        "extracted_info": {...},
-        "completeness_score": 0-1,
-        "missing_critical_fields": [...],
-        "next_question": "What should I ask next?",
-        "conversation_flow": "natural",
-        "confidence": 0-1,
-        "user_sentiment": "positive|neutral|concerned"
-    }
     """
     try:
         user_id = await verify_token(authorization)
@@ -100,24 +271,222 @@ async def process_conversational_onboarding(
         
         ai_service = get_ai_intelligence_service()
         
+        # 🆕 Get or create conversation session
+        session = db.query(ConversationalOnboardingSession).filter(
+            ConversationalOnboardingSession.candidate_id == user_id
+        ).first()
+        
+        if not session:
+            session = ConversationalOnboardingSession(
+                candidate_id=user_id,
+                conversation_messages=[],
+                asked_questions=[],
+                conversation_status='in_progress'
+            )
+            db.add(session)
+            db.flush()
+            logger.info(f"[DB] Created new ConversationalOnboardingSession for {user_id}")
+        
+        # Get initial conversation history from database or request
+        conversation_history = request.conversation_history or []
+        
         # Process the natural language message
         result = await ai_service.process_conversational_onboarding(
             user_message=request.user_message,
-            conversation_history=request.conversation_history
+            conversation_history=conversation_history,
+            asked_questions=request.asked_questions or [],
+            user_id=user_id,  # 🆕 Pass user_id to load resume
+            db=db  # 🆕 Pass db session to query resume data
         )
         
         logger.info(f"[INTELLIGENCE] Conversational onboarding for {user_id} - completeness: {result.get('completeness_score', 0)}")
         
+        # 🆕 SAVE TO DATABASE
+        try:
+            # Update conversation messages
+            # IMPORTANT: SQLAlchemy doesn't detect in-place JSONB mutations
+            # Must explicitly reassign for changes to be tracked
+            if not isinstance(session.conversation_messages, list):
+                messages = []
+            else:
+                messages = list(session.conversation_messages)  # Create new list
+            
+            messages.append({
+                "user": request.user_message,
+                "assistant": result.get("acknowledgment", "") + " " + result.get("next_question", ""),
+                "timestamp": datetime.utcnow().isoformat(),
+                "extracted_info": result.get("extracted_info", {}),
+                "confidence": result.get("confidence", 0)
+            })
+            
+            # EXPLICIT REASSIGNMENT - this is required for SQLAlchemy to detect changes
+            session.conversation_messages = messages
+            
+            # Update asked questions with deduplication
+            # Merge any new questions asked with existing ones
+            # Use set to avoid exact duplicates, but also handle variations
+            current_asked = set(session.asked_questions or [])
+            new_asked = set(request.asked_questions or [])
+            merged_asked = list(current_asked.union(new_asked))
+            
+            # Smart deduplication - recognize question variations
+            question_variations = {
+                "employment_status": ["employment_status", "current_status", "work_status"],
+                "job_search_mode": ["job_search_mode", "urgency", "search_urgency", "active_passive"],
+                "notice_period": ["notice_period", "notice_period_days", "timeline", "availability"],
+                "current_role": ["current_role", "position", "current_position", "role"],
+                "years_experience": ["years_experience", "experience_years", "years_of_experience"],
+                "willing_to_relocate": ["willing_to_relocate", "relocation", "relocate"],
+                "visa_sponsorship": ["visa_sponsorship_needed", "visa", "sponsorship"]
+            }
+            
+            # Deduplicate using variations
+            deduped = set()
+            for q in merged_asked:
+                q_lower = q.lower()
+                # Find canonical form
+                canonical = None
+                for canonical_q, variations in question_variations.items():
+                    if any(q_lower == v.lower() or q_lower in v.lower() for v in variations):
+                        canonical = canonical_q
+                        break
+                if canonical:
+                    deduped.add(canonical)
+                else:
+                    deduped.add(q)
+            
+            updated_asked = list(deduped)
+            # Explicit reassignment for array changes
+            session.asked_questions = updated_asked
+            
+            # Update extracted fields if new data was found
+            extracted = result.get("extracted_info", {})
+            
+            # 🆕 NORMALIZE EXTRACTED DATA - Convert AI strings to proper Python types
+            extracted = normalize_extracted_data(extracted)
+            logger.info(f"[NORMALIZATION] Extracted data normalized: {extracted}")
+            
+            if extracted.get("employment_status") and extracted.get("employment_status") != "not_mentioned":
+                session.extracted_employment_status = extracted.get("employment_status")
+            if extracted.get("job_search_mode") and extracted.get("job_search_mode") != "not_mentioned":
+                session.extracted_job_search_mode = extracted.get("job_search_mode")
+            if extracted.get("notice_period_days") is not None:
+                session.extracted_notice_period_days = extracted.get("notice_period_days")
+            if extracted.get("current_role"):
+                session.extracted_current_role = extracted.get("current_role")
+            if extracted.get("years_experience") is not None:
+                session.extracted_years_experience = extracted.get("years_experience")
+            if extracted.get("willing_to_relocate") is not None:
+                session.extracted_willing_to_relocate = extracted.get("willing_to_relocate")
+            if extracted.get("visa_sponsorship_needed") is not None:
+                session.extracted_visa_sponsorship_needed = extracted.get("visa_sponsorship_needed")
+            
+            # Update quality metrics
+            session.total_messages = len(session.conversation_messages)
+            session.completeness_score = result.get("completeness_score", 0)
+            session.missing_critical_fields = result.get("missing_critical_fields", [])
+            session.average_ai_confidence = result.get("confidence", 0)
+            session.extracted_metadata = result.get("extracted_keywords", [])
+            
+            # Mark as completed if all critical fields are found
+            if session.completeness_score > 0.8:
+                session.successfully_completed = True
+                session.completed_at = datetime.utcnow()
+                session.conversation_status = 'completed'
+            
+            # Save to database
+            db.commit()
+            logger.info(f"[DB] ✅ Saved ConversationalOnboardingSession for {user_id} - total_messages: {session.total_messages}, asked: {session.asked_questions}")
+            
+            # 🆕 SYNC EXTRACTED DATA TO PROFILE when conversation is completed
+            if session.successfully_completed:
+                logger.info(f"[COMPLETION] Conversation completed, syncing to profile...")
+                sync_result = await sync_conversation_to_profile(session, db)
+                if sync_result:
+                    logger.info(f"[COMPLETION] ✅ Profile successfully synced with conversation data")
+                else:
+                    logger.warning(f"[COMPLETION] ⚠️ Profile sync had no updates or encountered issues")
+            
+        except Exception as db_error:
+            db.rollback()
+            logger.error(f"[DB] ❌ Error saving ConversationalOnboardingSession: {str(db_error)}")
+            # Don't fail the request, still return AI result
+        
+        # Return response
         return {
             "status": "success",
             "data": result,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat(),
+            "session_id": str(session.id) if session else None,
+            "stored": True  # Indicate data was saved to database
         }
         
     except HTTPException as e:
         raise e
     except Exception as e:
         logger.error(f"[INTELLIGENCE] Error in conversational onboarding: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/onboarding/conversational/session")
+async def get_conversation_session(
+    authorization: str = Header(None),
+    db = Depends(get_db)
+):
+    """
+    Retrieve current conversational onboarding session for this candidate
+    Shows: conversation history, asked questions, extracted data, completeness score
+    
+    Perfect for debugging: Check if data is being stored in database
+    """
+    try:
+        user_id = await verify_token(authorization)
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        
+        session = db.query(ConversationalOnboardingSession).filter(
+            ConversationalOnboardingSession.candidate_id == user_id
+        ).first()
+        
+        if not session:
+            return {
+                "status": "no_session",
+                "data": None,
+                "message": "No conversational session found. Start a conversation first."
+            }
+        
+        return {
+            "status": "found",
+            "data": {
+                "session_id": str(session.id),
+                "candidate_id": str(session.candidate_id),
+                "total_messages": session.total_messages,
+                "conversation_status": session.conversation_status,
+                "asked_questions": session.asked_questions,
+                "conversation_messages_count": len(session.conversation_messages) if isinstance(session.conversation_messages, list) else 0,
+                "completeness_score": float(session.completeness_score) if session.completeness_score else 0,
+                "missing_critical_fields": session.missing_critical_fields,
+                "average_ai_confidence": float(session.average_ai_confidence) if session.average_ai_confidence else 0,
+                "extracted": {
+                    "employment_status": session.extracted_employment_status,
+                    "job_search_mode": session.extracted_job_search_mode,
+                    "notice_period_days": session.extracted_notice_period_days,
+                    "current_role": session.extracted_current_role,
+                    "years_experience": session.extracted_years_experience,
+                    "willing_to_relocate": session.extracted_willing_to_relocate,
+                    "visa_sponsorship_needed": session.extracted_visa_sponsorship_needed
+                },
+                "successfully_completed": session.successfully_completed,
+                "started_at": session.started_at.isoformat() if session.started_at else None,
+                "completed_at": session.completed_at.isoformat() if session.completed_at else None,
+                "conversation_messages": session.conversation_messages[:5] if isinstance(session.conversation_messages, list) else []  # Last 5 for brevity
+            },
+            "message": f"Session found with {session.total_messages} total messages"
+        }
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"[INTELLIGENCE] Error retrieving conversation session: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/career-readiness/adaptive-question")

@@ -60,6 +60,13 @@ class EmailAnalysisRequest(BaseModel):
 class CompanyDetailsRequest(BaseModel):
     company_name: str
 
+class CompanyDetailsUpdateAuto(BaseModel):
+    """Update company details - auto-looks up company_id from user profile"""
+    name: str
+    website: str
+    location: str
+    description: str
+
 class CompanyDetailsUpdate(BaseModel):
     company_id: str
     name: str
@@ -124,6 +131,28 @@ async def update_registration(
     return await recruiter_service.update_company_registration(
         user["sub"],
         data.registration_number,
+    )
+
+@router.post("/update-details")
+async def update_details_auto(
+    data: CompanyDetailsUpdateAuto,
+    user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Update company details - auto-looks up company_id from user's recruiter profile.
+    This is used during EMAIL_ANALYSIS flow when company hasn't been registered yet.
+    """
+    user_id = user["sub"]
+    profile = await recruiter_service.get_or_create_profile(user_id)
+    
+    if not profile or not profile.company_id:
+        raise HTTPException(status_code=400, detail="Company not found in profile")
+    
+    return await recruiter_service.update_company_details(
+        user_id,
+        str(profile.company_id),
+        data.model_dump(),
     )
 
 @router.post("/details")

@@ -363,16 +363,13 @@ async def update_resume(
         db.commit()
         
         # 2. Fire-and-forget: Processing happens in background
-        # Check for API keys (OpenAI is primary, Google is fallback)
-        has_api_key = OPENAI_API_KEY or GOOGLE_API_KEY
-        
-        if has_api_key:
+        # Check for OpenAI API key
+        if OPENAI_API_KEY:
             # Use sync wrapper for BackgroundTasks
             background_tasks.add_task(
                 ResumeService.parse_resume_sync, 
                 user_id, 
-                resume_path, 
-                GOOGLE_API_KEY
+                resume_path
             )
             return {
                 "status": "processing", 
@@ -383,7 +380,7 @@ async def update_resume(
         return {
             "status": "resume_linked", 
             "parsed": False, 
-            "message": "Resume uploaded but parsing skipped (missing API keys - configure OPENAI_API_KEY or GOOGLE_API_KEY)",
+            "message": "Resume uploaded but parsing skipped (missing API key - configure OPENAI_API_KEY)",
             "resume_path": resume_path
         }
     except Exception as e:

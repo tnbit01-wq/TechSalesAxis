@@ -741,9 +741,12 @@ class ConversationalOnboardingSession(Base):
     candidate_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
     
     # Conversation data (required)
-    conversation_messages = Column(JSONB, nullable=False, default={})  # [{user: '...', assistant: '...', timestamp: ...}]
+    conversation_messages = Column(JSONB, nullable=False, default=[])  # [{user: '...', assistant: '...', timestamp: ...}]
     total_messages = Column(Integer, default=0)
     conversation_status = Column(String, default='in_progress')  # in_progress, completed
+    
+    # 🆕 Question tracking to prevent duplicate questions
+    asked_questions = Column(ARRAY(Text), default=[])  # ['employment_status', 'job_search_mode', 'notice_period', ...]
     
     # Extracted career readiness info (populated as conversation progresses)
     extracted_employment_status = Column(Text)

@@ -1173,7 +1173,10 @@ Return ONLY valid JSON:
     async def process_conversational_onboarding(
         self,
         user_message: str,
-        conversation_history: List[Dict[str, str]] = None
+        conversation_history: List[Dict[str, str]] = None,
+        asked_questions: List[str] = None,
+        user_id: str = None,
+        db = None
     ) -> Dict[str, Any]:
         """
         Process natural language input for onboarding (chat-based, intelligent flow)
@@ -1182,6 +1185,9 @@ Return ONLY valid JSON:
         Args:
             user_message: Natural language text from user (e.g., "I'm currently working as a developer...")
             conversation_history: Previous messages in this conversation
+            asked_questions: List of question IDs already asked (e.g., ['employment_status', 'job_search_mode'])
+            user_id: User ID to load parsed resume data if available
+            db: Database session to fetch resume data
             
         Returns:
             {
@@ -1202,12 +1208,37 @@ Return ONLY valid JSON:
             }
         """
         try:
+            asked_questions = asked_questions or []
             history_text = ""
             if conversation_history:
                 history_text = "\n".join([
                     f"User: {msg.get('user', '')}\nAssistant: {msg.get('assistant', '')}"
                     for msg in conversation_history[-5:]  # Last 5 exchanges
                 ])
+            
+            # 🆕 Load user's parsed resume data if available
+            resume_context = ""
+            if user_id and db:
+                try:
+                    from src.core.models import ResumeData
+                    resume = db.query(ResumeData).filter(ResumeData.user_id == user_id).first()
+                    if resume:
+                        resume_parts = []
+                        if resume.raw_text and len(resume.raw_text) > 50:
+                            # Use first 1500 chars of resume text for context
+                            resume_parts.append(f"Resume Text (excerpt): {resume.raw_text[:1500]}")
+                        if resume.skills:
+                            resume_parts.append(f"Skills: {', '.join(resume.skills[:10])}")  # Top 10 skills
+                        if resume.raw_experience:
+                            resume_parts.append(f"Work Experience: {json.dumps(resume.raw_experience, indent=2)[:500]}")
+                        if resume.raw_education:
+                            resume_parts.append(f"Education: {json.dumps(resume.raw_education, indent=2)[:300]}")
+                        
+                        if resume_parts:
+                            resume_context = "\n\nUser's Resume Data (use this to validate/fill extracted info):\n" + "\n".join(resume_parts)
+                except Exception as e:
+                    logger.warning(f"[AI] Could not load resume for {user_id}: {str(e)}")
+                    resume_context = ""
             
             prompt = f"""
 You are career coach helping candidates through onboarding in a CHAT-BASED flow (not forms).
@@ -1216,7 +1247,10 @@ Analyze this natural language message to extract career readiness information.
 User's Message: "{user_message}"
 
 Previous Conversation Context:
-{history_text if history_text else "(No previous context)"}
+{history_text if history_text else "(No previous context)"}{resume_context}
+
+ALREADY ASKED QUESTIONS (Don't repeat these):
+{', '.join(asked_questions) if asked_questions else 'None (This is first message)'}
 
 EXTRACT AND ANALYZE:
 1. Employment Status: What is their current work status?
@@ -1247,6 +1281,7 @@ CRITICAL RULES:
 - Be generous with "not_mentioned" for uncertain fields
 - The message might be conversational, rambling, or incomplete - that's OK
 - Rate your confidence (0-1) for each field
+- DEDUPLICATION: If a question is in "ALREADY ASKED QUESTIONS", the user might be answering it - extract that answer. But DON'T mark previously answered fields as "not_mentioned" just to have the same value
 
 Return ONLY valid JSON:
 {{
@@ -1295,16 +1330,50 @@ Return ONLY valid JSON:
                     
                     extraction = json.loads(response_text)
                     
-                    # Now generate intelligent follow-up question
-                    next_question = await self._generate_intelligent_followup(extraction)
+                    # 🆕 USE RESUME DATA TO FILL MISSING FIELDS
+                    if user_id and db:
+                        try:
+                            from src.core.models import ResumeData
+                            resume = db.query(ResumeData).filter(ResumeData.user_id == user_id).first()
+                            if resume:
+                                extracted_info = extraction.get("extracted_info", {})
+                                
+                                # Fill missing fields from resume
+                                if not extracted_info.get("current_role") and resume.raw_experience:
+                                    # Extract most recent role from resume
+                                    if isinstance(resume.raw_experience, list) and len(resume.raw_experience) > 0:
+                                        most_recent = resume.raw_experience[0]
+                                        if isinstance(most_recent, dict):
+                                            extracted_info["current_role"] = most_recent.get("position") or most_recent.get("role") or most_recent.get("title")
+                                
+                                # Fill years of experience if not extracted
+                                if not extracted_info.get("years_experience") and resume.timeline:
+                                    # Count years from timeline data
+                                    if isinstance(resume.timeline, dict) and "total_years" in resume.timeline:
+                                        extracted_info["years_experience"] = resume.timeline.get("total_years")
+                                
+                                # Add skills from resume if not extracted
+                                if resume.skills and not extracted_info.get("skills"):
+                                    extracted_info["skills"] = resume.skills[:10]  # Top 10 skills
+                                
+                                extraction["extracted_info"] = extracted_info
+                                logger.info(f"[AI] Filled {sum(1 for k, v in extracted_info.items() if v)} fields from resume data")
+                        except Exception as e:
+                            logger.warning(f"[AI] Could not fill fields from resume: {str(e)}")
                     
-                    logger.info(f"[AI INTELLIGENCE] Conversational onboarding: completeness={extraction.get('completeness_score', 0)}")
+                    # Now generate intelligent follow-up question AND acknowledgment
+                    # 🆕 Pass asked_questions to prevent duplicates
+                    acknowledgment = await self._generate_personalized_acknowledgment(extraction, user_message)
+                    next_question = await self._generate_intelligent_followup(extraction, asked_questions)
+                    
+                    logger.info(f"[AI INTELLIGENCE] Conversational onboarding: completeness={extraction.get('completeness_score', 0)}, asked_questions={asked_questions}")
                     
                     return {
                         "status": "analyzed",
                         "extracted_info": extraction.get("extracted_info", {}),
                         "completeness_score": extraction.get("completeness_score", 0),
                         "missing_critical_fields": extraction.get("missing_critical_fields", []),
+                        "acknowledgment": acknowledgment,  # 🆕 Echo back what we understood
                         "next_question": next_question,
                         "conversation_flow": "natural",
                         "confidence": extraction.get("confidence", 0),
@@ -1319,46 +1388,206 @@ Return ONLY valid JSON:
             logger.error(f"[AI INTELLIGENCE] Error in conversational onboarding: {str(e)}")
             return self._fallback_conversational_response(user_message)
 
-    async def _generate_intelligent_followup(self, extraction: Dict[str, Any]) -> str:
+    async def _generate_personalized_acknowledgment(self, extraction: Dict[str, Any], user_message: str) -> str:
+        """
+        Generate a personalized acknowledgment that echoes back what we understood
+        Makes the conversation feel intelligent and contextual - like ChatGPT
+        """
+        extracted = extraction.get("extracted_info", {})
+        confidence = extraction.get("confidence", 0.5)
+        
+        # Build acknowledgment from extracted info
+        acknowledgments = []
+        
+        # Employment status
+        if extracted.get("employment_status") == "employed":
+            acknowledgments.append("You're currently employed")
+        elif extracted.get("employment_status") == "between_roles":
+            acknowledgments.append("You're between roles right now")
+        elif extracted.get("employment_status") == "student":
+            acknowledgments.append("You're studying")
+        elif extracted.get("employment_status") == "unemployed":
+            acknowledgments.append("You're currently looking for work")
+        
+        # Job search mode/urgency
+        if extracted.get("job_search_mode") == "active":
+            acknowledgments.append("actively searching for opportunities")
+        elif extracted.get("job_search_mode") == "passive":
+            acknowledgments.append("open to the right opportunity")
+        elif extracted.get("job_search_mode") == "exploring":
+            acknowledgments.append("exploring what's available")
+        
+        # Notice period
+        notice_days = extracted.get("notice_period_days")
+        if notice_days:
+            if notice_days == 0:
+                acknowledgments.append("available to start immediately")
+            elif notice_days <= 7:
+                acknowledgments.append(f"can join within a week")
+            elif notice_days <= 30:
+                acknowledgments.append(f"looking at a {notice_days}-day transition")
+            elif notice_days <= 60:
+                acknowledgments.append(f"need around {notice_days} days")
+            else:
+                acknowledgments.append(f"looking at a longer {notice_days}-day timeline")
+        
+        # Current role
+        if extracted.get("current_role"):
+            acknowledgments.append(f"with a background in {extracted.get('current_role')}")
+        
+        # Years of experience
+        years = extracted.get("years_experience")
+        if years:
+            if years < 2:
+                acknowledgments.append("and just starting out")
+            elif years < 5:
+                acknowledgments.append(f"with {years} years of experience")
+            elif years < 8:
+                acknowledgments.append(f"bringing {years} years of solid experience")
+            elif years < 12:
+                acknowledgments.append(f"with strong {years} years of senior-level experience")
+            else:
+                acknowledgments.append(f"and {years}+ years of leadership experience")
+        
+        # Location preference
+        if extracted.get("willing_to_relocate") is True:
+            acknowledgments.append("and open to relocation")
+        elif extracted.get("willing_to_relocate") is False:
+            acknowledgments.append("and prefer to stay in your current location")
+        
+        # Build final acknowledgment sentence
+        if not acknowledgments:
+            # Fallback if nothing was clearly extracted
+            return "Thanks for sharing that with me!"
+        
+        # If no acknowledgments built, use context-aware fallback
+        if not acknowledgments:
+            # Better fallback that doesn't reveal extraction failures
+            fallback_messages = [
+                "Thanks for sharing that! That helps me understand your situation better.",
+                "Got it! That's useful context for your profile.",
+                "I hear you - that makes sense for where you are in your career.",
+                "Understood! Let me make note of that.",
+            ]
+            # Use different fallbacks based on confidence
+            if confidence >= 0.6:
+                ack_text = fallback_messages[0]
+            else:
+                ack_text = fallback_messages[2]
+            return ack_text
+        
+        # Join acknowledgments intelligently
+        if len(acknowledgments) == 1:
+            ack_text = acknowledgments[0]
+        elif len(acknowledgments) == 2:
+            ack_text = f"{acknowledgments[0]} and {acknowledgments[1]}"
+        else:
+            # Join first ones with commas, last with "and"
+            ack_text = ", ".join(acknowledgments[:-1]) + f", and {acknowledgments[-1]}"
+        
+        # Capitalize first letter
+        ack_text = ack_text[0].upper() + ack_text[1:] if ack_text else "Got it"
+        
+        # Add confidence-based phrasing
+        if confidence >= 0.8:
+            return f"Perfect! So {ack_text}. That's really clear!"
+        elif confidence >= 0.6:
+            return f"Great, I understand—{ack_text}. Is that right?"
+        else:
+            return f"I understand—{ack_text}. Let me know if I've misunderstood anything!"
+
+    async def _generate_intelligent_followup(self, extraction: Dict[str, Any], asked_questions: List[str] = None) -> str:
         """
         Generate the next logical question based on what we've learned
         Only asks for critical missing info in a conversational way
+        
+        DEDUPLICATION: Explicitly checks asked_questions to avoid repeat questions
+        
+        Args:
+            extraction: Extracted information from user message
+            asked_questions: List of question IDs already asked (e.g., ['employment_status', 'job_search_mode'])
         """
         missing = extraction.get("missing_critical_fields", [])
         extracted = extraction.get("extracted_info", {})
+        asked_questions = asked_questions or []
+        
+        # Normalize question IDs for consistency (lowercase, no spaces)
+        asked_normalized = set([q.lower().replace(" ", "_") for q in asked_questions])
+        
+        def is_asked(question_id: str) -> bool:
+            """Check if a question has already been asked (handles variations)"""
+            question_normalized = question_id.lower().replace(" ", "_")
+            # Also check common variations
+            variations = [question_normalized]
+            if question_id == "notice_period":
+                variations.extend(["notice_period_days", "timeline"])
+            elif question_id == "current_role":
+                variations.extend(["role", "current_position"])
+            elif question_id == "relocation":
+                variations.extend(["willing_to_relocate", "relocate"])
+            elif question_id == "interests":
+                variations.extend(["role_interests", "target_role", "interests"])
+            
+            return any(v in asked_normalized for v in variations)
         
         # Prioritize which info is most critical
-        if "employment_status" in missing or extracted.get("employment_status") == "not_mentioned":
-            return "Got it! To help you find the best opportunities, are you currently employed, between roles, or in a different situation?"
+        employment = extracted.get("employment_status", "not_mentioned")
+        job_mode = extracted.get("job_search_mode", "not_mentioned")
+        current_role = extracted.get("current_role")
+        years_exp = extracted.get("years_experience")
+        notice = extracted.get("notice_period_days")
         
-        if "job_search_mode" in missing or extracted.get("job_search_mode") == "not_mentioned":
-            return "How serious are you about finding IT/Tech Sales roles right now? Are you just exploring, casually open to opportunities, or actively searching?"
+        # 🆕 INTELLIGENT QUESTION ORDERING - Skip already asked questions
+        # Smart sequencing based on what we know
+        if employment == "not_mentioned" or employment is None:
+            if not is_asked("employment_status"):
+                return "To get started, what's your current employment situation? Are you employed, between roles, or something else?"
         
-        if "notice_period_days" in missing or extracted.get("notice_period_days") is None:
-            return "When could you realistically start a new role? Do you need time to serve notice, or are you available immediately?"
+        if job_mode == "not_mentioned" or job_mode is None:
+            if not is_asked("job_search_mode"):
+                # Contextual follow-up based on employment status
+                if employment == "employed":
+                    return "How serious are you about your tech sales search? Are you actively looking, casually exploring, or just keeping options open?"
+                else:
+                    return "How urgently are you looking for your next role? Are you ready to start immediately, or would you prefer some time?"
         
-        if "current_role" in missing or extracted.get("current_role") is None:
-            return "What's your current role or background? This helps us suggest the best fit for you in tech sales."
+        if notice is None:
+            if not is_asked("notice_period"):
+                # Contextual notice period question
+                if employment == "employed":
+                    return "Great! How much notice would you need to give your current employer? Immediate, 2 weeks, a month, or longer?"
+                else:
+                    return "When could you realistically start a new role?"
         
-        if "years_experience" in missing or extracted.get("years_experience") is None:
-            return "How many years of tech or sales experience do you have? This helps us match you to the right level."
+        if not current_role:
+            if not is_asked("current_role"):
+                # Ask about relevant background
+                return f"What's your current or most recent role? This helps me suggest the best fit for you in tech sales."
         
-        if "willing_to_relocate" in missing or extracted.get("willing_to_relocate") == "not_mentioned":
-            return "Are you open to relocating if the right opportunity comes up, or do you need to stay in your current location?"
+        if years_exp is None:
+            if not is_asked("years_experience"):
+                return f"How many years of experience do you have in sales or related fields? This helps us match you to the right opportunities."
         
-        if "visa_sponsorship_needed" in missing or extracted.get("visa_sponsorship_needed") == "not_mentioned":
-            return "Do you need visa sponsorship or work authorization assistance?"
+        if extracted.get("willing_to_relocate") == "not_mentioned" or extracted.get("willing_to_relocate") is None:
+            if not is_asked("relocation"):
+                return "Are you open to relocating if the right opportunity comes up, or would you prefer to stay in your current location?"
         
-        # If we have most info, ask about preferences with personalized role suggestions
+        # If we have most info, provide encouraging follow-up
         completeness = extraction.get("completeness_score", 0)
-        if completeness > 0.7:
-            # Generate personalized role suggestions based on background
-            personalized_roles = self._get_personalized_role_suggestions(extraction.get("extracted_info", {}))
-            roles_text = ", ".join(personalized_roles)
-            return f"Great! We have a good understanding of your situation. Based on your background, you'd be a great fit for {roles_text}. Which of these interests you most, or would you like to explore other options?"
+        if completeness > 0.7 and not is_asked("interests"):
+            return "Excellent! We have a solid picture of what you're looking for. What aspects of a tech sales role interest you most—client engagement, revenue targets, learning opportunities, or something else?"
         
-        # Default follow-up
-        return "Tell me more about your career goals in tech sales - what's driving your interest?"
+        # If all main questions asked and completeness is good, congratulate and summarize
+        if completeness > 0.8 and len(asked_normalized) >= 5:
+            return "Perfect! We've gathered great insights. You're set up for our matching system. Based on what you've shared, we'll recommend the best tech sales opportunities for you!"
+        
+        # Default - ask about motivations (only if not asked)
+        if not is_asked("motivations"):
+            return "What are you most excited about when it comes to tech sales opportunities?"
+        
+        # Absolute fallback - if somehow all questions are asked, confirm and end
+        return "Thanks for sharing so much! You're all set. Our system will now match you with the best opportunities."
+
 
     def _fallback_conversational_response(self, user_message: str) -> Dict[str, Any]:
         """Fallback response for conversational onboarding"""
@@ -1375,9 +1604,11 @@ Return ONLY valid JSON:
                 "job_search_mode",
                 "notice_period_days"
             ],
+            "acknowledgment": "Thanks for sharing that! Let me understand your situation better.",
             "next_question": "I'd love to help you find the right tech sales opportunity! To get started, are you currently employed, or between roles?",
             "conversation_flow": "natural",
             "confidence": 0.3,
+            "extracted_keywords": [],
             "user_sentiment": "neutral"
         }
 

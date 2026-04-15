@@ -328,7 +328,8 @@ class AIIntelligenceClient {
   async processConversationalOnboarding(
     userMessage: string,
     conversationHistory: Array<{ user: string; assistant: string }> = [],
-    token?: string
+    token?: string,
+    askedQuestions: string[] = []
   ): Promise<{
     status: string;
     extracted_info: {
@@ -343,6 +344,7 @@ class AIIntelligenceClient {
     };
     completeness_score: number;
     missing_critical_fields: string[];
+    acknowledgment: string;  // 🆕 Personalized echo of what was understood
     next_question: string;
     confidence: number;
     extracted_keywords: string[];
@@ -356,16 +358,19 @@ class AIIntelligenceClient {
         {
           user_message: userMessage,
           conversation_history: conversationHistory,
+          asked_questions: askedQuestions,  // 🆕 Pass asked questions to prevent duplicates
         },
         token
       );
 
       console.log('[AI CLIENT] ✅ Conversational response:', {
-        completeness: response.data?.completeness_score,
-        confidence: response.data?.confidence,
+        completeness: response?.data?.completeness_score,
+        confidence: response?.data?.confidence,
+        acknowledgment: response?.data?.acknowledgment?.substring(0, 60),  // 🆕 Log acknowledgment
       });
       
-      return response.data;
+      // The endpoint wraps result in { status, data, timestamp }, extract the data
+      return response?.data || response;
     } catch (error) {
       console.error('[AI CLIENT] ❌ Error in conversational onboarding:', error);
       throw error;

@@ -3,6 +3,7 @@ import random
 import asyncio
 import httpx
 import time
+import logging
 from typing import List, Dict, Optional, Any
 from datetime import datetime
 from sqlalchemy.orm import Session
@@ -10,80 +11,46 @@ from sqlalchemy import func
 from src.core.database import SessionLocal
 from src.core.models import CandidateProfile, AssessmentSession, AssessmentQuestion, AssessmentResponse, ResumeData, ProfileScore
 from src.services.notification_service import NotificationService
-from google import genai
-from src.core.config import GOOGLE_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY
+from src.core.config import OPENAI_API_KEY
+
+logger = logging.getLogger(__name__)
 
 class AssessmentService:
     def __init__(self):
         self._client = httpx.AsyncClient(timeout=30.0)
-        self.ai_client = genai.Client(api_key=GOOGLE_API_KEY)
         self.openai_key = OPENAI_API_KEY
-        self.model_name = "gemini-2.0-flash"
 
     async def _call_ai_robust(self, prompt: str, system_message: str = "You are a professional assessment auditor.") -> Optional[str]:
-        # 1. Primary OpenAI Call
-        if self.openai_key:
-            try:
-                response = await self._client.post(
-                    "https://api.openai.com/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {self.openai_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": "gpt-4o",
-                        "messages": [
-                            {"role": "system", "content": system_message},
-                            {"role": "user", "content": prompt}
-                        ],
-                        "temperature": 0.4
-                    }
-                )
-                if response.status_code == 200:
-                    data = response.json()
-                    return data["choices"][0]["message"]["content"].strip()
-                else:
-                    print(f"DEBUG: OpenAI Assessment Failed ({response.status_code}): {response.text}")
-            except Exception as oai_e:
-                print(f"DEBUG: OpenAI Assessment Exception: {str(oai_e)}")
+        """Call OpenAI GPT-4o for assessment evaluation."""
+        if not self.openai_key:
+            logger.debug("No OpenAI API key configured")
+            return None
 
-        # 2. Secondary Gemini Call
         try:
-            response = await asyncio.to_thread(
-                self.ai_client.models.generate_content,
-                model=self.model_name,
-                contents=prompt
+            response = await self._client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.openai_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "gpt-4o",
+                    "messages": [
+                        {"role": "system", "content": system_message},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "temperature": 0.4
+                }
             )
-            if response and response.text:
-                return response.text.strip()
-        except Exception as e:
-            print(f"DEBUG: Gemini Secondary Failed: {str(e)}. Falling back to OpenRouter...")
-
-        # 3. Tertiary OpenRouter Call
-        if OPENROUTER_API_KEY:
-            try:
-                response = await self._client.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                        "Content-Type": "application/json",
-                        "X-Title": "TechSales Axis Business Assessment"
-                    },
-                    json={
-                        "model": "openai/gpt-4o-mini",
-                        "messages": [
-                            {"role": "system", "content": system_message},
-                            {"role": "user", "content": prompt}
-                        ],
-                        "temperature": 0.3
-                    }
-                )
-                if response.status_code == 200:
-                    data = response.json()
-                    return data["choices"][0]["message"]["content"].strip()
-            except Exception as or_e:
-                print(f"DEBUG: OpenRouter Critical Failure: {str(or_e)}")
-        return None
+            if response.status_code == 200:
+                data = response.json()
+                return data["choices"][0]["message"]["content"].strip()
+            else:
+                logger.error(f"OpenAI Assessment Failed ({response.status_code}): {response.text}")
+                return None
+        except Exception as oai_e:
+            logger.error(f"OpenAI Assessment Exception: {str(oai_e)}")
+            return None
 
     def get_or_create_session(self, user_id: str, db: Session):
         profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == user_id).first()
@@ -452,9 +419,7 @@ class AssessmentService:
             }
         
         except Exception as e:
-            print(f"DEBUG: Resume question generation failed: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Resume question generation failed: {str(e)}")
             return None
 
     def _try_generate_skill_question(self, user_id: str, experience_band: str, db: Session) -> Optional[Dict]:
@@ -521,7 +486,7 @@ class AssessmentService:
             }
         
         except Exception as e:
-            print(f"DEBUG: Skill question generation failed: {str(e)}")
+            logger.error(f"Skill question generation failed: {str(e)}")
             return None
 
     async def submit_answer(self, user_id: str, question_id: str, answer: str, db: Session, is_skipped: bool = False):
@@ -562,7 +527,7 @@ class AssessmentService:
                 question = db.query(AssessmentQuestion).filter(AssessmentQuestion.id == question_id).first()
             except Exception as e:
                 # If UUID conversion fails, treat as dynamic
-                print(f"DEBUG: Failed to query question {question_id}: {str(e)}")
+                logger.error(f"Failed to query question {question_id}: {str(e)}")
                 question = None
         
         # --- BEHAVIORAL IMPACT OF SKIPPING ---
