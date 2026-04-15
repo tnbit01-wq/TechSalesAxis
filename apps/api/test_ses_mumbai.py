@@ -6,8 +6,8 @@ def test_ses_mumbai():
     # Load environment variables
     load_dotenv()
     
-    aws_access_key = os.getenv('AWS_ACCESS_KEY_ID')
-    aws_secret_key = os.getenv('AWS_SECRET_ACCESS_KEY')
+    aws_access_key = os.getenv('MY_AWS_ACCESS_KEY_ID')
+    aws_secret_key = os.getenv('MY_AWS_SECRET_ACCESS_KEY')
     region = 'ap-south-1'  # Mumbai
     sender = 'noreply@techsalesaxis.com'
     recipient = 'mithunkaveriappa.mk@gmail.com'
