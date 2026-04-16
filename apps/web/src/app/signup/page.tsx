@@ -45,6 +45,46 @@ function SignupForm() {
   const { isListening, transcript, startListening, stopListening, hasSupport } =
     useVoice();
 
+  // Auto-trigger signup when email is passed from login
+  useEffect(() => {
+    const autoSignup = async () => {
+      if (state === "AWAITING_OTP_TRIGGER" && email && userName) {
+        setIsLoading(true);
+        try {
+          await apiClient.post("/auth/validate-email", {
+            email: email,
+            role,
+          });
+
+          try {
+            await awsAuth.signup(email, role, userName);
+            addMessage(
+              "We've sent a verification code to your email. Please enter the 6-digit code.",
+              "bot",
+            );
+            setState("AWAITING_OTP");
+          } catch (err: any) {
+            const errorMsg = err.message || "An error occurred";
+            addMessage(
+              `We couldn't send the code. Please try again.`,
+              "bot",
+            );
+            setState("AWAITING_EMAIL");
+          }
+        } catch (err) {
+          const errorMessage =
+            err instanceof Error ? err.message : "Email validation failed.";
+          addMessage(errorMessage, "bot");
+          setState("AWAITING_EMAIL");
+        } finally {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    autoSignup();
+  }, [state, email, userName, role]);
+
   // Scroll to bottom whenever messages change
   useEffect(() => {
     if (scrollRef.current) {
@@ -92,12 +132,27 @@ function SignupForm() {
     if (state === "INITIAL" && !initialized.current) {
       initialized.current = true;
       checkSession().then(() => {
-        const greeting = `Hello! I'm your onboarding assistant. I see you want to join as a ${role}. What is your email address?`;
-        addMessage(greeting, "bot");
-        setState("AWAITING_EMAIL");
+        // Check if email was passed from login (account not found)
+        const emailParam = searchParams.get("email");
+        
+        if (emailParam) {
+          // Auto-start signup with provided email
+          window.history.replaceState({}, "", window.location.pathname + `?role=${role}`);
+          const decodedEmail = decodeURIComponent(emailParam);
+          const name = extractNameFromEmail(decodedEmail);
+          setUserName(name);
+          setEmail(decodedEmail);
+          addMessage(`Welcome ${name}! Let's set up your account. Sending verification code...`, "bot");
+          // Trigger signup with the email
+          setState("AWAITING_OTP_TRIGGER");
+        } else {
+          const greeting = `Welcome! Let's get you started. Please enter your email address.`;
+          addMessage(greeting, "bot");
+          setState("AWAITING_EMAIL");
+        }
       });
     }
-  }, [state, role, router]);
+  }, [state, role, router, searchParams]);
 
   const handleSend = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -106,7 +161,7 @@ function SignupForm() {
 
     // Mask password in chat for security - show dots instead of completely hiding
     if (state === "AWAITING_PASSWORD_SET") {
-      addMessage("••••••••", "user");
+      addMessage("••••••••••", "user");
     } else {
       addMessage(workingInput, "user");
     }
@@ -117,19 +172,19 @@ function SignupForm() {
       if (state === "AWAITING_EMAIL") {
         if (!isValidEmail(workingInput)) {
           addMessage(
-            "That doesn't look like a valid email. Could you check it again?",
+            "Please enter a valid email address.",
             "bot",
           );
         } else {
           const personal = isPersonalEmail(workingInput);
           if (role === "candidate" && !personal) {
             addMessage(
-              "Candidates should use a personal email (like Gmail or Outlook). Please provide your personal email.",
+              "Please use your personal email (like Gmail or Outlook).",
               "bot",
             );
           } else if (role === "recruiter" && personal) {
             addMessage(
-              "Recruiters must use a professional company email. Please provide your work email.",
+              "Please use your company email address.",
               "bot",
             );
           } else {
@@ -147,7 +202,7 @@ function SignupForm() {
               try {
                 await awsAuth.signup(workingInput.toLowerCase(), role, name);
                 addMessage(
-                  "Code sent! Please enter the 6-digit code from your email. If you don't see it in 1-2 minutes, check your spam folder or type 'resend' for a new code.",
+                  "We've sent a verification code to your email. Please enter the 6-digit code. If you don't see it soon, check your spam folder or type 'resend' for a new code.",
                   "bot",
                 );
                 setState("AWAITING_OTP");
@@ -162,19 +217,24 @@ function SignupForm() {
                 // Provide specific guidance based on error
                 if (errorMsg.includes("already registered")) {
                   addMessage(
-                    "This email is already registered. Please go to the login page instead.",
+                    "You already have an account. Redirecting to sign in...",
                     "bot",
                   );
+                  // Store email temporarily and redirect to login
+                  setTimeout(() => {
+                    const email = workingInput.toLowerCase();
+                    router.replace(`/login?email=${encodeURIComponent(email)}`);
+                  }, 1500);
                 } else {
                   addMessage(
-                    `I couldn't send the code: ${errorMsg}. Please try again or use a different email.`,
+                    `We couldn't send the code. Please try again or use a different email.`,
                     "bot",
                   );
                 }
               }
             } catch (err) {
               const errorMessage =
-                err instanceof Error ? err.message : "Email validation failed.";
+                err instanceof Error ? err.message : "We couldn't verify this email.";
               console.error("Validation Error:", err);
               addMessage(errorMessage, "bot");
             }
@@ -186,13 +246,13 @@ function SignupForm() {
           try {
             await awsAuth.resendOtp(email, role);
             addMessage(
-              "New verification code sent! Check your email inbox. Valid for 2 minutes.",
+              "We've sent you a new verification code. Check your email. It's valid for 2 minutes.",
               "bot",
             );
           } catch (err: any) {
             const errorMsg = err.message || "An error occurred";
             addMessage(
-              `Couldn't resend the code: ${errorMsg}. Please go back and try signing up again.`,
+              `We couldn't send a new code. Please try again.`,
               "bot",
             );
           } finally {
@@ -204,7 +264,7 @@ function SignupForm() {
         try {
           const authRes = await awsAuth.verifyOtp(email, workingInput);
           addMessage(
-            "Perfect! Email verified. Now let's set a strong password for your account. Please enter a password (at least 8 characters).",
+            "Great! Your email is verified. Now please create a password (at least 8 characters).",
             "bot",
           );
           setState("AWAITING_PASSWORD_SET");
@@ -224,7 +284,7 @@ function SignupForm() {
             );
           } else {
             addMessage(
-              "That code didn't work. Please try again or type 'resend' for a new code.",
+              "That code doesn't match. Please try again or type 'resend' for a new code.",
               "bot",
             );
           }
@@ -233,7 +293,7 @@ function SignupForm() {
         const password = workingInput.trim();
         if (password.length < 8) {
           addMessage(
-            "Password must be at least 8 characters long. Please try again.",
+            "Your password needs to be at least 8 characters. Please try again.",
             "bot",
           );
           setIsLoading(false);
@@ -252,7 +312,7 @@ function SignupForm() {
           }
 
           addMessage(
-            "Success! Your password has been set. Redirecting to login...",
+            "Perfect! Your account is ready. Taking you to sign in...",
             "bot",
           );
           setState("COMPLETED");
@@ -263,13 +323,13 @@ function SignupForm() {
           }, 1500);
         } catch (err: any) {
           addMessage(
-            `Couldn't set your password: ${err.message || "Please try again."}`,
+            `We couldn't create your password. Please try again.`,
             "bot",
           );
         }
       }
     } catch {
-      addMessage("Something went wrong. Let's try that again.", "bot");
+      addMessage("Something went wrong. Please try again.", "bot");
     } finally {
       setIsLoading(false);
     }

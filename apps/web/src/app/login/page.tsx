@@ -87,14 +87,24 @@ function LoginForm() {
         // Check for error in URL (e.g. from tab-switch block)
         const urlParams = new URLSearchParams(window.location.search);
         const error = urlParams.get("error");
+        const emailParam = urlParams.get("email");
         
         if (error === "blocked") {
           addMessage("CRITICAL SECURITY ALERT: Your account has been permanently blocked for security violations. Access denied.", "bot");
           addMessage("Please contact support@techsalesaxis.ai for recovery options.", "bot");
+          setState("AWAITING_EMAIL");
+        } else if (emailParam) {
+          // Email passed from signup (already registered) - clean URL
+          window.history.replaceState({}, "", window.location.pathname);
+          const decodedEmail = decodeURIComponent(emailParam);
+          setEmail(decodedEmail);
+          const name = extractNameFromEmail(decodedEmail);
+          addMessage(`Hi ${name}. Now please enter your password.`, "bot");
+          setState("AWAITING_PASSWORD");
         } else {
           addMessage("Welcome back! Please enter your email to sign in.", "bot");
+          setState("AWAITING_EMAIL");
         }
-        setState("AWAITING_EMAIL");
       });
     }
   }, [state, router]);
@@ -104,12 +114,17 @@ function LoginForm() {
     const workingInput = input.trim();
     if (!workingInput || isLoading) return;
 
-    addMessage(workingInput, "user");
+    // Mask password in chat, show other inputs normally
+    if (state === "AWAITING_PASSWORD") {
+      addMessage("••••••••••", "user");
+    } else {
+      addMessage(workingInput, "user");
+    }
     setInput("");
     setIsLoading(true);
 
     if (workingInput.toLowerCase().includes("forgot password") || workingInput.toLowerCase() === "reset") {
-      addMessage("Protocol Recovery Initiated. Please enter your registered email to receive a reset link.", "bot");
+      addMessage("Please enter your email to reset your password.", "bot");
       setState("FORGOT_PASSWORD");
       setIsLoading(false);
       return;
@@ -120,12 +135,12 @@ function LoginForm() {
         const resetEmail = workingInput.toLowerCase();
         try {
           await apiClient.post("/auth/forgot-password", { email: resetEmail });
-          addMessage("Recovery signal transmitted. Check your inbox for the reset link.", "bot");
-          addMessage("Would you like to try logging in again? Tell me your email.", "bot");
+          addMessage("We've sent a reset link to your email. Check your inbox.", "bot");
+          addMessage("Would you like to try signing in again?", "bot");
           setState("AWAITING_EMAIL");
         } catch (err: any) {
-          addMessage(`Recovery failed: ${err.message}`, "bot");
-          addMessage("Please check the email and try again.", "bot");
+          addMessage(`We couldn't reset your password. Please try again.`, "bot");
+          addMessage("Please check your email and try again.", "bot");
         }
         return;
       }
@@ -133,13 +148,13 @@ function LoginForm() {
       if (state === "AWAITING_EMAIL") {
         setEmail(workingInput.toLowerCase().trim());
         const name = extractNameFromEmail(workingInput);
-        addMessage(`Got it, ${name}. Now, please enter your password.`, "bot");
+        addMessage(`Hi ${name}. Now please enter your password.`, "bot");
         setState("AWAITING_PASSWORD");
       } else if (state === "AWAITING_PASSWORD") {
         try {
           const authRes = await awsAuth.login(email, workingInput);
           addMessage(
-            "Success! Synchronizing with the TechSales Axis security layer...",
+            "Signing you in...",
             "bot",
           );
 
@@ -150,10 +165,13 @@ function LoginForm() {
               authRes.access_token,
             );
 
-            addMessage(
-              `Verified. Redirecting you to your ${handshake.role} dashboard...`,
-              "bot",
-            );
+            // Check if onboarding is complete based on next_step
+            const isOnboardingComplete = handshake.next_step && handshake.next_step.includes("/dashboard");
+            const message = isOnboardingComplete
+              ? "Welcome! Taking you to your dashboard..."
+              : "Welcome! Let's complete your profile...";
+
+            addMessage(message, "bot");
             setState("COMPLETED");
 
             setTimeout(() => {
@@ -166,30 +184,38 @@ function LoginForm() {
             
             if (isBlocked) {
               addMessage(
-                "CRITICAL SECURITY ALERT: Your account has been permanently blocked for security violations. Access denied.",
+                "Your account has been locked for security. Please contact support@techsalesaxis.ai.",
                 "bot",
               );
-              addMessage("Please contact support@techsalesaxis.ai if you believe this is an error.", "bot");
+              addMessage("If you believe this is a mistake, please contact us at support@techsalesaxis.ai.", "bot");
               awsAuth.logout();
             } else {
               const errorMessage = err instanceof Error ? err.message : "Unknown error";
               addMessage(
-                `Security handshake failed: ${errorMessage}. Please contact support.`,
+                `Something went wrong. Please try again or contact support.`,
                 "bot",
               );
             }
           }
         } catch (err: any) {
           const errorMessage = err.message || "Login failed. Please try again.";
-          addMessage(errorMessage, "bot");
-          if (!errorMessage.includes("do not have an account")) {
-            addMessage("Lost your password? Just type 'forgot password' or tell me your email again.", "bot");
+          if (errorMessage.includes("No account found")) {
+            addMessage("You don't have an account yet. Creating one...", "bot");
+            // Redirect to signup with email and role params
+            setTimeout(() => {
+              router.replace(`/signup?email=${encodeURIComponent(email)}`);
+            }, 1500);
+          } else if (errorMessage.includes("incorrect")) {
+            addMessage("Password is incorrect. Type 'forgot password' to reset it.", "bot");
+            setState("AWAITING_EMAIL");
+          } else {
+            addMessage(errorMessage, "bot");
+            setState("AWAITING_EMAIL");
           }
-          setState("AWAITING_EMAIL");
         }
       }
     } catch {
-      addMessage("Something went wrong. Let's try that again.", "bot");
+      addMessage("Something went wrong. Please try again.", "bot");
     } finally {
       setIsLoading(false);
     }
