@@ -3,17 +3,17 @@
  * Standard JWT-based auth pointing to the Python API
  */
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8005";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
 
 export const awsAuth = {
-  /**
+  /** /
    * Register a new user (Step 1: Code sent via SES)
    */
-  async signup(email: string, role: string, password = "DefaultPassword123!") {
+  async signup(email: string, role: string, full_name: string = "User", password = "DefaultPassword123!") {
     const response = await fetch(`${API_URL}/auth/signup`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, role, password }),
+      body: JSON.stringify({ email, role, full_name, password }),
     });
     
     if (!response.ok) {
@@ -44,6 +44,23 @@ export const awsAuth = {
       localStorage.setItem("tf_user_email", email);
     }
     return data;
+  },
+
+  /**
+   * Resend OTP if user requests it (expires in 2 minutes)
+   */
+  async resendOtp(email: string, role: string) {
+    const response = await fetch(`${API_URL}/auth/resend-otp`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, role }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || "Failed to resend OTP");
+    }
+    return response.json();
   },
 
   /**

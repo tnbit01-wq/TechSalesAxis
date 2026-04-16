@@ -11,6 +11,7 @@ class User(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email = Column(Text, unique=True, nullable=False)
     role = Column(String(9), nullable=False)
+    full_name = Column(Text) # User's full name for personalized emails
     hashed_password = Column(Text) # Added for AWS Auth
     is_verified = Column(Boolean, default=False) # Added for OTP verification
     otp_code = Column(String(6)) # Temporary OTP storage

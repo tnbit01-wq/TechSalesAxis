@@ -82,7 +82,7 @@ export default function UnifiedCandidatesDashboard() {
         return;
       }
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8005';
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
       const response = await fetch(`${apiUrl}/api/v1/admin/unified-candidates`, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
@@ -154,7 +154,7 @@ export default function UnifiedCandidatesDashboard() {
     setPromptLoading(true);
     try {
       const token = localStorage.getItem('tf_token');
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8005';
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
 
       const response = await fetch(`${apiUrl}/api/v1/admin/match-candidates-by-prompt`, {
         method: 'POST',

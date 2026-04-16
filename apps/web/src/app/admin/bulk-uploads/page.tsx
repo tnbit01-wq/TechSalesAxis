@@ -45,7 +45,7 @@ export default function BatchesListPage() {
         router.push('/login');
         return;
       }
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8005';
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
       // Backend supports skip/limit - using them here for efficiency
       const response = await fetch(`${apiUrl}/api/v1/admin/bulk-uploads?skip=0&limit=50`, {
         headers: {
@@ -96,7 +96,7 @@ export default function BatchesListPage() {
         return;
       }
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8005';
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
       const deleteUrl = `${apiUrl}/api/v1/admin/bulk-uploads/${batchId}`;
       console.log(`[DELETE] Calling DELETE endpoint: ${deleteUrl}`);
       

@@ -13,7 +13,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
 // Component 1: Bulk Upload Initialization Screen
-export const BulkUploadInitialize: React.FC = () => {
+const BulkUploadInitialize: React.FC = () => {
   const [batchName, setBatchName] = useState('');
   const [batchDescription, setBatchDescription] = useState('');
   const [sourceSystem, setSourceSystem] = useState('internal_hr');
@@ -27,7 +27,7 @@ export const BulkUploadInitialize: React.FC = () => {
     setError('');
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8005';
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
       const response = await fetch(`${apiUrl}/api/v1/bulk-upload/initialize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -126,7 +126,7 @@ interface UploadProgress {
   error?: string;
 }
 
-export const BulkUploadFileUpload: React.FC<{ bulkUploadId: string; onUploadComplete?: () => void }> = ({ bulkUploadId, onUploadComplete }) => {
+const BulkUploadFileUpload: React.FC<{ bulkUploadId: string; onUploadComplete?: () => void }> = ({ bulkUploadId, onUploadComplete }) => {
   const [uploadProgress, setUploadProgress] = useState<UploadProgress[]>([]);
   const [uploading, setUploading] = useState(false);
   const [allUploadedCount, setAllUploadedCount] = useState(0);
@@ -201,7 +201,7 @@ export const BulkUploadFileUpload: React.FC<{ bulkUploadId: string; onUploadComp
         });
 
         const token = typeof window !== 'undefined' ? localStorage.getItem('tf_token') : null;
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8005';
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
         xhr.open('POST', `${apiUrl}/api/v1/bulk-upload/${bulkUploadId}/upload`);
         
         // Set Authorization header
@@ -323,7 +323,7 @@ interface DuplicateMatch {
   match_details: Record<string, any>;
 }
 
-export const BulkUploadDuplicateReview: React.FC<{ bulkUploadId: string; onReviewComplete?: () => void }> = ({ bulkUploadId, onReviewComplete }) => {
+const BulkUploadDuplicateReview: React.FC<{ bulkUploadId: string; onReviewComplete?: () => void }> = ({ bulkUploadId, onReviewComplete }) => {
   const [duplicates, setDuplicates] = useState<DuplicateMatch[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -353,7 +353,7 @@ export const BulkUploadDuplicateReview: React.FC<{ bulkUploadId: string; onRevie
         return;
       }
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8005';
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
       const response = await fetch(
         `${apiUrl}/api/v1/bulk-upload/${bulkUploadId}/duplicates-for-review`,
         {
@@ -383,7 +383,7 @@ export const BulkUploadDuplicateReview: React.FC<{ bulkUploadId: string; onRevie
         return;
       }
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8005';
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
       const response = await fetch(
         `${apiUrl}/api/v1/bulk-upload/${bulkUploadId}/duplicate/${matchId}/review`,
         {
@@ -543,7 +543,7 @@ export const BulkUploadDuplicateReview: React.FC<{ bulkUploadId: string; onRevie
 // Component 4: Bulk Upload Status Dashboard
 // ============================================================================
 
-export const BulkUploadStatusDashboard: React.FC<{ bulkUploadId: string }> = ({ bulkUploadId }) => {
+const BulkUploadStatusDashboard: React.FC<{ bulkUploadId: string }> = ({ bulkUploadId }) => {
   const [status, setStatus] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -557,7 +557,7 @@ export const BulkUploadStatusDashboard: React.FC<{ bulkUploadId: string }> = ({ 
           return;
         }
 
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8005';
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
         const response = await fetch(`${apiUrl}/api/v1/bulk-upload/${bulkUploadId}/status`, {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -723,7 +723,7 @@ const BulkUploadInitializeWrapper: React.FC<{
         throw new Error('Authentication token not found. Please login.');
       }
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8005';
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
       const response = await fetch(`${apiUrl}/api/v1/bulk-upload/initialize`, {
         method: 'POST',
         headers: {
@@ -839,7 +839,7 @@ const BulkUploadStatusDashboardWrapper: React.FC<{
           return;
         }
 
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8005';
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
         const response = await fetch(`${apiUrl}/api/v1/bulk-upload/${bulkUploadId}/status`, {
           headers: {
             'Authorization': `Bearer ${token}`,

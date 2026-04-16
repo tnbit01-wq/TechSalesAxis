@@ -38,6 +38,7 @@ function SignupForm() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [customPassword, setCustomPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const initialized = useRef(false);
 
@@ -103,7 +104,12 @@ function SignupForm() {
     const workingInput = input.trim();
     if (!workingInput || isLoading) return;
 
-    addMessage(workingInput, "user");
+    // Mask password in chat for security - show dots instead of completely hiding
+    if (state === "AWAITING_PASSWORD_SET") {
+      addMessage("••••••••", "user");
+    } else {
+      addMessage(workingInput, "user");
+    }
     setInput("");
     setIsLoading(true);
 
@@ -138,24 +144,33 @@ function SignupForm() {
               setUserName(name);
               setEmail(workingInput.toLowerCase());
 
-              addMessage(
-                `Nice to meet you, ${name}! I'm sending a verification code to ${workingInput}. One moment...`,
-                "bot",
-              );
-
               try {
-                await awsAuth.signup(workingInput.toLowerCase(), role);
+                await awsAuth.signup(workingInput.toLowerCase(), role, name);
                 addMessage(
-                  "Code sent! Please enter the 6-digit code from your email. (Check your spam folder if it doesn't appear in 1 minute)",
+                  "Code sent! Please enter the 6-digit code from your email. If you don't see it in 1-2 minutes, check your spam folder or type 'resend' for a new code.",
                   "bot",
                 );
                 setState("AWAITING_OTP");
               } catch (err: any) {
-                console.error("AWS Auth Error:", err);
-                addMessage(
-                  `Sorry, I couldn't send the code: ${err.message}.`,
-                  "bot",
-                );
+                const errorMsg = err.message || "An error occurred";
+                
+                // Don't log console errors for expected validation errors
+                if (!errorMsg.includes("already registered")) {
+                  console.error("AWS Auth Error:", err);
+                }
+                
+                // Provide specific guidance based on error
+                if (errorMsg.includes("already registered")) {
+                  addMessage(
+                    "This email is already registered. Please go to the login page instead.",
+                    "bot",
+                  );
+                } else {
+                  addMessage(
+                    `I couldn't send the code: ${errorMsg}. Please try again or use a different email.`,
+                    "bot",
+                  );
+                }
               }
             } catch (err) {
               const errorMessage =
@@ -169,13 +184,17 @@ function SignupForm() {
         if (workingInput.toLowerCase() === "resend") {
           setIsLoading(true);
           try {
-            await awsAuth.signup(email, role);
+            await awsAuth.resendOtp(email, role);
             addMessage(
-              "I've triggered a new code. Please check your inbox again.",
+              "New verification code sent! Check your email inbox. Valid for 2 minutes.",
               "bot",
             );
           } catch (err: any) {
-             addMessage(`Failed to resend: ${err.message}`, "bot");
+            const errorMsg = err.message || "An error occurred";
+            addMessage(
+              `Couldn't resend the code: ${errorMsg}. Please go back and try signing up again.`,
+              "bot",
+            );
           } finally {
             setIsLoading(false);
           }
@@ -185,15 +204,30 @@ function SignupForm() {
         try {
           const authRes = await awsAuth.verifyOtp(email, workingInput);
           addMessage(
-            "Email verified! Now let's set a secure password for your account. Please enter a password (at least 8 characters).",
+            "Perfect! Email verified. Now let's set a strong password for your account. Please enter a password (at least 8 characters).",
             "bot",
           );
           setState("AWAITING_PASSWORD_SET");
         } catch (err: any) {
-          addMessage(
-            "That code didn't work. Please try again or check your email.",
-            "bot",
-          );
+          const errorMsg = err.message || "An error occurred";
+          
+          // Check for specific error messages and provide guidance
+          if (errorMsg.includes("expired")) {
+            addMessage(
+              `${errorMsg}`,
+              "bot",
+            );
+          } else if (errorMsg.includes("incorrect")) {
+            addMessage(
+              `${errorMsg}`,
+              "bot",
+            );
+          } else {
+            addMessage(
+              "That code didn't work. Please try again or type 'resend' for a new code.",
+              "bot",
+            );
+          }
         }
       } else if (state === "AWAITING_PASSWORD_SET") {
         const password = workingInput.trim();
@@ -218,7 +252,7 @@ function SignupForm() {
           }
 
           addMessage(
-            "Perfect! Your password has been set. Redirecting to login...",
+            "Success! Your password has been set. Redirecting to login...",
             "bot",
           );
           setState("COMPLETED");
@@ -229,7 +263,7 @@ function SignupForm() {
           }, 1500);
         } catch (err: any) {
           addMessage(
-            `Failed to set password: ${err.message || "Please try again."}`,
+            `Couldn't set your password: ${err.message || "Please try again."}`,
             "bot",
           );
         }
@@ -326,13 +360,34 @@ function SignupForm() {
           className="max-w-3xl mx-auto flex items-center gap-3 relative"
         >
           <input
-            type={state === "AWAITING_PASSWORD" ? "password" : "text"}
+            type={state === "AWAITING_PASSWORD_SET" && !showPassword ? "password" : "text"}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Type your message..."
             disabled={isLoading || state === "COMPLETED"}
             className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
           />
+
+          {state === "AWAITING_PASSWORD_SET" && (
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              disabled={isLoading}
+              className="p-3 rounded-xl transition-all bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed"
+              title={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? (
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-4.803m5.596-3.856a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0M15 12a3 3 0 11-6 0 3 3 0 016 0zm6 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              ) : (
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+              )}
+            </button>
+          )}
 
           <button
             type="button"
@@ -347,7 +402,7 @@ function SignupForm() {
           >
             <svg
               className="w-5 h-5"
-              fill="none"
+              fill="#19005d"
               viewBox="0 0 24 24"
               stroke="currentColor"
             >

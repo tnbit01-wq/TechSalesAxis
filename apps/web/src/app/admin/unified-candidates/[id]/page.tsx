@@ -50,7 +50,7 @@ export default function CandidateDetailPage() {
         return;
       }
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8005';
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
       const response = await fetch(`${apiUrl}/api/v1/admin/unified-candidates?candidate_id=${params.id}`, {
         headers: {
           'Authorization': `Bearer ${token}`,

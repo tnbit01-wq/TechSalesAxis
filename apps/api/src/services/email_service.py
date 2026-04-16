@@ -111,15 +111,15 @@ def send_templated_email(recipient, template_id, merge_info, fallback_subject=""
         logger.error(f"Failed to call ZeptoMail API: {e}")
         return send_smtp_fallback(recipient, fallback_subject, fallback_html)
 
-def send_otp_email(email, otp):
-    print(f"[OTP_EMAIL] Called for {email} with OTP {otp}")
+def send_otp_email(email, otp, name="User"):
+    print(f"[OTP_EMAIL] Called for {email} with OTP {otp} and name {name}")
     subject = f"{SMTP_SENDER_NAME}: Your Verification Code"
     html = f"""
     <html>
     <body style="font-family: Arial, sans-serif; padding: 20px; background-color: #f7fafc;">
         <div style="max-width: 600px; margin: 0 auto; background: white; padding: 40px; border-radius: 8px; border: 1px solid #e2e8f0;">
             <h2 style="color: #2b6cb0;">{SMTP_SENDER_NAME} Verification</h2>
-            <p>Hi,</p>
+            <p>Hi {name},</p>
             <p>Your verification code is:</p>
             <div style="background: #ebf8ff; padding: 20px; text-align: center; border-radius: 6px; font-size: 32px; font-weight: bold; color: #2b6cb0; letter-spacing: 5px;">
                 {otp}

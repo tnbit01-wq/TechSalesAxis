@@ -2372,7 +2372,7 @@ function OnboardingContent() {
       const formData = new FormData();
       formData.append("file", file);
       
-      const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8001"}${endpoint}`, {
+      const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "/api"}${endpoint}`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${token}`

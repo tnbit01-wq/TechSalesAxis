@@ -51,7 +51,7 @@ export default function AdminSettingsPage() {
         router.push('/login');
         return;
       }
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8005';
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
       const response = await fetch(`${apiUrl}/api/v1/admin/settings`, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -79,7 +79,7 @@ export default function AdminSettingsPage() {
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('tf_token') : null;
       if (!token) return;
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8005';
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
       const response = await fetch(`${apiUrl}/api/v1/admin/users`, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -114,7 +114,7 @@ export default function AdminSettingsPage() {
         setSaving(false);
         return;
       }
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8005';
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
       const response = await fetch(`${apiUrl}/api/v1/admin/settings`, {
         method: 'PUT',
         headers: {

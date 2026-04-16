@@ -16,6 +16,7 @@ class SignupRequest(BaseModel):
     email: EmailStr
     password: str
     role: str
+    full_name: str
 
 class LoginRequest(BaseModel):
     email: EmailStr
@@ -60,11 +61,11 @@ async def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(
     db.commit()
 
     # Create reset link
-    reset_link = f"https://techsalesaxis.app/reset-password?token={token}"
+    reset_link = f"https://techsalesaxis.com/reset-password?token={token}"
     from src.services.email_service import send_password_reset_email
-    send_password_reset_email(user.email, reset_link)
+    send_password_reset_email(user.email, reset_link, user.full_name or "User")
 
-    return {"status": "success", "message": "If this email is registered, a reset link has been sent."}
+    return {"status": "success", "message": "If an account exists for this email, we've sent a password reset link. Check your inbox and spam folder. The link expires in 1 hour."}
 
 @router.post("/reset-password")
 async def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
@@ -73,18 +74,18 @@ async def reset_password(request: ResetPasswordRequest, db: Session = Depends(ge
     """
     user = db.query(User).filter(
         User.reset_token == request.token,
-        User.reset_token_expires_at > datetime.utcnow()
+        User.reset_token_expires_at > datetime.now(timezone.utc)
     ).first()
 
     if not user:
-        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token. Please request a new password reset link.")
 
     user.hashed_password = get_password_hash(request.password)
     user.reset_token = None
     user.reset_token_expires_at = None
     db.commit()
 
-    return {"status": "success", "message": "Password reset successfully."}
+    return {"status": "success", "message": "Password reset successfully! You can now log in with your new password."}
 
 class ProfileInitializeRequest(BaseModel):
     role: str
@@ -104,10 +105,16 @@ async def signup(request: SignupRequest):
     """
     db = SessionLocal()
     try:
-        # Check if user exists
+        # Check if user exists and is verified
         existing = db.query(User).filter(User.email == request.email).first()
-        if existing:
-            raise HTTPException(status_code=400, detail="Cloud ID already registered")
+        if existing and existing.is_verified:
+            raise HTTPException(status_code=400, detail="This email is already registered. Please login instead.")
+        
+        # If user exists but NOT verified, allow re-signup (user wants to retry)
+        if existing and not existing.is_verified:
+            # Delete the old unverified record to allow fresh signup
+            db.delete(existing)
+            db.commit()
 
         # Validation logic (Candidate must be personal, Recruiter must be work)
         domain = request.email.split("@")[1].lower()
@@ -122,6 +129,7 @@ async def signup(request: SignupRequest):
             id=uuid.uuid4(),
             email=request.email,
             role=request.role,
+            full_name=request.full_name,
             hashed_password=get_password_hash(request.password),
             is_verified=False,
             otp_code=otp,
@@ -130,10 +138,13 @@ async def signup(request: SignupRequest):
         db.add(new_user)
         db.commit()
 
-        # Send OTP via SES
-        send_otp_email(request.email, otp)
+        # Send OTP via email with user's name
+        send_otp_email(request.email, otp, request.full_name)
         
-        return {"status": "success", "message": "Verification code sent to email."}
+        return {
+            "status": "success", 
+            "message": f"Verification code sent to {request.email}. Please check your inbox and spam folder. Code expires in 10 minutes."
+        }
     finally:
         db.close()
 
@@ -149,12 +160,12 @@ async def verify_otp(request: OTPVerifyRequest):
             raise HTTPException(status_code=404, detail="User not found")
         
         if user.otp_code != request.otp:
-            raise HTTPException(status_code=400, detail="Invalid verification code")
+            raise HTTPException(status_code=400, detail="The code you entered is incorrect. Please try again or type 'resend' for a new code.")
 
         # Fix timezone comparison: use timezone-aware UTC datetime
         now_utc = datetime.now(timezone.utc)
         if user.otp_expires_at and now_utc > user.otp_expires_at:
-            raise HTTPException(status_code=400, detail="Verification code expired")
+            raise HTTPException(status_code=400, detail="Your verification code has expired. Please type 'resend' to get a new one.")
 
         user.is_verified = True
         user.otp_code = None  # Clear OTP
@@ -162,6 +173,34 @@ async def verify_otp(request: OTPVerifyRequest):
 
         access_token = create_access_token(data={"sub": str(user.id), "email": user.email, "role": user.role})
         return {"access_token": access_token, "token_type": "bearer"}
+    finally:
+        db.close()
+
+@router.post("/resend-otp")
+async def resend_otp(request: EmailValidationRequest):
+    """
+    Resend OTP if time is up or user requests it.
+    New OTP expires in 2 minutes.
+    """
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.email == request.email).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="No signup found for this email. Please start the signup process again.")
+        
+        if user.is_verified:
+            raise HTTPException(status_code=400, detail="Your email is already verified. Please log in to continue.")
+
+        # Generate new OTP with 2-minute expiry
+        otp = generate_otp()
+        user.otp_code = otp
+        user.otp_expires_at = datetime.now(timezone.utc) + timedelta(minutes=2)
+        db.commit()
+
+        # Send OTP with user's name
+        send_otp_email(user.email, otp, user.full_name or "User")
+        
+        return {"status": "success", "message": "New verification code sent to your email. Valid for 2 minutes. Check your inbox and spam folder."}
     finally:
         db.close()
 
@@ -174,14 +213,14 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="You do not have an account. Please sign up first.",
+            detail="No account found with this email. Please sign up first.",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
     if not verify_password(request.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect password. Please check your credentials and try again.",
+            detail="Password is incorrect. Please try again or click 'Forgot Password' to reset it.",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
@@ -191,8 +230,8 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
         user.otp_code = otp
         user.otp_expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
         db.commit()
-        send_otp_email(user.email, otp)
-        return {"status": "unverified", "message": "Account not verified. New OTP sent."}
+        send_otp_email(user.email, otp, user.full_name or "User")
+        return {"status": "unverified", "message": "Account not verified yet. We've sent a new verification code to your email. Please verify to continue."}
 
     access_token = create_access_token(
         data={"sub": str(user.id), "email": user.email, "role": user.role}
