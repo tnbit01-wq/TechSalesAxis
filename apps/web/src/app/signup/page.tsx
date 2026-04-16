@@ -22,6 +22,7 @@ type Message = {
 type SignupState =
   | "INITIAL"
   | "AWAITING_EMAIL"
+  | "AWAITING_OTP_TRIGGER"
   | "AWAITING_OTP"
   | "AWAITING_PASSWORD_SET"
   | "COMPLETED";
