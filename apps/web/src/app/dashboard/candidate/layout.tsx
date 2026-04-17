@@ -6,6 +6,8 @@ import { apiClient } from "@/lib/apiClient";
 import { useRouter } from "next/navigation";
 import CandidateSidebar from "@/components/CandidateSidebar";
 import CandidateHeader from "@/components/CandidateHeader";
+import { SidebarProvider } from "@/context/SidebarContext";
+import CandidateLayoutClient from "@/components/CandidateLayoutClient";
 
 export default function CandidateDashboardLayout({
   children,
@@ -56,18 +58,18 @@ export default function CandidateDashboardLayout({
   }
 
   return (
-    <div className="flex min-h-screen bg-[#f8fafc]">
-      <CandidateSidebar
-        assessmentStatus={profile?.assessment_status}
-        profileScore={profile?.profile_score ?? 0}
-      />
-      <div className="flex-1 ml-64 min-h-screen relative">
-        <CandidateHeader />
-        <div className="relative">
+    <SidebarProvider>
+      <div className="flex min-h-screen bg-[#f8fafc]">
+        <CandidateSidebar
+          assessmentStatus={profile?.assessment_status}
+          profileScore={profile?.profile_score ?? 0}
+        />
+        <CandidateLayoutClient>
+          <CandidateHeader />
           <main className="p-8">{children}</main>
-        </div>
+        </CandidateLayoutClient>
       </div>
-    </div>
+    </SidebarProvider>
   );
 }
 

@@ -6,6 +6,8 @@ import { apiClient } from "@/lib/apiClient";
 import { useRouter } from "next/navigation";
 import RecruiterSidebar from "@/components/RecruiterSidebar";
 import RecruiterHeader from "@/components/RecruiterHeader";
+import { SidebarProvider } from "@/context/SidebarContext";
+import RecruiterLayoutClient from "@/components/RecruiterLayoutClient";
 
 export default function RecruiterDashboardLayout({
   children,
@@ -59,19 +61,19 @@ export default function RecruiterDashboardLayout({
   }
 
   return (
-    <div className="flex min-h-screen bg-[#f8fafc]">
-      <RecruiterSidebar
-        assessmentStatus={profile?.assessment_status}
-        teamRole={profile?.team_role}
-        profileScore={profile?.companies?.profile_score ?? 0}
-      />
-      <div className="flex-1 ml-64 min-h-screen relative overflow-x-hidden">
-        <RecruiterHeader />
-        <div className="relative">
+    <SidebarProvider>
+      <div className="flex min-h-screen bg-[#f8fafc]">
+        <RecruiterSidebar
+          assessmentStatus={profile?.assessment_status}
+          teamRole={profile?.team_role}
+          profileScore={profile?.companies?.profile_score ?? 0}
+        />
+        <RecruiterLayoutClient>
+          <RecruiterHeader />
           <main className="p-8 pt-20">{children}</main>
-        </div>
+        </RecruiterLayoutClient>
       </div>
-    </div>
+    </SidebarProvider>
   );
 }
 

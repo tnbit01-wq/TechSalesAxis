@@ -1,5 +1,7 @@
 import { Metadata } from 'next';
 import AdminSidebar from '@/components/AdminSidebar';
+import { SidebarProvider } from '@/context/SidebarContext';
+import AdminLayoutClient from '@/components/AdminLayoutClient';
 
 export const metadata: Metadata = {
   title: 'Admin Dashboard | Techsales Axis',
@@ -12,13 +14,11 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex h-screen bg-slate-50 overscroll-none overflow-hidden">
-      <AdminSidebar />
-      <main className="flex-1 ml-64 overflow-y-auto">
-        <div className="p-8">
-            {children}
-        </div>
-      </main>
-    </div>
+    <SidebarProvider>
+      <div className="flex h-screen bg-slate-50 overscroll-none overflow-hidden">
+        <AdminSidebar />
+        <AdminLayoutClient>{children}</AdminLayoutClient>
+      </div>
+    </SidebarProvider>
   );
 }

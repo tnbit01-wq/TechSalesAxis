@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { awsAuth } from "@/lib/awsAuth";
+import { useSidebar } from "@/context/SidebarContext";
 import {
   LayoutDashboard,
   Briefcase,
@@ -17,6 +18,7 @@ import {
   ShieldCheck,
   Building2,
   FileText,
+  Menu,
 } from "lucide-react";
 
 interface RecruiterSidebarProps {
@@ -46,6 +48,7 @@ export default function RecruiterSidebar({
 }: RecruiterSidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const { isOpen, toggleSidebar, closeSidebar } = useSidebar();
 
   const isLocked = profileScore === 0;
 
@@ -171,47 +174,66 @@ export default function RecruiterSidebar({
   ];
 
   return (
-    <aside className="w-64 bg-[#0f172a] border-r border-slate-800 flex flex-col fixed h-full z-30 transition-all duration-300">
-      <div className="p-8">
-        <div
-          className="flex items-center gap-3 cursor-pointer group"
-          onClick={() => router.push("/dashboard/recruiter")}
-        >
-          <div className="h-9 w-9 rounded-lg bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/20 group-hover:scale-105 transition-transform duration-300">
+    <aside className={`${isOpen ? "w-64" : "w-20"} bg-[#0f172a] border-r border-slate-800 flex flex-col fixed h-full z-30 transition-all duration-300`}>
+      {isOpen && (
+        <div className="p-6 flex items-center gap-2">
+          <div
+            className="h-9 w-9 rounded-lg bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/20 group-hover:scale-105 transition-transform duration-300 cursor-pointer flex-shrink-0"
+            onClick={() => router.push("/dashboard/recruiter")}
+          >
             <div className="h-4 w-4 rounded-sm bg-white rotate-45 group-hover:rotate-0 transition-transform duration-500" />
           </div>
-          <span className="font-bold text-white tracking-tight text-xl">
+          <span className="font-bold text-white tracking-tight text-xl whitespace-nowrap flex-1">
             Techsales<span className="text-indigo-400">Axis</span>
           </span>
+          <button
+            onClick={toggleSidebar}
+            className="p-2 hover:bg-slate-700/50 rounded-lg transition-colors text-slate-400 hover:text-white flex-shrink-0"
+            title="Collapse sidebar"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
         </div>
-      </div>
+      )}
+      {!isOpen && (
+        <div className="p-4 flex justify-center">
+          <button
+            onClick={toggleSidebar}
+            className="p-2 hover:bg-slate-700/50 rounded-lg transition-colors text-slate-400 hover:text-white flex-shrink-0"
+            title="Expand sidebar"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+        </div>
+      )}
 
-      <nav className="flex-1 px-4 space-y-6 overflow-y-auto scrollbar-hide hover:scrollbar-default transition-all duration-300">
-        <style jsx global>{`
-          .scrollbar-hide::-webkit-scrollbar {
-            display: none;
-          }
-          .scrollbar-hide {
-            -ms-overflow-style: none; /* IE and Edge */
-            scrollbar-width: none; /* Firefox */
-          }
-          .hover\:scrollbar-default:hover::-webkit-scrollbar {
-            display: block;
+      <nav className="flex-1 px-4 space-y-6 overflow-y-auto transition-all duration-300"
+           style={{
+             scrollbarWidth: 'thin',
+             scrollbarColor: '#64748b transparent'
+           }}>
+        <style jsx>{`
+          nav::-webkit-scrollbar {
             width: 4px;
           }
-          .hover\:scrollbar-default:hover::-webkit-scrollbar-track {
+          nav::-webkit-scrollbar-track {
             background: transparent;
           }
-          .hover\:scrollbar-default:hover::-webkit-scrollbar-thumb {
-            background: #1e293b;
+          nav::-webkit-scrollbar-thumb {
+            background: #64748b;
             border-radius: 10px;
+          }
+          nav::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
           }
         `}</style>
         {groups.map((group, idx) => (
           <div key={idx} className="space-y-2">
-            <h3 className="px-4 text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em]">
-              {group.label}
-            </h3>
+            {isOpen && (
+              <h3 className="px-4 text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em]">
+                {group.label}
+              </h3>
+            )}
             <div className="space-y-1">
               {group.items.map((item, itemIdx) => (
                 <SidebarLink
@@ -222,6 +244,8 @@ export default function RecruiterSidebar({
                   active={pathname === item.href}
                   locked={item.locked}
                   description={item.description}
+                  isCollapsed={!isOpen}
+                  onNavigate={() => closeSidebar()}
                 />
               ))}
             </div>
@@ -230,7 +254,7 @@ export default function RecruiterSidebar({
       </nav>
 
       <div className="p-4 mt-auto border-t border-slate-800/50 space-y-3">
-        {assessmentStatus && (
+        {isOpen && assessmentStatus && (
           <div className="bg-slate-900/50 rounded-2xl p-4 border border-slate-800/50 backdrop-blur-sm">
             <div className="flex items-center gap-2 mb-2">
               <ShieldCheck
@@ -259,10 +283,10 @@ export default function RecruiterSidebar({
 
         <button
           onClick={handleLogout}
-          className="w-full flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-rose-400 hover:bg-rose-500/5 rounded-xl transition-all group font-medium"
+          className={`w-full flex items-center ${isOpen ? "gap-3" : "gap-0"} px-4 py-3 text-slate-400 hover:text-rose-400 hover:bg-rose-500/5 rounded-xl transition-all group font-medium`}
         >
-          <LogOut className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
-          <span className="text-sm">Logout</span>
+          <LogOut className="h-4 w-4 transition-transform group-hover:-translate-x-1 flex-shrink-0" />
+          {isOpen && <span className="text-sm">Logout</span>}
         </button>
       </div>
     </aside>
@@ -276,6 +300,8 @@ function SidebarLink({
   active = false,
   locked = false,
   description,
+  isCollapsed = false,
+  onNavigate,
 }: {
   label: string;
   href: string;
@@ -283,6 +309,8 @@ function SidebarLink({
   active?: boolean;
   locked?: boolean;
   description?: string;
+  isCollapsed?: boolean;
+  onNavigate?: () => void;
 }) {
   if (locked) {
     return (
@@ -290,54 +318,62 @@ function SidebarLink({
         className="flex items-center justify-between px-4 py-3 rounded-xl opacity-40 cursor-not-allowed group"
         title="Complete company assessment to unlock"
       >
-        <div className="flex items-center gap-3">
-          <div className="text-slate-500">{icon}</div>
-          <div className="flex flex-col">
-            <span className="text-sm font-medium text-slate-500">{label}</span>
-            {description && (
-              <span className="text-[10px] text-slate-600 line-clamp-1">
-                {description}
-              </span>
-            )}
-          </div>
-        </div>
-        <ShieldCheck className="h-3 w-3 text-slate-600" />
+        {!isCollapsed && (
+          <>
+            <div className="flex items-center gap-3">
+              <div className="text-slate-500">{icon}</div>
+              <div className="flex flex-col">
+                <span className="text-sm font-medium text-slate-500">{label}</span>
+                {description && (
+                  <span className="text-[10px] text-slate-600 line-clamp-1">
+                    {description}
+                  </span>
+                )}
+              </div>
+            </div>
+            <ShieldCheck className="h-3 w-3 text-slate-600" />
+          </>
+        )}
+        {isCollapsed && (
+          <div className="text-slate-500 mx-auto">{icon}</div>
+        )}
       </div>
     );
   }
 
   return (
-    <Link href={href}>
+    <Link href={href} onClick={onNavigate}>
       <div
         className={`
-        flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group
+        flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group relative
         ${
           active
             ? "bg-indigo-600/10 text-indigo-400 shadow-sm"
             : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
         }
       `}
+        title={isCollapsed ? label : undefined}
       >
         <div
-          className={`transition-colors duration-200 ${active ? "text-indigo-400" : "text-slate-500 group-hover:text-slate-300"}`}
+          className={`transition-colors duration-200 flex-shrink-0 ${active ? "text-indigo-400" : "text-slate-500 group-hover:text-slate-300"}`}
         >
           {icon}
         </div>
-        <div className="flex flex-col">
-          <span
-            className={`text-sm font-medium transition-colors duration-200`}
-          >
-            {label}
-          </span>
-          {description && (
-            <span
-              className={`text-[10px] leading-tight transition-colors duration-200 ${active ? "text-indigo-400/70" : "text-slate-500 group-hover:text-slate-400"}`}
-            >
-              {description}
+        {!isCollapsed && (
+          <div className="flex flex-col">
+            <span className="text-sm font-medium transition-colors duration-200">
+              {label}
             </span>
-          )}
-        </div>
-        {active && (
+            {description && (
+              <span
+                className={`text-[10px] leading-tight transition-colors duration-200 ${active ? "text-indigo-400/70" : "text-slate-500 group-hover:text-slate-400"}`}
+              >
+                {description}
+              </span>
+            )}
+          </div>
+        )}
+        {active && !isCollapsed && (
           <div className="ml-auto w-1 h-4 bg-indigo-400 rounded-full shadow-[0_0_8px_rgba(129,140,248,0.5)]" />
         )}
       </div>
