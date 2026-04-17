@@ -12,7 +12,6 @@ import {
   Sparkles,
   Zap,
   Filter,
-  LogOut,
   Plus,
   ChevronRight,
   User,
@@ -57,7 +56,7 @@ export default function RecommendationsPage() {
   const router = useRouter();
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeFilters, setActiveFilters] = useState<string[]>(["culture_fit"]);
+  const [activeFilters, setActiveFilters] = useState<string[]>(["understanding_and_assessment"]);
   const [recruiterProfile, setRecruiterProfile] =
     useState<RecruiterProfile | null>(null);
   const [jobs, setJobs] = useState<any[]>([]);
@@ -65,20 +64,39 @@ export default function RecommendationsPage() {
   const [isFetchingProfile, setIsFetchingProfile] = useState(false);
   const [filterExperience, setFilterExperience] = useState<string>("all");
   const [filterLocation, setFilterLocation] = useState<string>("");
-  const [debouncedLocation, setDebouncedLocation] = useState<string>("");
   const [filterMaxSalary, setFilterMaxSalary] = useState<string>("");
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedLocation(filterLocation);
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [filterLocation]);
+  const [filterCareerReadiness, setFilterCareerReadiness] = useState<string>("");
 
   const [currencySymbol, setCurrencySymbol] = useState<string>("$");
   const [isSyncing, setIsSyncing] = useState(false);
-  const [filterSalesModel, setFilterSalesModel] = useState<string>("");
-  const [filterTargetMarket, setFilterTargetMarket] = useState<string>("");
+  const [pipelineData, setPipelineData] = useState<any[]>([]);
+  const [personalInfoUnlocked, setPersonalInfoUnlocked] = useState<Record<string, boolean>>({});
+
+  // Check if candidate has unlocked access to personal info
+  const hasAccessToPersonalInfo = (candidateId: string): boolean => {
+    const candidateApplications = pipelineData.filter(app => app.candidate_id === candidateId || app.app?.candidate_id === candidateId);
+    
+    if (candidateApplications.length === 0) return false;
+
+    return candidateApplications.some(app => {
+      const appStatus = app.status || app.app?.status || '';
+      const isSensitiveStatus = ['applied', 'shortlisted', 'interview_scheduled', 'offered', 'hired'].includes(appStatus.toLowerCase());
+      const hasInviteReply = app.invite_message_replied || app.has_replied_to_invite || false;
+      return isSensitiveStatus || hasInviteReply;
+    });
+  };
+
+  // Blur personal info if not unlocked
+  const getDisplayName = (fullName: string, candidateId: string): string => {
+    if (personalInfoUnlocked[candidateId] || hasAccessToPersonalInfo(candidateId)) {
+      return fullName;
+    }
+    const parts = fullName.split(' ');
+    if (parts.length >= 2) {
+      return `${parts[0].charAt(0)}**** ${parts[parts.length - 1].charAt(0)}****`;
+    }
+    return parts[0].charAt(0) + '****';
+  };
 
   const toggleFilter = (mode: string) => {
     setActiveFilters([mode]);
@@ -111,9 +129,6 @@ export default function RecommendationsPage() {
   });
 
   const fetchRecommendations = useCallback(async () => {
-    // Only fetch if we're not manually typing in the location field anymore
-    if (filterLocation !== debouncedLocation) return;
-    
     setLoading(true);
     setIsSyncing(true);
     try {
@@ -123,7 +138,7 @@ export default function RecommendationsPage() {
         return;
       }
 
-      // Handle search params for skill_match
+      // Handle search params for skill matching
       const params = new URLSearchParams(window.location.search);
       const initialSkills = params.get("skills");
       
@@ -134,22 +149,24 @@ export default function RecommendationsPage() {
         url += `&skills=${initialSkills}`;
       }
       
-      // Add Location & Salary & Sales DNA filters
-      if (debouncedLocation) url += `&location=${encodeURIComponent(debouncedLocation)}`;
+      // Add Location & Salary & Career Readiness filters
+      if (filterLocation) url += `&location=${encodeURIComponent(filterLocation)}`;
       if (filterMaxSalary) url += `&max_salary=${encodeURIComponent(filterMaxSalary)}`;
-      if (filterSalesModel) url += `&sales_model=${encodeURIComponent(filterSalesModel)}`;
-      if (filterTargetMarket) url += `&target_market=${encodeURIComponent(filterTargetMarket)}`;
+      if (filterCareerReadiness) url += `&career_readiness=${encodeURIComponent(filterCareerReadiness)}`;
       if (filterExperience !== "all") url += `&experience_band=${encodeURIComponent(filterExperience)}`;
       if (searchTerm) url += `&skills=${encodeURIComponent(searchTerm)}`;
 
-      const [recData, profileData, jobsData] = await Promise.all([
+      const [recData, profileData, jobsData, pipelineResponse] = await Promise.all([
         apiClient.get(url, token),
         apiClient.get("/recruiter/profile", token),
         apiClient.get("/recruiter/jobs", token),
+        apiClient.get("/recruiter/applications/pipeline", token),
       ]);
 
       setCandidates(recData || []);
       setRecruiterProfile(profileData);
+      setJobs(jobsData || []);
+      setPipelineData(pipelineResponse || []);
       setJobs(jobsData || []);
     } catch (err) {
       console.error("Failed to fetch recommendations:", err);
@@ -158,12 +175,12 @@ export default function RecommendationsPage() {
       setLoading(false);
       setIsSyncing(false);
     }
-  }, [router, activeFilters, debouncedLocation, filterLocation, filterMaxSalary, filterSalesModel, filterTargetMarket, searchTerm]);
+  }, [activeFilters, filterExperience, filterLocation, filterMaxSalary, filterCareerReadiness, searchTerm, router]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const initialFilter = params.get("filter") as any;
-    if (initialFilter && (initialFilter === "skill_match" || initialFilter === "profile_matching")) {
+    if (initialFilter && (initialFilter === "skill_match" || initialFilter === "understanding_and_assessment")) {
       setActiveFilters([initialFilter]);
     }
   }, []);
@@ -183,14 +200,10 @@ export default function RecommendationsPage() {
   }, [filterLocation]);
 
   useEffect(() => {
-    // Initial fetch
+    // Initial fetch on mount only
     fetchRecommendations();
-  }, [fetchRecommendations]);
-
-  const handleLogout = async () => {
-    awsAuth.logout();
-    router.replace("/login");
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleInviteCandidate = async (
     jobId: string,
@@ -286,25 +299,21 @@ export default function RecommendationsPage() {
     return matchesSearch && matchesFilter;
   });
 
-  // Group by Match Strength for a more "Recommended" feel
+  // Group by Match Strength with 75% minimum threshold
   const tiers = {
     elite: filteredCandidates.filter((c) => c.culture_match_score >= 85),
     strong: filteredCandidates.filter(
-      (c) => c.culture_match_score >= 60 && c.culture_match_score < 85,
+      (c) => c.culture_match_score >= 75 && c.culture_match_score < 85,
     ),
-    potential: filteredCandidates.filter((c) => c.culture_match_score < 60),
+    // Removed potential tier - only show candidates with 75%+ match
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50/50">
-        <div className="flex flex-col items-center gap-6">
-          <div className="h-16 w-16 rounded-3xl bg-white border border-slate-200 flex items-center justify-center shadow-xl">
-            <div className="h-8 w-8 rounded-full border-4 border-blue-600 border-t-transparent animate-spin" />
-          </div>
-          <p className="text-blue-600 font-black text-[10px] uppercase tracking-[0.4em]">
-            Calculating Best Match...
-          </p>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
+          <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Loading Recommendations...</p>
         </div>
       </div>
     );
@@ -314,152 +323,146 @@ export default function RecommendationsPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      <main className="max-w-7xl mx-auto px-4 py-12">
+      <main className="max-w-7xl mx-auto px-4 py-6">
         {isLocked ? (
           <LockedView featureName="Recommended Talent" />
         ) : (
           <>
             {/* Header */}
-            <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+            <header className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
               <div>
-                <h1 className="text-3xl font-bold text-slate-900 tracking-tight">
+                <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
                   AI <span className="text-blue-600">Recommendations</span>
                 </h1>
-                <p className="text-slate-500 text-sm mt-1">
+                <p className="text-slate-500 text-xs mt-0.5">
                   Discover the best candidates for your open roles
                 </p>
               </div>
-              <button
-                onClick={handleLogout}
-                className="px-4 py-2.5 bg-slate-100 text-slate-600 rounded-lg hover:bg-red-50 hover:text-red-600 transition-all text-sm font-medium flex items-center gap-2 w-fit"
-              >
-                <LogOut className="w-4 h-4" />
-                Logout
-              </button>
             </header>
 
             {/* Search & Filters */}
-            <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm mb-8 space-y-4">
-              {/* First Row: Search and Match Type Filters */}
-              <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center">
-                <div className="flex-1 relative">
-                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="Search by name, role, or skills..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 pl-11 pr-4 py-2.5 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-all"
-                  />
-                </div>
+            <section className="bg-white rounded-3xl border border-slate-200 p-5 shadow-sm mb-6 space-y-4">
+              {/* Search Bar */}
+              <div className="relative">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search by name, role, or skills..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 pl-11 pr-4 py-2.5 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-all"
+                />
+              </div>
+
+              {/* Filter Type Selection */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wide">Match Type</label>
                 <div className="flex gap-2 flex-wrap">
                   {[
-                    { id: "culture_fit", label: "Culture Fit" },
-                    { id: "skill_match", label: "Skills" },
-                    { id: "profile_matching", label: "Expert View" }
+                    { 
+                      id: "understanding_and_assessment", 
+                      label: "Best Match", 
+                      description: "Culture & Assessment"
+                    },
+                    { 
+                      id: "skill_match", 
+                      label: "Our Recommendation", 
+                      description: "Skills & Expertise"
+                    }
                   ].map((f) => (
                     <button
                       key={f.id}
                       onClick={() => toggleFilter(f.id)}
-                      className={`px-3 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                      className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all whitespace-nowrap flex items-center gap-2 ${
                         activeFilters.includes(f.id)
-                          ? "bg-primary text-white shadow-md shadow-primary-light"
-                          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                          ? "bg-blue-600 text-white shadow-lg shadow-blue-200 scale-105"
+                          : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                       }`}
                     >
+
                       {f.label}
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* Second Row: Experience Filters */}
-              <div className="flex flex-wrap gap-2">
-                {[
-                  { id: "all", label: "All Levels" },
-                  { id: "fresher", label: "Fresher" },
-                  { id: "mid", label: "Mid-Level" },
-                  { id: "senior", label: "Senior" },
-                  { id: "leadership", label: "Executive" }
-                ].map((band) => (
-                  <button
-                    key={band.id}
-                    onClick={() => toggleExperienceFilter(band.id)}
-                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                      filterExperience === band.id
-                        ? "bg-primary text-white shadow-md shadow-primary-light"
-                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                    }`}
-                  >
-                    {band.label}
-                  </button>
-                ))}
+              {/* Experience Level */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wide">Experience Level</label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { id: "all", label: "All Levels" },
+                    { id: "fresher", label: "Fresher" },
+                    { id: "mid", label: "Mid-Level" },
+                    { id: "senior", label: "Senior" },
+                    { id: "leadership", label: "Executive" }
+                  ].map((band) => (
+                    <button
+                      key={band.id}
+                      onClick={() => toggleExperienceFilter(band.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                        filterExperience === band.id
+                          ? "bg-blue-600 text-white shadow-md shadow-blue-200"
+                          : "bg-slate-100 text-slate-600 hover:bg-slate-150"
+                      }`}
+                    >
+                      {band.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              {/* Third Row: Detailed Filters */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 pt-2 border-t border-slate-100">
-                <div className="relative">
-                  <MapPin className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="Location..."
-                    value={filterLocation}
-                    onChange={(e) => setFilterLocation(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 pl-10 pr-4 py-2.5 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-primary transition-all"
-                  />
-                </div>
+              {/* Additional Filters */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wide">Refine Search</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="relative">
+                    <MapPin className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Location"
+                      value={filterLocation}
+                      onChange={(e) => setFilterLocation(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 pl-10 pr-4 py-2 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-600 transition-all"
+                    />
+                  </div>
 
-                <div className="relative">
-                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">
-                    {currencySymbol}
-                  </span>
-                  <input
-                    type="number"
-                    placeholder="Budget..."
-                    value={filterMaxSalary}
-                    onChange={(e) => setFilterMaxSalary(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 pl-10 pr-4 py-2.5 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-primary transition-all"
-                  />
-                </div>
+                  <div className="relative">
+                    <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="number"
+                      placeholder="Max Salary"
+                      value={filterMaxSalary}
+                      onChange={(e) => setFilterMaxSalary(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 pl-10 pr-4 py-2 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-600 transition-all"
+                    />
+                  </div>
 
-                <div>
                   <select
-                    value={filterSalesModel}
-                    onChange={(e) => setFilterSalesModel(e.target.value)}
-                    className="w-full bg-white border-2 border-slate-300 px-4 py-2.5 rounded-lg text-sm text-slate-900 font-medium outline-none focus:border-primary focus:ring-2 focus:ring-primary/50 transition-all cursor-pointer"
+                    value={filterCareerReadiness}
+                    onChange={(e) => setFilterCareerReadiness(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 px-4 py-2 rounded-xl text-sm text-slate-900 outline-none focus:border-blue-600 transition-all cursor-pointer font-medium"
                   >
-                    <option value="">Sales Model...</option>
-                    <option value="Transactional">Transactional</option>
-                    <option value="Consultative">Consultative</option>
-                    <option value="Enterprise">Enterprise</option>
+                    <option value="">Career Status</option>
+                    <option value="immediate">Immediate</option>
+                    <option value="actively_looking">Actively Looking</option>
+                    <option value="exploring">Exploring</option>
+                    <option value="passive">Passive</option>
                   </select>
-                </div>
 
-                <div>
-                  <select
-                    value={filterTargetMarket}
-                    onChange={(e) => setFilterTargetMarket(e.target.value)}
-                    className="w-full bg-white border-2 border-slate-300 px-4 py-2.5 rounded-lg text-sm text-slate-900 font-medium outline-none focus:border-primary focus:ring-2 focus:ring-primary/50 transition-all cursor-pointer"
+                  <button
+                    onClick={handleApplyFilters}
+                    disabled={isSyncing}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-blue-200 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 flex items-center justify-center gap-2"
                   >
-                    <option value="">Target Market...</option>
-                    <option value="SMB">SMB</option>
-                    <option value="Mid-Market">Mid-Market</option>
-                    <option value="Enterprise">Enterprise</option>
-                  </select>
+                    {isSyncing ? (
+                      <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <Filter className="w-4 h-4" />
+                    )}
+                    {isSyncing ? "Searching..." : "Search"}
+                  </button>
                 </div>
-
-                <button
-                  onClick={handleApplyFilters}
-                  disabled={isSyncing}
-                  className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-all shadow-md shadow-blue-200 disabled:opacity-50 active:scale-95 flex items-center justify-center gap-2"
-                >
-                  {isSyncing ? (
-                    <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <Filter className="w-4 h-4" />
-                  )}
-                  {isSyncing ? "Searching..." : "Apply"}
-                </button>
               </div>
             </section>
 
@@ -471,7 +474,15 @@ export default function RecommendationsPage() {
                   <p className="text-slate-500 text-sm">Calculating best matches...</p>
                 </div>
               </div>
-            ) : filteredCandidates.length > 0 ? (
+            ) : candidates.length > 0 && (tiers.elite.length === 0 && tiers.strong.length === 0) ? (
+              <div className="flex items-center justify-center py-20 bg-slate-50 rounded-3xl">
+                <div className="text-center">
+                  <Filter className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                  <p className="text-slate-600 font-medium">No candidates above 75% match</p>
+                  <p className="text-slate-400 text-sm mt-1">Try adjusting your filters to see more candidates</p>
+                </div>
+              </div>
+            ) : filteredCandidates.length === 0 ? (
               <div className="space-y-12">
                 {Object.entries(tiers).map(
                   ([tier, list]) =>
@@ -483,7 +494,7 @@ export default function RecommendationsPage() {
                               tier === "elite"
                                 ? "bg-orange-500 shadow-orange-200"
                                 : tier === "strong"
-                                  ? "bg-primary shadow-primary-light"
+                                  ? "bg-blue-600 shadow-blue-200"
                                   : "bg-slate-400 shadow-slate-200"
                             }`}
                           >
@@ -521,6 +532,8 @@ export default function RecommendationsPage() {
                                 setInviteModal({ isOpen: true, candidate })
                               }
                               isElite={tier === "elite"}
+                              getDisplayName={getDisplayName}
+                              activeFilter={activeFilters[0]}
                             />
                           ))}
                         </div>
@@ -584,11 +597,15 @@ function RecommendedCard({
   onViewProfile,
   onInvite,
   isElite,
+  getDisplayName,
+  activeFilter,
 }: {
   candidate: Candidate;
   onViewProfile: () => void;
   onInvite: () => void;
   isElite?: boolean;
+  getDisplayName: (name: string, id: string) => string;
+  activeFilter?: string;
 }) {
   return (
     <div className="bg-white rounded-lg border border-slate-200 shadow-sm hover:shadow-lg transition-shadow flex flex-col h-full overflow-hidden">
@@ -608,7 +625,7 @@ function RecommendedCard({
           </div>
           <div className="min-w-0 flex-1">
             <h3 className="text-sm font-semibold text-slate-900 truncate">
-              {candidate.full_name}
+              {getDisplayName(candidate.full_name, candidate.user_id)}
             </h3>
             <p className="text-xs text-slate-500 truncate">
               {candidate.current_role}
@@ -624,21 +641,23 @@ function RecommendedCard({
 
       {/* Body */}
       <div className="px-5 py-4 flex-1 flex flex-col gap-3">
-        {/* Match Score Badge */}
-        <div className={`px-3 py-2 rounded-lg text-center ${
-          isElite ? "bg-orange-50" : "bg-blue-100"
-        }`}>
-          <p className={`text-xs font-medium ${
-            isElite ? "text-orange-600" : "text-blue-600"
+        {/* Match Score Badge - Only show for "Best Match" filter */}
+        {activeFilter === "understanding_and_assessment" && (
+          <div className={`px-3 py-2 rounded-lg text-center ${
+            isElite ? "bg-orange-50" : "bg-blue-100"
           }`}>
-            {isElite ? "Best Match" : "Good Match"}
-          </p>
-          <p className={`text-xl font-bold ${
-            isElite ? "text-orange-700" : "text-blue-700"
-          }`}>
-            {candidate.culture_match_score}%
-          </p>
-        </div>
+            <p className={`text-xs font-medium ${
+              isElite ? "text-orange-600" : "text-blue-600"
+            }`}>
+              {isElite ? "Best Match" : "Good Match"}
+            </p>
+            <p className={`text-xl font-bold ${
+              isElite ? "text-orange-700" : "text-blue-700"
+            }`}>
+              {candidate.culture_match_score}%
+            </p>
+          </div>
+        )}
 
         {/* Match Reasoning */}
         {candidate.match_reasoning && (

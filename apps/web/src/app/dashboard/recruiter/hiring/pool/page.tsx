@@ -65,6 +65,8 @@ export default function CandidatePoolPage() {
   const [isFetchingProfile, setIsFetchingProfile] = useState(false);
   const [filterExperience, setFilterExperience] = useState<string>("all");
   const [filterCRO, setFilterCRO] = useState<string>("all"); // "all" | "ready_now" | "active" | "passive"
+  const [pipelineData, setPipelineData] = useState<any[]>([]);
+  const [personalInfoUnlocked, setPersonalInfoUnlocked] = useState<Record<string, boolean>>({});
   const [profileModal, setProfileModal] = useState<{
     isOpen: boolean;
     candidate: Candidate | null;
@@ -82,6 +84,32 @@ export default function CandidatePoolPage() {
     candidate: null,
   });
 
+  // Check if candidate has unlocked access to personal info
+  const hasAccessToPersonalInfo = (candidateId: string): boolean => {
+    const candidateApplications = pipelineData.filter(app => app.candidate_id === candidateId || app.app?.candidate_id === candidateId);
+    
+    if (candidateApplications.length === 0) return false;
+
+    return candidateApplications.some(app => {
+      const appStatus = app.status || app.app?.status || '';
+      const isSensitiveStatus = ['applied', 'shortlisted', 'interview_scheduled', 'offered', 'hired'].includes(appStatus.toLowerCase());
+      const hasInviteReply = app.invite_message_replied || app.has_replied_to_invite || false;
+      return isSensitiveStatus || hasInviteReply;
+    });
+  };
+
+  // Blur personal info if not unlocked
+  const getDisplayName = (fullName: string, candidateId: string): string => {
+    if (personalInfoUnlocked[candidateId] || hasAccessToPersonalInfo(candidateId)) {
+      return fullName;
+    }
+    const parts = fullName.split(' ');
+    if (parts.length >= 2) {
+      return `${parts[0].charAt(0)}**** ${parts[parts.length - 1].charAt(0)}****`;
+    }
+    return parts[0].charAt(0) + '****';
+  };
+
   const handleLogout = async () => {
     await awsAuth.logout();
     router.replace("/login");
@@ -94,14 +122,16 @@ export default function CandidatePoolPage() {
         router.replace("/login");
         return;
       }
-      const [poolData, profileData, jobsData] = await Promise.all([
+      const [poolData, profileData, jobsData, pipelineResponse] = await Promise.all([
         apiClient.get("/recruiter/candidate-pool", token),
         apiClient.get("/recruiter/profile", token),
         apiClient.get("/recruiter/jobs", token),
+        apiClient.get("/recruiter/applications/pipeline", token),
       ]);
       setCandidates(poolData || []);
       setRecruiterProfile(profileData);
       setJobs(jobsData || []);
+      setPipelineData(pipelineResponse || []);
       setError(null);
     } catch (err: unknown) {
       console.error("Failed to fetch candidate pool:", err);
@@ -413,6 +443,7 @@ export default function CandidatePoolPage() {
                         setInviteModal({ isOpen: true, candidate })
                       }
                       onMessage={() => handleStartChat(candidate)}
+                      getDisplayName={getDisplayName}
                     />
                   ))}
                 </div>
@@ -478,12 +509,14 @@ function CandidateCard({
   onViewResume,
   onInvite,
   onMessage,
+  getDisplayName,
 }: {
   candidate: Candidate;
   onViewProfile: () => void;
   onViewResume: () => void;
   onInvite: () => void;
   onMessage: () => void;
+  getDisplayName: (name: string, id: string) => string;
 }) {
   return (
     <div className="bg-white rounded-4xl border border-slate-100 shadow-sm hover:shadow-2xl hover:shadow-primary/10 transition-all duration-500 group relative flex flex-col p-5 h-full">
@@ -518,7 +551,7 @@ function CandidateCard({
 
       <div className="flex-1 space-y-1 mb-4 flex flex-col justify-center">
         <h3 className="text-base font-black text-slate-900 tracking-tight leading-none group-hover:text-primary transition-colors truncate">
-          {candidate.full_name}
+          {getDisplayName(candidate.full_name, candidate.user_id)}
         </h3>
         <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider truncate mb-1 text-wrap">
           {candidate.current_role || "Professional Candidate"}

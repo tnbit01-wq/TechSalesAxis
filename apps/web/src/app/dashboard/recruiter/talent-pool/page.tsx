@@ -12,7 +12,10 @@ import {
   MapPin,
   Briefcase,
   TrendingUp,
-  MessageSquare
+  MessageSquare,
+  Mail,
+  Phone,
+  Calendar
 } from "lucide-react";
 
 interface CandidateData {
@@ -26,6 +29,7 @@ interface CandidateData {
   expected_salary: number | null;
   target_role: string | null;
   current_role: string | null;
+  is_shadow_profile?: boolean;
 }
 
 interface QueryResult {
@@ -408,6 +412,41 @@ export default function TalentPoolPage() {
   const [query, setQuery] = useState("");
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
   const [selectedCandidate, setSelectedCandidate] = useState<CandidateData | null>(null);
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [showComingSoon, setShowComingSoon] = useState(false);
+  const [pipelineData, setPipelineData] = useState<any[]>([]);
+  const [personalInfoUnlocked, setPersonalInfoUnlocked] = useState<Record<string, boolean>>({});
+
+  // Check if candidate has unlocked access to personal info
+  const hasAccessToPersonalInfo = (candidateId: string): boolean => {
+    // Check pipeline for: applied, shortlisted, or invited with reply
+    const candidateApplications = pipelineData.filter(app => app.candidate_id === candidateId || app.app?.candidate_id === candidateId);
+    
+    if (candidateApplications.length === 0) return false;
+
+    return candidateApplications.some(app => {
+      const appStatus = app.status || app.app?.status || '';
+      const isSensitiveStatus = ['applied', 'shortlisted', 'interview_scheduled', 'offered', 'hired'].includes(appStatus.toLowerCase());
+      
+      // Check if invited and has unread/replied messages
+      const hasInviteReply = app.invite_message_replied || app.has_replied_to_invite || false;
+      
+      return isSensitiveStatus || hasInviteReply;
+    });
+  };
+
+  // Blur personal info if not unlocked
+  const getDisplayName = (fullName: string, candidateId: string): string => {
+    if (personalInfoUnlocked[candidateId] || hasAccessToPersonalInfo(candidateId)) {
+      return fullName;
+    }
+    // Show only first letter of first and last name
+    const parts = fullName.split(' ');
+    if (parts.length >= 2) {
+      return `${parts[0].charAt(0)}**** ${parts[parts.length - 1].charAt(0)}****`;
+    }
+    return parts[0].charAt(0) + '****';
+  };
 
   const trackProfileView = async (candidateId: string) => {
     try {
@@ -432,6 +471,43 @@ export default function TalentPoolPage() {
     }
   };
 
+  const handleInvite = async () => {
+    if (!selectedCandidate) return;
+
+    // Check if shadow profile
+    if (selectedCandidate.is_shadow_profile) {
+      console.log("Cannot invite shadow profile");
+      return;
+    }
+
+    setInviteLoading(true);
+    try {
+      const token = awsAuth.getToken();
+      const response = await apiClient.post(
+        `/recruiter/candidate/${selectedCandidate.user_id}/invite`,
+        {
+          job_id: "",
+          message: `Hi ${selectedCandidate.full_name}, we're interested in connecting with you about exciting opportunities!`
+        },
+        token,
+      );
+      
+      console.log("Invite sent successfully", response);
+      alert("Invitation sent successfully!");
+      setSelectedCandidate(null);
+    } catch (error) {
+      console.error("Failed to send invite:", error);
+      alert("Failed to send invitation. Please try again.");
+    } finally {
+      setInviteLoading(false);
+    }
+  };
+
+  const handleEmailClick = () => {
+    setShowComingSoon(true);
+    setTimeout(() => setShowComingSoon(false), 2000);
+  };
+
   useEffect(() => {
     async function fetchPool() {
       try {
@@ -444,6 +520,16 @@ export default function TalentPoolPage() {
         const data = await apiClient.get("/recruiter/talent-pool", token);
         console.log("Talent-pool data received:", data);
         setCandidates(data || []);
+
+        // Also fetch pipeline data to check candidate application status
+        try {
+          console.log("Fetching pipeline data for access control...");
+          const pipelineResponse = await apiClient.get("/recruiter/applications/pipeline", token);
+          setPipelineData(pipelineResponse || []);
+          console.log("Pipeline data received:", pipelineResponse);
+        } catch (pipelineErr) {
+          console.warn("Could not fetch pipeline data:", pipelineErr);
+        }
       } catch (err) {
         console.error("Pool fetch error:", err);
       } finally {
@@ -497,30 +583,29 @@ export default function TalentPoolPage() {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen gap-4">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-cyan-600"></div>
-        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Initializing Talent Matrix...</p>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
+          <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Loading Talent Pool...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0a0f1e] via-[#0a1228] to-[#0d1320] text-slate-100 p-6 relative overflow-hidden">
-      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-cyan-500/5 blur-[120px] rounded-full -translate-y-1/2 translate-x-1/2" />
-      <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-teal-500/5 blur-[100px] rounded-full translate-y-1/2 -translate-x-1/2" />
-      
-      <div className="relative z-10 max-w-[1400px] mx-auto space-y-8 font-sans">
+    <div className="w-full bg-gradient-to-br from-slate-50 via-blue-50/30 to-cyan-50/20">
+      <div className="relative z-10 max-w-7xl mx-auto px-8 py-8 space-y-8 font-sans pb-20">
         {/* Header */}
-        <div className="flex flex-col gap-6 border-b border-white/5 pb-8">
-          <div className="space-y-2">
+        <div className="flex flex-col gap-4 border-b border-blue-200/50 pb-6">
+          <div className="space-y-1.5">
             <div className="flex items-center gap-2">
-              <div className="h-2 w-2 bg-cyan-500 rounded-full shadow-[0_0_10px_#06b6d4]" />
-              <span className="text-[10px] font-black text-cyan-400 uppercase tracking-[0.3em]">Talent Discovery</span>
+              <div className="h-2 w-2 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full shadow-[0_0_12px_#06b6d4]" />
+              <span className="text-[10px] font-black bg-gradient-to-r from-cyan-600 to-blue-600 bg-clip-text text-transparent uppercase tracking-[0.3em]">Talent Discovery</span>
             </div>
-            <h1 className="text-3xl font-bold text-white tracking-tight">
-              Find Your <span className="text-cyan-500">Perfect</span> Fit
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+              Find Your <span className="bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 bg-clip-text text-transparent">Perfect</span> Fit
             </h1>
-            <p className="text-slate-400 text-sm font-medium">
+            <p className="text-slate-600 text-xs font-medium">
               Describe the qualities you're looking for, and we'll find the best matches from your talent pool.
             </p>
           </div>
@@ -528,11 +613,11 @@ export default function TalentPoolPage() {
           {/* Chat Query Input */}
           <div className="flex gap-3">
             <div className="flex-1 relative group">
-              <MessageSquare className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 group-focus-within:text-cyan-400 transition-colors" />
+              <MessageSquare className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 group-focus-within:text-cyan-600 transition-colors" />
               <input
                 type="text"
-                placeholder="e.g., Looking for experienced professionals in Bangalore with strong technical background, open to competitive packages..."
-                className="w-full pl-12 pr-4 py-3 bg-white/5 border border-cyan-500/20 rounded-xl text-sm font-medium focus:border-cyan-500/50 focus:ring-4 focus:ring-cyan-500/5 outline-none transition-all placeholder:text-slate-500 hover:border-cyan-500/30"
+                placeholder="e.g., Looking for experienced professionals in Bangalore with strong technical background..."
+                className="w-full pl-12 pr-4 py-2.5 bg-white border border-blue-200 rounded-lg text-xs font-medium focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/15 outline-none transition-all placeholder:text-slate-400 hover:border-blue-300 shadow-sm hover:shadow-md"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyPress={(e) => {
@@ -545,7 +630,7 @@ export default function TalentPoolPage() {
             </div>
             <button
               onClick={() => handleQuery(query)}
-              className="px-6 py-3 bg-gradient-to-r from-cyan-500 to-teal-500 hover:from-cyan-600 hover:to-teal-600 text-white font-black rounded-xl transition-all flex items-center gap-2 shadow-lg hover:shadow-cyan-500/30"
+              className="px-6 py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 text-white font-black rounded-lg transition-all flex items-center gap-2 shadow-md hover:shadow-lg hover:shadow-blue-500/30 text-sm"
             >
               <Send className="h-4 w-4" />
               <span className="hidden sm:inline text-[11px]">FIND</span>
@@ -553,24 +638,25 @@ export default function TalentPoolPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           {/* Bubble Chart */}
           <div className="lg:col-span-2">
-            <div className="bg-white/[0.02] border border-cyan-500/10 rounded-[32px] p-8 relative shadow-2xl overflow-hidden group hover:border-cyan-500/20 transition-all">
-              <div className="flex items-center gap-4 mb-6">
-                <div className="h-10 w-10 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center">
-                  <Zap className="h-5 w-5 text-cyan-400" />
+            <div className="relative bg-gradient-to-br from-white to-blue-50/40 border border-blue-200/50 rounded-2xl p-6 overflow-hidden group hover:shadow-lg hover:border-blue-300/70 transition-all shadow-md">
+              <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-cyan-500/5 to-blue-500/5 rounded-full blur-3xl -mr-20 -mt-20" />
+              <div className="flex items-center gap-3 mb-4 relative z-10">
+                <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-cyan-100 to-blue-100 border border-cyan-300 flex items-center justify-center shadow-sm">
+                  <Zap className="h-4 w-4 bg-gradient-to-r from-cyan-600 to-blue-600 bg-clip-text text-transparent" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-black text-white uppercase tracking-tighter italic">Team Distribution</h3>
-                  <p className="text-[10px] text-slate-500 font-bold">Candidates by experience level</p>
+                  <h3 className="text-sm font-black text-slate-900 uppercase tracking-tighter italic">Team Distribution</h3>
+                  <p className="text-[9px] text-slate-500 font-bold">Candidates by experience level</p>
                 </div>
               </div>
-              <div className="h-[550px] w-full relative z-10 transition-all duration-700">
+              <div className="h-[350px] w-full relative z-10 transition-all duration-700">
                 <TalentBubbleChart data={filteredCandidates} />
-                <div className="absolute bottom-4 right-4 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-black/40 border border-cyan-500/20 backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity">
-                  <MousePointer2 className="h-3 w-3 text-cyan-400" />
-                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest\">Hover for details</span>
+                <div className="absolute bottom-4 right-4 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gradient-to-r from-cyan-600/40 to-blue-600/40 border border-cyan-400/50 backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
+                  <MousePointer2 className="h-3 w-3 text-white" />
+                  <span className="text-[8px] font-black text-white uppercase tracking-widest">Hover for details</span>
                 </div>
               </div>
             </div>
@@ -578,25 +664,25 @@ export default function TalentPoolPage() {
 
           {/* Results Panel */}
           <div className="lg:col-span-1">
-            <div className="bg-white/[0.02] border border-cyan-500/10 rounded-[32px] p-6 relative shadow-2xl overflow-hidden">
-              <div className="mb-6">
-                <div className="flex items-baseline gap-2 mb-2">
-                  <span className="text-4xl font-black text-cyan-400">{filteredCandidates.length}</span>
-                  <span className="text-sm font-bold text-slate-400 uppercase">Candidates</span>
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 relative shadow-sm overflow-hidden">
+              <div className="mb-4">
+                <div className="flex items-baseline gap-2 mb-1">
+                  <span className="text-3xl font-black text-cyan-600">{filteredCandidates.length}</span>
+                  <span className="text-xs font-bold text-slate-600 uppercase">Candidates</span>
                 </div>
-                <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">
+                <p className="text-[9px] text-slate-600 font-black uppercase tracking-widest">
                   {queryResult ? "Matching Results" : "Available Pool"}
                 </p>
               </div>
 
               {queryResult && (
-                <div className="mb-6 p-4 bg-cyan-500/5 border border-cyan-500/20 rounded-xl">
-                  <p className="text-[11px] font-bold text-cyan-300 mb-2">Your Request:</p>
-                  <p className="text-xs text-slate-300 italic">{queryResult.query}</p>
+                <div className="mb-4 p-3 bg-cyan-50 border border-cyan-200 rounded-lg">
+                  <p className="text-[10px] font-bold text-cyan-700 mb-1">Your Request:</p>
+                  <p className="text-[11px] text-slate-700 italic line-clamp-2">{queryResult.query}</p>
                 </div>
               )}
 
-              <div className="space-y-3 max-h-[calc(100vh-400px)] overflow-y-auto">
+              <div className="space-y-2 max-h-[calc(100vh-380px)] overflow-y-auto">
                 {filteredCandidates.slice(0, 10).map((candidate) => (
                   <div
                     key={candidate.user_id}
@@ -604,41 +690,41 @@ export default function TalentPoolPage() {
                       trackProfileView(candidate.user_id);
                       setSelectedCandidate(candidate);
                     }}
-                    className="p-3 bg-white/[0.02] border border-cyan-500/10 rounded-lg hover:border-cyan-500/30 hover:bg-cyan-500/5 cursor-pointer transition-all group"
+                    className="p-2.5 bg-white border border-slate-200 rounded-lg hover:border-cyan-300 hover:bg-cyan-50 cursor-pointer transition-all group"
                   >
-                    <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-start justify-between mb-1.5">
                       <div className="flex items-start gap-2 flex-1">
-                        <User className="h-4 w-4 text-cyan-400 mt-0.5 flex-shrink-0" />
+                        <div className="h-3.5 w-3.5 rounded-full bg-gradient-to-br from-cyan-600 to-blue-600 mt-0.5 flex-shrink-0" />
                         <div className="min-w-0">
-                          <p className="text-[11px] font-black text-white truncate group-hover:text-cyan-300">
-                            {candidate.full_name}
+                          <p className="text-[10px] font-black text-slate-900 truncate group-hover:bg-gradient-to-r group-hover:from-cyan-600 group-hover:to-blue-600 group-hover:bg-clip-text group-hover:text-transparent">
+                            {getDisplayName(candidate.full_name, candidate.user_id)}
                           </p>
-                          <p className="text-[9px] text-slate-400 truncate">{candidate.current_role || "Professional"}</p>
+                          <p className="text-[8px] text-slate-500 truncate">{candidate.current_role || "Professional"}</p>
                         </div>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 text-[9px]">
-                      <div className="flex items-center gap-1 text-slate-400">
-                        <TrendingUp className="h-3 w-3 text-teal-400" />
-                        <span>{candidate.years_of_experience} years exp.</span>
+                    <div className="grid grid-cols-2 gap-2 text-[8px]">
+                      <div className="flex items-center gap-1 text-slate-600">
+                        <TrendingUp className="h-3 w-3 bg-gradient-to-r from-cyan-600 to-blue-600 bg-clip-text text-transparent" />
+                        <span>{candidate.years_of_experience} yrs exp</span>
                       </div>
-                      <div className="flex items-center gap-1 text-slate-400">
-                        <MapPin className="h-3 w-3 text-teal-400" />
+                      <div className="flex items-center gap-1 text-slate-600">
+                        <MapPin className="h-3 w-3 bg-gradient-to-r from-cyan-600 to-blue-600 bg-clip-text text-transparent" />
                         <span className="truncate">{getCityTier(candidate.location)}</span>
                       </div>
                     </div>
 
                     {candidate.skills && candidate.skills.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {candidate.skills.slice(0, 3).map((skill, idx) => (
-                          <span key={idx} className="text-[8px] px-2 py-1 bg-cyan-500/10 border border-cyan-500/20 rounded-full text-cyan-300">
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {candidate.skills.slice(0, 2).map((skill, idx) => (
+                          <span key={idx} className="text-[7px] px-2 py-0.5 bg-gradient-to-r from-cyan-100/80 to-blue-100/80 border border-cyan-300/50 rounded-full bg-clip-text text-transparent bg-gradient-to-r from-cyan-700 to-blue-700 bg-clip-text text-transparent font-semibold">
                             {skill}
                           </span>
                         ))}
-                        {candidate.skills.length > 3 && (
-                          <span className="text-[8px] px-2 py-1 bg-slate-500/10 rounded-full text-slate-400">
-                            +{candidate.skills.length - 3}
+                        {candidate.skills.length > 2 && (
+                          <span className="text-[7px] px-2 py-0.5 bg-slate-200/50 rounded-full text-slate-700 font-semibold">
+                            +{candidate.skills.length - 2}
                           </span>
                         )}
                       </div>
@@ -647,10 +733,12 @@ export default function TalentPoolPage() {
                 ))}
 
                 {filteredCandidates.length === 0 && (
-                  <div className="flex flex-col items-center justify-center py-8 text-center">
-                    <MessageSquare className="h-8 w-8 text-slate-600 mb-2" />
-                    <p className="text-xs text-slate-500 font-black uppercase tracking-widest">No Results Found</p>
-                    <p className="text-[9px] text-slate-600 mt-1">Try adjusting your requirements</p>
+                  <div className="flex flex-col items-center justify-center py-6 text-center">
+                    <div className="h-8 w-8 rounded-full bg-gradient-to-br from-cyan-200/50 to-blue-200/50 flex items-center justify-center mb-2">
+                      <MessageSquare className="h-5 w-5 text-slate-400" />
+                    </div>
+                    <p className="text-[10px] text-slate-600 font-black uppercase tracking-wider">No Results</p>
+                    <p className="text-[8px] text-slate-500 mt-1">Try adjusting requirements</p>
                   </div>
                 )}
               </div>
@@ -660,61 +748,78 @@ export default function TalentPoolPage() {
 
         {/* Candidate Detail Modal */}
         {selectedCandidate && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
-            <div className="w-full max-w-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 border border-cyan-500/20 rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
-              <div className="sticky top-0 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 border-b border-cyan-500/10 p-6">
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="w-full max-w-2xl bg-gradient-to-br from-white via-blue-50/30 to-cyan-50/30 border border-blue-200/50 rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
+              <div className="sticky top-0 bg-gradient-to-r from-white to-blue-50/50 border-b border-blue-200/50 p-5 backdrop-blur-sm">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <h2 className="text-2xl font-black text-white">{selectedCandidate.full_name}</h2>
-                    <p className="text-sm text-slate-400 mt-1">{selectedCandidate.current_role || "Professional"}</p>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-xl font-black bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
+                        {getDisplayName(selectedCandidate.full_name, selectedCandidate.user_id)}
+                      </h2>
+                      {!hasAccessToPersonalInfo(selectedCandidate.user_id) && (
+                        <div className="flex items-center gap-1 px-2 py-1 bg-amber-50 border border-amber-200 rounded-lg">
+                          <svg className="h-3.5 w-3.5 text-amber-600" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                          </svg>
+                          <span className="text-[10px] font-black text-amber-700">LOCKED</span>
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-600 mt-1">{selectedCandidate.current_role || "Professional"}</p>
+                    {!hasAccessToPersonalInfo(selectedCandidate.user_id) && (
+                      <p className="text-[10px] text-amber-600 mt-2 font-semibold">
+                        📌 Personal info unlocks when candidate applies, is shortlisted, or replies to an invite
+                      </p>
+                    )}
                   </div>
                   <button
                     onClick={() => setSelectedCandidate(null)}
-                    className="text-slate-400 hover:text-white transition flex-shrink-0 ml-4 text-2xl font-bold"
+                    className="text-slate-400 hover:text-slate-700 transition flex-shrink-0 ml-4 text-xl font-bold"
                   >
                     ✕
                   </button>
                 </div>
               </div>
 
-              <div className="p-6 space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="p-4 bg-white/5 border border-cyan-500/20 rounded-lg">
-                    <p className="text-[9px] text-slate-500 font-black uppercase mb-2">Years of Experience</p>
-                    <p className="text-2xl font-black text-cyan-300">{selectedCandidate.years_of_experience}</p>
-                    <p className="text-[9px] text-slate-500 mt-1">years</p>
+              <div className="p-5 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="p-3 bg-gradient-to-br from-cyan-50/80 to-blue-50/80 border border-cyan-300/50 rounded-lg hover:border-cyan-400/70 hover:shadow-md transition-all">
+                    <p className="text-[8px] text-slate-600 font-black uppercase mb-1.5">Years of Experience</p>
+                    <p className="text-lg font-black bg-gradient-to-r from-cyan-700 to-blue-700 bg-clip-text text-transparent">{selectedCandidate.years_of_experience}</p>
+                    <p className="text-[8px] text-slate-600 mt-0.5">years</p>
                   </div>
 
-                  <div className="p-4 bg-white/5 border border-cyan-500/20 rounded-lg">
-                    <p className="text-[9px] text-slate-500 font-black uppercase mb-2">Location</p>
-                    <p className="text-lg font-black text-cyan-300">{getCityTier(selectedCandidate.location)}</p>
-                    <p className="text-[9px] text-slate-500 mt-1">{selectedCandidate.location}</p>
+                  <div className="p-3 bg-gradient-to-br from-blue-50/80 to-indigo-50/80 border border-blue-300/50 rounded-lg hover:border-blue-400/70 hover:shadow-md transition-all">
+                    <p className="text-[8px] text-slate-600 font-black uppercase mb-1.5">Location</p>
+                    <p className="text-sm font-black bg-gradient-to-r from-blue-700 to-indigo-700 bg-clip-text text-transparent">{getCityTier(selectedCandidate.location)}</p>
+                    <p className="text-[8px] text-slate-600 mt-0.5">{selectedCandidate.location}</p>
                   </div>
 
-                  <div className="p-4 bg-white/5 border border-cyan-500/20 rounded-lg">
-                    <p className="text-[9px] text-slate-500 font-black uppercase mb-2">Expected Compensation</p>
-                    <p className="text-2xl font-black text-cyan-300">
+                  <div className="p-3 bg-gradient-to-br from-indigo-50/80 to-purple-50/80 border border-indigo-300/50 rounded-lg hover:border-indigo-400/70 hover:shadow-md transition-all">
+                    <p className="text-[8px] text-slate-600 font-black uppercase mb-1.5">Expected Compensation</p>
+                    <p className="text-lg font-black bg-gradient-to-r from-indigo-700 to-purple-700 bg-clip-text text-transparent">
                       {selectedCandidate.expected_salary 
                         ? `₹${(selectedCandidate.expected_salary / 100000).toFixed(1)}L` 
                         : "Flexible"}
                     </p>
                   </div>
 
-                  <div className="p-4 bg-white/5 border border-cyan-500/20 rounded-lg">
-                    <p className="text-[9px] text-slate-500 font-black uppercase mb-2">Experience Level</p>
-                    <p className="text-lg font-black text-cyan-300 uppercase">{selectedCandidate.experience}</p>
+                  <div className="p-3 bg-gradient-to-br from-cyan-50/80 to-teal-50/80 border border-cyan-300/50 rounded-lg hover:border-cyan-400/70 hover:shadow-md transition-all">
+                    <p className="text-[8px] text-slate-600 font-black uppercase mb-1.5">Experience Level</p>
+                    <p className="text-sm font-black bg-gradient-to-r from-cyan-700 to-teal-700 bg-clip-text text-transparent uppercase">{selectedCandidate.experience}</p>
                   </div>
                 </div>
 
                 {selectedCandidate.skills && selectedCandidate.skills.length > 0 && (
-                  <div className="border-t border-cyan-500/10 pt-6">
-                    <p className="text-sm font-black text-slate-300 uppercase mb-4 flex items-center gap-2">
-                      <Briefcase className="h-4 w-4 text-cyan-400" />
+                  <div className="border-t border-blue-200/50 pt-4">
+                    <p className="text-xs font-black text-slate-900 uppercase mb-3 flex items-center gap-2">
+                      <Briefcase className="h-4 w-4 bg-gradient-to-r from-cyan-600 to-blue-600 bg-clip-text text-transparent" />
                       Expertise Areas
                     </p>
-                    <div className="flex flex-wrap gap-3">
+                    <div className="flex flex-wrap gap-2">
                       {selectedCandidate.skills.map((skill, idx) => (
-                        <span key={idx} className="text-sm px-4 py-2 bg-cyan-500/15 border border-cyan-500/30 rounded-lg text-cyan-200 font-semibold hover:bg-cyan-500/25 transition">
+                        <span key={idx} className="text-[11px] px-3 py-1.5 bg-gradient-to-r from-cyan-100/80 to-blue-100/80 border border-cyan-300/50 rounded-lg bg-gradient-to-r from-cyan-700 to-blue-700 bg-clip-text text-transparent font-semibold hover:from-cyan-200/80 hover:to-blue-200/80 transition">
                           {skill}
                         </span>
                       ))}
@@ -722,16 +827,56 @@ export default function TalentPoolPage() {
                   </div>
                 )}
 
-                <div className="border-t border-cyan-500/10 pt-6 flex gap-3">
-                  <button className="flex-1 px-6 py-3 bg-gradient-to-r from-cyan-500 to-teal-500 hover:from-cyan-600 hover:to-teal-600 text-white font-bold rounded-lg transition shadow-lg">
-                    View Full Profile
+                {!hasAccessToPersonalInfo(selectedCandidate.user_id) && (
+                  <div className="border-t border-blue-200/50 pt-4">
+                    <div className="p-3 bg-amber-50/60 border border-amber-200/60 rounded-lg">
+                      <p className="text-xs font-black text-slate-900 uppercase mb-3 flex items-center gap-2">
+                        <svg className="h-4 w-4 text-amber-600" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                        </svg>
+                        Personal Information (Locked)
+                      </p>
+                      <div className="space-y-2 text-[11px] text-slate-600">
+                        <p className="flex items-center gap-2">
+                          <Mail className="h-3.5 w-3.5 text-amber-600" />
+                          <span className="line-through opacity-50">Email Address</span>
+                        </p>
+                        <p className="flex items-center gap-2">
+                          <Phone className="h-3.5 w-3.5 text-amber-600" />
+                          <span className="line-through opacity-50">Phone Number</span>
+                        </p>
+                        <p className="flex items-center gap-2">
+                          <Calendar className="h-3.5 w-3.5 text-amber-600" />
+                          <span className="line-through opacity-50">Date of Birth</span>
+                        </p>
+                      </div>
+                      <p className="text-[9px] text-amber-700 mt-2 font-semibold">✓ Unlock by applying, shortlisting, or inviting this candidate</p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="border-t border-blue-200/50 pt-4 flex gap-2">
+                  <button
+                    onClick={handleInvite}
+                    disabled={selectedCandidate?.is_shadow_profile || inviteLoading}
+                    className="flex-1 px-4 py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 disabled:from-slate-400 disabled:to-slate-400 disabled:cursor-not-allowed text-white font-bold rounded-lg transition shadow-md hover:shadow-lg hover:shadow-blue-500/30 disabled:shadow-none text-sm"
+                  >
+                    {inviteLoading ? "Inviting..." : "Invite"}
                   </button>
-                  <button className="flex-1 px-6 py-3 bg-white/10 hover:bg-white/20 text-white font-bold rounded-lg transition">
-                    Connect
+                  <button
+                    onClick={handleEmailClick}
+                    className="flex-1 px-4 py-2.5 bg-slate-200/50 hover:bg-slate-300/50 text-slate-900 font-bold rounded-lg transition text-sm relative"
+                  >
+                    Email
+                    {showComingSoon && (
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-slate-900 text-white text-[10px] rounded whitespace-nowrap">
+                        Coming Soon
+                      </div>
+                    )}
                   </button>
                   <button
                     onClick={() => setSelectedCandidate(null)}
-                    className="px-6 py-3 bg-white/10 hover:bg-white/20 text-white font-bold rounded-lg transition"
+                    className="px-4 py-2.5 bg-slate-200/50 hover:bg-slate-300/50 text-slate-900 font-bold rounded-lg transition text-sm"
                   >
                     Done
                   </button>

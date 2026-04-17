@@ -141,7 +141,7 @@ export default function CandidateProfileModal({
       icon: Video,
       hidden: !activeInterview && completedInterviews.length === 0,
     },
-    { id: "resume", label: "Generated CV", icon: FileText },
+    { id: "resume", label: "Candidate Profile", icon: FileText },
     {
       id: "original_resume",
       label: "Original PDF",
@@ -225,30 +225,9 @@ export default function CandidateProfileModal({
             </div>
 
             <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base font-black text-slate-900 leading-tight tracking-tight">
-                  {candidate.full_name}
-                </h2>
-                <div
-                  className={`px-2 py-0.5 rounded-full text-[9px] font-black flex items-center gap-0.5 border shadow-sm ${
-                    isDiscovery && score
-                      ? "bg-blue-600 text-white border-blue-600"
-                      : "bg-amber-50 text-amber-700 border-amber-100"
-                  }`}
-                >
-                  {isDiscovery && score ? (
-                    <>
-                      <Zap className="w-2.5 h-2.5 text-white fill-white" />
-                      {score}% Best Match
-                    </>
-                  ) : (
-                    <>
-                      <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400" />
-                      {(score / 20).toFixed(1)}
-                    </>
-                  )}
-                </div>
-              </div>
+              <h2 className="text-base font-black text-slate-900 leading-tight tracking-tight">
+                {candidate.full_name}
+              </h2>
               <div className="flex gap-3 mt-0.5 text-[9px] text-slate-500 font-bold uppercase tracking-widest">
                 <div className="flex flex-col">
                   <span className="text-slate-400 text-[7px] font-black leading-none mb-0.5">
@@ -277,7 +256,13 @@ export default function CandidateProfileModal({
                   alert("Candidate email not found.");
                 }
               }}
-              className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all shadow-md active:scale-95"
+              disabled={status === "rejected" || !status}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all shadow-md active:scale-95 ${
+                status && status !== "rejected"
+                  ? "bg-slate-900 hover:bg-slate-800 text-white"
+                  : "bg-slate-200 text-slate-400 cursor-not-allowed"
+              }`}
+              title={!status || status === "rejected" ? "Not available for this candidate" : "Send email to candidate"}
             >
               <Mail className="w-3 h-3" />
               Send Email
@@ -318,106 +303,130 @@ export default function CandidateProfileModal({
             {/* Display Layer */}
             <div className="flex-1 bg-white rounded-[20px] border border-slate-100 shadow-sm overflow-hidden flex flex-col min-h-0">
               {activeTab === "resume" && (
-                <div className="flex flex-col h-full bg-slate-100/50">
-                  <div className="flex-1 p-3 overflow-y-auto custom-scrollbar">
-                    <div className="bg-white aspect-[1/1.3] w-full max-w-2xl mx-auto shadow-xl p-8 relative border border-slate-100 min-h-200">
-                      {/* Sub-action Download */}
-                      <div className="absolute top-6 right-6 flex gap-2 print:hidden">
-                        <button
-                          onClick={() => window.print()}
-                          className="bg-white hover:bg-slate-50 text-slate-900 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest border border-slate-200 flex items-center gap-1.5 shadow-sm active:scale-95 transition-all"
-                        >
-                          <Download className="w-3 h-3" />
-                          Export PDF
-                        </button>
+                <div className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-slate-50">
+                  <div className="max-w-4xl mx-auto space-y-6">
+                    {/* Info Lock Status Banner */}
+                    {(!status || status === "rejected") && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+                        <div className="text-lg flex-shrink-0 text-amber-600">◆</div>
+                        <div>
+                          <p className="text-sm font-bold text-amber-900">Personal info unlocks when candidate applies, is shortlisted, or replies to an invite</p>
+                        </div>
                       </div>
+                    )}
 
-                      <div className="border-b-2 border-slate-900 pb-4 mb-5">
-                        <h1 className="text-2xl font-black text-slate-900 tracking-tighter">
-                          {candidate.full_name}
-                        </h1>
-                      </div>
+                    {/* Key Metrics Grid - 2x2 */}
+                    {(() => {
+                      const yearsOfExp = (() => {
+                        if (timeline && timeline.length > 0) {
+                          const startDates = timeline
+                            .map(e => e.start ? parseInt(e.start.split('-')[0]) : null)
+                            .filter(Boolean) as number[];
+                          const endDates = timeline
+                            .map(e => e.end && e.end.toLowerCase() !== 'present' ? parseInt(e.end.split('-')[0]) : new Date().getFullYear())
+                            .filter(Boolean) as number[];
+                          
+                          if (startDates.length > 0) {
+                            const minStart = Math.min(...startDates);
+                            const maxEnd = Math.max(...endDates);
+                            return Math.max(0, maxEnd - minStart);
+                          }
+                        }
+                        return 0;
+                      })();
 
-                      <div className="space-y-6">
-                        {/* Real Summary from DB */}
-                        <section>
-                          <h3 className="text-[8px] font-black text-slate-400 uppercase tracking-[0.3em] mb-2 px-1">
-                            Professional Bio
-                          </h3>
-                          <div className="bg-slate-50/50 rounded-xl p-3 border border-slate-100/50">
-                            <p className="text-slate-600 text-[10px] font-bold leading-relaxed">
-                              {displayBio}
-                            </p>
+                      const getExperienceLevel = (years: number) => {
+                        if (years < 2) return "Fresher";
+                        if (years < 5) return "Mid-Level";
+                        if (years < 10) return "Senior";
+                        return "Leadership";
+                      };
+
+                      return (
+                        <div className="grid grid-cols-2 gap-4">
+                          {/* Years of Experience */}
+                          <div className="bg-blue-50 rounded-xl p-5 border border-blue-100">
+                            <p className="text-xs font-bold text-blue-600 uppercase tracking-wide mb-2">Years of Experience</p>
+                            <p className="text-4xl font-black text-blue-900 mb-1">{yearsOfExp}</p>
+                            <p className="text-xs text-blue-600 font-semibold">years</p>
                           </div>
-                        </section>
 
-                        {/* Real Work History Mapping */}
-                        <section>
-                          <h3 className="text-[8px] font-black text-slate-400 uppercase tracking-[0.3em] mb-3 px-1">
-                            Experience Hub
-                          </h3>
-                          {timeline.length > 0 ? (
-                            <div className="space-y-4">
-                              {timeline.map(
-                                (exp: ExperienceEntry, idx: number) => (
-                                  <div
-                                    key={idx}
-                                    className="relative pl-4 border-l-2 border-slate-100 pb-1 group"
-                                  >
-                                    <div className="absolute -left-1.25 top-1 w-2 h-2 rounded-full bg-slate-200 group-hover:bg-blue-600 transition-colors" />
-                                    <div className="flex justify-between items-start mb-0.5">
-                                      <h4 className="font-black text-slate-900 text-[11px] tracking-tight group-hover:text-blue-600 transition-colors">
-                                        {exp.role || exp.title}
-                                      </h4>
-                                      <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest">
-                                        {exp.start} {exp.end || "Present"}
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center gap-1.5 text-[8px] text-slate-500 font-bold mb-1">
-                                      <Building2 className="w-2.5 h-2.5" />
-                                      {exp.company}
-                                    </div>
-                                    <p className="text-[10px] text-slate-600 leading-relaxed font-medium italic">
-                                      {exp.description}
-                                    </p>
-                                  </div>
-                                ),
-                              )}
-                            </div>
-                          ) : (
-                            <div className="p-8 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200 text-center">
-                              <FileText className="w-8 h-8 text-slate-200 mx-auto mb-2" />
-                              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                                No Work History Logs Found
-                              </p>
-                            </div>
-                          )}
-                        </section>
+                          {/* Location */}
+                          <div className="bg-teal-50 rounded-xl p-5 border border-teal-100">
+                            <p className="text-xs font-bold text-teal-600 uppercase tracking-wide mb-2">Location</p>
+                            <p className="text-lg font-black text-teal-900 mb-1">{displayLocation}</p>
+                          </div>
 
-                        {/* Real Skills Tag Cloud */}
-                        {(candidate.skills?.length > 0 ||
-                          (parsedDetails?.skills?.length ?? 0) > 0) && (
-                          <section>
-                            <h3 className="text-[8px] font-black text-slate-400 uppercase tracking-[0.3em] mb-2.5 px-1">
-                              Core Competencies
-                            </h3>
-                            <div className="flex flex-wrap gap-1.5">
-                              {(
-                                candidate.skills ||
-                                parsedDetails?.skills ||
-                                []
-                              ).map((skill: string, i: number) => (
-                                <span
-                                  key={i}
-                                  className="px-2.5 py-1 bg-white text-blue-600 text-[8px] font-black rounded-lg border border-blue-100 uppercase tracking-tighter hover:bg-blue-600 hover:text-white transition-colors cursor-default"
-                                >
-                                  {skill}
-                                </span>
-                              ))}
-                            </div>
-                          </section>
-                        )}
+                          {/* Expected Compensation */}
+                          <div className="bg-purple-50 rounded-xl p-5 border border-purple-100">
+                            <p className="text-xs font-bold text-purple-600 uppercase tracking-wide mb-2">Expected Compensation</p>
+                            <p className="text-2xl font-black text-purple-900">Not Provided</p>
+                          </div>
+
+                          {/* Experience Level */}
+                          <div className="bg-cyan-50 rounded-xl p-5 border border-cyan-100">
+                            <p className="text-xs font-bold text-cyan-600 uppercase tracking-wide mb-2">Experience Level</p>
+                            <p className="text-lg font-black text-cyan-900">{getExperienceLevel(yearsOfExp)}</p>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Expertise Areas - Skills */}
+                    <div className="bg-white rounded-xl border border-slate-100 p-6 shadow-sm">
+                      <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wide mb-4">
+                        Expertise Areas
+                      </h3>
+                      {(candidate.skills?.length > 0 || (parsedDetails?.skills?.length ?? 0) > 0) ? (
+                        <div className="flex flex-wrap gap-2">
+                          {(
+                            candidate.skills || parsedDetails?.skills || []
+                          ).map((skill: string, i: number) => (
+                            <span
+                              key={i}
+                              className="px-3 py-2 bg-cyan-100 text-cyan-700 text-xs font-bold rounded-lg border border-cyan-200"
+                            >
+                              {skill}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-slate-500 italic">No expertise areas provided</p>
+                      )}
+                    </div>
+
+                    {/* Personal Information - with Privacy */}
+                    <div className={`rounded-xl p-6 shadow-sm border ${
+                      status && status !== "rejected"
+                        ? "bg-white border-slate-100"
+                        : "bg-slate-100 border-slate-200"
+                    }`}>
+                      <div className="flex items-center gap-2 mb-4">
+                        <span className="text-lg text-slate-600 font-bold">●</span>
+                        <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">
+                          Personal Information {!status || status === "rejected" ? "(LOCKED)" : ""}
+                        </h3>
                       </div>
+
+                      {status && status !== "rejected" ? (
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                            <p className="text-xs text-slate-500 font-bold uppercase mb-1">Email</p>
+                            <p className="text-sm font-bold text-slate-900 truncate">{candidate.email?.toLowerCase() || "Not Available"}</p>
+                          </div>
+                          <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                            <p className="text-xs text-slate-500 font-bold uppercase mb-1">Phone</p>
+                            <p className="text-sm font-bold text-slate-900">{displayPhone}</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-2 text-slate-400">
+                          <p className="text-sm flex items-center gap-2">- Email Address</p>
+                          <p className="text-sm flex items-center gap-2">- Phone Number</p>
+                          <p className="text-sm flex items-center gap-2">- Date of Birth</p>
+                          <p className="text-xs text-slate-500 mt-4 italic">Unlock by applying, shortlisting, or inviting this candidate</p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -738,94 +747,6 @@ export default function CandidateProfileModal({
             </div>
           </div>
 
-          {/* Right Static Details Panel */}
-          <div className="w-65 border-l border-slate-100 bg-white p-5 overflow-y-auto custom-scrollbar shrink-0">
-            <div className="mb-6">
-              <h3 className="text-[9px] font-black text-slate-900 mb-3.5 uppercase tracking-[0.2em] border-b border-slate-50 pb-2">
-                Candidate Info
-              </h3>
-              <div className="space-y-2">
-                <MiniInfoItem
-                  label="Candidate Email"
-                  value={candidate.email?.toLowerCase() || "Not Available"}
-                  icon={Mail}
-                  color="text-blue-600 bg-blue-50"
-                />
-                <MiniInfoItem
-                  label="Verified Phone"
-                  value={displayPhone}
-                  icon={Phone}
-                  color="text-blue-600 bg-blue-50"
-                />
-                <MiniInfoItem
-                  label="Sex/Gender"
-                  value={candidate.gender || "Not Specified"}
-                  icon={User}
-                  color="text-slate-500 bg-slate-50"
-                />
-                <MiniInfoItem
-                  label="DOB"
-                  value={
-                    candidate.birthdate
-                      ? format(new Date(candidate.birthdate), "MMM dd, yyyy")
-                      : "Not Provided"
-                  }
-                  icon={Calendar}
-                  color="text-slate-500 bg-slate-50"
-                />
-                <MiniInfoItem
-                  label="Residing"
-                  value={displayLocation}
-                  icon={MapPin}
-                  color="text-slate-500 bg-slate-50"
-                />
-              </div>
-            </div>
-
-            <div className="mb-6">
-              <h3 className="text-[9px] font-black text-slate-900 mb-3.5 uppercase tracking-[0.2em] border-b border-slate-50 pb-2">
-                Education
-              </h3>
-              <div className="space-y-2">
-                <MiniInfoItem
-                  label="Institution"
-                  value={eduInstitution}
-                  icon={GraduationCap}
-                  color="text-slate-500 bg-slate-50"
-                />
-                <MiniInfoItem
-                  label="Credential"
-                  value={eduDegree}
-                  icon={FileText}
-                  color="text-slate-500 bg-slate-50"
-                />
-                <MiniInfoItem
-                  label="Passout Year"
-                  value={eduYear}
-                  icon={Calendar}
-                  color="text-slate-500 bg-slate-50"
-                />
-                <MiniInfoItem
-                  label="Referral Path"
-                  value={candidate.referral || "Organic Application"}
-                  icon={Send}
-                  color="text-slate-500 bg-slate-50"
-                />
-              </div>
-            </div>
-
-            <div className="mt-auto">
-              <h3 className="text-[9px] font-black text-slate-900 mb-2 uppercase tracking-[0.2em]">
-                Private Notes
-              </h3>
-              <div className="relative">
-                <textarea
-                  placeholder="Add recruiter context..."
-                  className="w-full h-20 bg-slate-50 border border-slate-200/50 rounded-xl p-3 text-[9px] font-bold focus:outline-none focus:ring-2 focus:ring-primary/10 transition-all placeholder:text-slate-300 resize-none"
-                />
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -858,32 +779,6 @@ export default function CandidateProfileModal({
           }}
         />
       )}
-    </div>
-  );
-}
-
-function MiniInfoItem({
-  label,
-  value,
-  icon: Icon,
-  color,
-}: {
-  label: string;
-  value: string;
-  icon: React.ComponentType<{ className?: string }>;
-  color?: string;
-}) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <div className="flex items-center gap-1.5 text-[7px] font-black text-slate-400 uppercase tracking-widest leading-none">
-        <Icon className={`w-2 h-2 ${color?.split(" ")[0] || ""}`} />
-        {label}
-      </div>
-      <div
-        className={`px-2 py-1.5 rounded-lg text-[9px] font-black border border-slate-100/50 ${color?.split(" ")[1] || "bg-slate-50/50"} text-slate-700 truncate mr-0.5 shadow-xs tracking-tighter`}
-      >
-        {value}
-      </div>
     </div>
   );
 }

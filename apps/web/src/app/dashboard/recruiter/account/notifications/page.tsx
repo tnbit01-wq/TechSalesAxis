@@ -155,57 +155,56 @@ export default function RecruiterNotificationsPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8 space-y-10 pb-20">
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+    <div className="max-w-6xl mx-auto px-4 py-6 space-y-6 pb-20">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        {/* Header */}
         <div>
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Notifications</h1>
-          <p className="text-slate-500 text-sm mt-1">Manage alerts from your hiring activity and recruiting updates.</p>
+          <p className="text-slate-500 text-sm mt-2">Manage alerts from your hiring activity and recruiting updates.</p>
         </div>
 
-        <div className="flex flex-col gap-3">
+        {/* Actions and Filter */}
+        <div className="flex flex-col lg:flex-row lg:items-end lg:gap-3 gap-3 lg:ml-auto">
+          {/* Buttons Row */}
           <div className="flex items-center gap-2 flex-wrap">
             {selectedIds.size > 0 && (
               <>
                 <button
                   onClick={markSelectedAsRead}
-                  className="px-4 py-2.5 bg-emerald-50 border border-emerald-100 rounded-xl text-emerald-600 text-xs font-bold hover:bg-emerald-600 hover:text-white transition-all flex items-center gap-2"
+                  className="px-3 py-2 bg-emerald-50 border border-emerald-100 rounded-lg text-emerald-600 text-xs font-bold hover:bg-emerald-600 hover:text-white transition-all flex items-center gap-1.5"
                 >
-                  <Check className="h-4 w-4" />
+                  <Check className="h-3.5 w-3.5" />
                   Mark Read ({selectedIds.size})
                 </button>
                 <button
                   onClick={deleteSelected}
-                  className="px-4 py-2.5 bg-red-50 border border-red-100 rounded-xl text-red-600 text-xs font-bold hover:bg-red-600 hover:text-white transition-all flex items-center gap-2"
+                  className="px-3 py-2 bg-red-50 border border-red-100 rounded-lg text-red-600 text-xs font-bold hover:bg-red-600 hover:text-white transition-all flex items-center gap-1.5"
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 className="h-3.5 w-3.5" />
                   Delete ({selectedIds.size})
                 </button>
               </>
             )}
             <button
               onClick={markAllRead}
-              className="px-4 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition-all flex items-center gap-2"
+              className="px-3 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-all flex items-center gap-1.5"
             >
-              <CheckCircle2 className="h-4 w-4" />
+              <CheckCircle2 className="h-3.5 w-3.5" />
               Mark All Read
             </button>
           </div>
 
-          <div className="flex flex-col md:flex-row items-start md:items-end gap-4">
-            <div className="flex flex-col">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Filter</label>
-              <select
-                value={filter}
-                onChange={(e) => setFilter(e.target.value as "all" | "unread")}
-                className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 shadow-sm cursor-pointer font-medium text-slate-900"
-              >
-                <option value="all">All Notifications</option>
-                <option value="unread">Unread Only</option>
-              </select>
-            </div>
-          </div>
+          {/* Filter Section */}
+          <select
+            value={filter}
+            onChange={(e) => setFilter(e.target.value as "all" | "unread")}
+            className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600/20 shadow-sm cursor-pointer font-medium text-slate-900"
+          >
+            <option value="all">All Notifications</option>
+            <option value="unread">Unread Only</option>
+          </select>
         </div>
-      </header>
+      </div>
 
       <div className="space-y-3">
         {filteredNotifications.length === 0 ? (

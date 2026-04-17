@@ -123,13 +123,6 @@ export default function RecruiterSidebar({
           description: "Visualized view of total verified candidates",
         },
         {
-          label: "Candidate Pool",
-          href: "/dashboard/recruiter/hiring/pool",
-          icon: <UsersRound className="h-4 w-4" />,
-          locked: isLocked,
-          description: "Access to the global database of verified talent",
-        },
-        {
           label: "Recommended",
           href: "/dashboard/recruiter/intelligence/recommendations",
           icon: <Zap className="h-4 w-4" />,
