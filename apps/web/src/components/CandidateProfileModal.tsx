@@ -104,7 +104,7 @@ export default function CandidateProfileModal({
 
   // Find the active (scheduled or pending) interview
   const activeInterview = (interviews || []).find(i => 
-    i.status === "scheduled" || i.status === "pending_confirmation" || i.status === "in_progress"
+    i.status === "scheduled" || i.status === "pending_confirmation"
   );
   const completedInterviews = (interviews || []).filter(i => i.status === "completed")
     .sort((a, b) => b.round_number - a.round_number);
@@ -583,26 +583,26 @@ export default function CandidateProfileModal({
                       </div>
 
                       <div className={`p-4 rounded-2xl border ${
-                        activeInterview.status === "in_progress"
+                        activeInterview.recruiter_joined_at && activeInterview.candidate_joined_at
                           ? "bg-emerald-50 border-emerald-100/50"
                           : activeInterview.status === "scheduled" 
                             ? "bg-blue-100 border-blue-100/50" 
                             : "bg-slate-50 border-slate-100"
                       }`}>
                         <div className="flex items-center gap-3 mb-2">
-                          {activeInterview.status === "in_progress" ? (
+                          {activeInterview.recruiter_joined_at && activeInterview.candidate_joined_at ? (
                             <div className="h-4 w-4 rounded-full bg-emerald-500 animate-pulse" />
                           ) : (
                             <Clock className={`h-4 w-4 ${activeInterview.status === "scheduled" ? "text-blue-600" : "text-slate-400"}`} />
                           )}
                           <p className={`text-[9px] font-black uppercase tracking-widest ${
-                            activeInterview.status === "in_progress" 
+                            activeInterview.recruiter_joined_at && activeInterview.candidate_joined_at
                               ? "text-emerald-700" 
                               : activeInterview.status === "scheduled" 
                                 ? "text-blue-700" 
                                 : "text-slate-500"
                           }`}>
-                            {activeInterview.status === "in_progress" ? "Live: Interview in Progress" : activeInterview.status === "scheduled" ? "Scheduled Transmission" : "Proposed Slots"}
+                            {activeInterview.recruiter_joined_at && activeInterview.candidate_joined_at ? "Live: Interview in Progress" : activeInterview.status === "scheduled" ? "Scheduled Transmission" : "Proposed Slots"}
                           </p>
                         </div>
                         <p className="text-[11px] font-black text-slate-700 leading-tight">
@@ -623,7 +623,7 @@ export default function CandidateProfileModal({
                       </div>
 
                       <div className="space-y-3">
-                        {(activeInterview.status === "scheduled" || activeInterview.status === "in_progress") && activeInterview.meeting_link && (() => {
+                        {activeInterview.status === "scheduled" && activeInterview.meeting_link && (() => {
                           const nowInBrowser = currentTime;
                           const start = new Date(confirmedSlot?.start_time || "");
                           const end = new Date(confirmedSlot?.end_time || "");
@@ -660,7 +660,7 @@ export default function CandidateProfileModal({
                             >
                               <Video className="w-4 h-4" />
                               {isActive 
-                                ? activeInterview.status === "in_progress" ? "Return to Live Session" : "Join Session"
+                                ? activeInterview.recruiter_joined_at ? "Return to Live Session" : "Join Session"
                                 : nowInBrowser < allowedStart 
                                   ? `Locked: Opens ${Math.round((allowedStart.getTime() - nowInBrowser.getTime()) / 60000)}m Early` 
                                   : nowInBrowser > end
@@ -670,7 +670,7 @@ export default function CandidateProfileModal({
                           );
                         })()}
                         
-                        {activeInterview.status === "scheduled" && (
+                        {activeInterview.recruiter_joined_at && (
                           <button
                             onClick={() => setShowFeedbackModal(true)}
                             className="w-full bg-slate-900 hover:bg-slate-800 text-white py-4 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] shadow-2xl transition-all active:scale-95"

@@ -358,16 +358,10 @@ export default function ApplicationsPipelinePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50/50">
-        <div className="flex flex-col items-center gap-6">
-          <div className="relative">
-            <div className="h-16 w-16 rounded-3xl bg-white border border-slate-200 flex items-center justify-center shadow-xl">
-              <div className="h-8 w-8 rounded-full border-4 border-slate-900 border-t-transparent animate-spin" />
-            </div>
-          </div>
-          <p className="text-slate-400 font-black text-[10px] uppercase tracking-[0.4em]">
-            Loading Pipeline...
-          </p>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
+          <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Loading Pipeline...</p>
         </div>
       </div>
     );
@@ -428,9 +422,9 @@ export default function ApplicationsPipelinePage() {
                     <div className="h-10 w-10 bg-indigo-50 rounded-lg flex items-center justify-center border border-indigo-100">
                       <Briefcase className="w-5 h-5 text-indigo-600" />
                     </div>
-                    <span className={`text-xs font-bold uppercase tracking-wider ${daysLeft < 5 ? "text-red-600" : "text-slate-400"}`}>
-                      {daysLeft > 0 ? `${daysLeft}d` : "Expired"}
-                    </span>
+                    <div className={`text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-full border ${daysLeft < 5 ? "bg-red-50 border-red-200 text-red-600" : "bg-slate-50 border-slate-200 text-slate-600"}`}>
+                      {daysLeft > 0 ? `${daysLeft}d left` : "Expired"}
+                    </div>
                   </div>
 
                   <h3 className="text-sm font-bold text-slate-900 mb-2 line-clamp-1">
@@ -495,7 +489,7 @@ export default function ApplicationsPipelinePage() {
             >
               All
             </button>
-            {["applied", "shortlisted", "interview_scheduled", "offered", "rejected", "closed"].map((status) => (
+            {["applied", "shortlisted", "interview_scheduled", "offered", "rejected"].map((status) => (
               <button
                 key={status}
                 onClick={() => setFilterStatus(status)}
@@ -665,7 +659,7 @@ export default function ApplicationsPipelinePage() {
                       </button>
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-600">{app.jobs?.title}</td>
-                    <td className="px-4 py-3 text-sm text-slate-600">{app.jobs?.location || "Remote"}</td>
+                    <td className="px-4 py-3 text-sm text-slate-600">{app.candidate_profiles?.location || "Location not provided"}</td>
                     <td className="px-4 py-3 text-xs text-slate-500">
                       {new Date(app.created_at).toLocaleDateString("en-US", {
                         month: "short",
@@ -696,10 +690,12 @@ export default function ApplicationsPipelinePage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm font-bold text-slate-900">
-                      {app.profile_scores?.final_score ? `${(app.profile_scores.final_score * 100).toFixed(0)}%` : "-"}
+                      {app.profile_scores?.final_score ? (
+                        `${app.profile_scores.final_score > 1 ? app.profile_scores.final_score.toFixed(0) : (app.profile_scores.final_score * 100).toFixed(0)}%`
+                      ) : "-"}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex items-center justify-end gap-1.5">
                         {app.status === "interview_scheduled" && app.interviews?.some(i => i.status === "scheduled") && (
                           <button
                             onClick={() => {
@@ -717,23 +713,24 @@ export default function ApplicationsPipelinePage() {
                                 interviews: app.interviews,
                               });
                             }}
-                            className="p-1.5 bg-indigo-600 text-white border border-indigo-600 rounded hover:bg-slate-900 hover:border-slate-900 transition-colors flex items-center gap-1.5 px-3"
+                            className="px-3 py-1.5 bg-indigo-600 text-white border border-indigo-600 rounded-lg hover:bg-indigo-700 transition-all flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider shadow-sm active:scale-95"
                             title="Join Interview"
                           >
                             <Video className="h-4 w-4" />
-                            <span className="text-[10px] font-black uppercase tracking-wider">Join</span>
+                            Join
                           </button>
                         )}
-                        {["shortlisted", "applied"].includes(app.status) && (
+                        {["shortlisted", "interview_scheduled"].includes(app.status) && (
                           <button
                             onClick={() => {
                               setActiveApplicationId(app.id);
                               setIsInterviewModalOpen(true);
                             }}
-                            className="p-1.5 bg-white border border-slate-200 rounded hover:text-indigo-600 text-slate-400 transition-colors"
+                            className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 rounded-lg text-[10px] font-bold uppercase tracking-widest hover:bg-slate-50 transition-all flex items-center gap-1.5 active:scale-95"
                             title="Schedule Interview"
                           >
                             <Calendar className="h-4 w-4" />
+                            Schedule
                           </button>
                         )}
                         <button
@@ -752,38 +749,39 @@ export default function ApplicationsPipelinePage() {
                               interviews: app.interviews,
                             });
                           }}
-                          className="p-1.5 bg-white border border-slate-200 rounded hover:text-slate-900 text-slate-400 transition-colors"
+                          className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 rounded-lg text-[10px] font-bold uppercase tracking-widest hover:bg-slate-50 transition-all flex items-center gap-1.5 active:scale-95"
                           title="View Profile"
                         >
                           <Eye className="h-4 w-4" />
+                          Profile
                         </button>
 
                         <div className="relative group/menu">
-                          <button className="p-1.5 bg-white border border-slate-200 rounded hover:text-slate-900 text-slate-400 transition-colors">
+                          <button className="p-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 transition-all hover:shadow-sm" title="More options">
                             <MoreVertical className="w-4 h-4" />
                           </button>
-                          <div className="absolute right-0 top-full mt-1 w-40 bg-white border border-slate-200 rounded-lg shadow-lg opacity-0 invisible group-hover/menu:opacity-100 group-hover/menu:visible transition-all z-40 p-1">
+                          <div className="absolute right-0 top-full mt-3 w-48 bg-white border border-slate-200 rounded-lg shadow-lg opacity-0 invisible group-hover/menu:opacity-100 group-hover/menu:visible transition-all duration-200 z-50 py-1">
                             {app.status === "applied" && (
                               <button
                                 onClick={() => {
                                   setActiveApplicationId(app.id);
                                   handleBulkStatusChange("shortlisted");
                                 }}
-                                className="w-full text-left px-3 py-1.5 rounded text-xs font-bold text-indigo-600 hover:bg-indigo-50 transition-colors flex items-center gap-2"
+                                className="w-full text-left px-4 py-2.5 text-[11px] font-bold text-indigo-600 hover:bg-indigo-50 transition-colors flex items-center gap-2"
                               >
-                                <CheckCircle2 className="w-3 h-3" />
+                                <CheckCircle2 className="w-4 h-4" />
                                 Shortlist
                               </button>
                             )}
-                            {app.status !== "rejected" && app.status !== "offered" && (
+                            {app.status !== "rejected" && app.status !== "offered" && app.status !== "closed" && (
                               <button
                                 onClick={() => {
                                   setActiveApplicationId(app.id);
                                   setIsRejectionModalOpen(true);
                                 }}
-                                className="w-full text-left px-3 py-1.5 rounded text-xs font-bold text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2"
+                                className="w-full text-left px-4 py-2.5 text-[11px] font-bold text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2"
                               >
-                                <XCircle className="w-3 h-3" />
+                                <XCircle className="w-4 h-4" />
                                 Reject
                               </button>
                             )}
@@ -804,10 +802,10 @@ export default function ApplicationsPipelinePage() {
                                     interviews: app.interviews,
                                   });
                                 }}
-                                className="w-full text-left px-3 py-1.5 rounded text-xs font-bold text-indigo-600 hover:bg-indigo-50 transition-colors flex items-center gap-2"
+                                className="w-full text-left px-4 py-2.5 text-[11px] font-bold text-indigo-600 hover:bg-indigo-50 transition-colors flex items-center gap-2"
                               >
-                                <Video className="w-3 h-3" />
-                                Schedule
+                                <Video className="w-4 h-4" />
+                                Schedule Interview
                               </button>
                             )}
                           </div>
