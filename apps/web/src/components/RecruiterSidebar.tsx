@@ -245,7 +245,6 @@ export default function RecruiterSidebar({
                   locked={item.locked}
                   description={item.description}
                   isCollapsed={!isOpen}
-                  onNavigate={() => closeSidebar()}
                 />
               ))}
             </div>
@@ -301,7 +300,6 @@ function SidebarLink({
   locked = false,
   description,
   isCollapsed = false,
-  onNavigate,
 }: {
   label: string;
   href: string;
@@ -310,7 +308,6 @@ function SidebarLink({
   locked?: boolean;
   description?: string;
   isCollapsed?: boolean;
-  onNavigate?: () => void;
 }) {
   if (locked) {
     return (
@@ -342,7 +339,7 @@ function SidebarLink({
   }
 
   return (
-    <Link href={href} onClick={onNavigate}>
+    <Link href={href}>
       <div
         className={`
         flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group relative
