@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, Check, Trash2, X, Sparkles, Zap, Clock, Calendar } from "lucide-react";
+import { Bell, Check, Sparkles, User, LogOut, Settings as SettingsIcon } from "lucide-react";
 import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import { useChatViewStore } from "@/hooks/useChatViewStore";
@@ -22,13 +22,16 @@ interface ProfileData {
   profile_photo_url?: string;
 }
 
-export default function CandidateHeader({ profile }: { profile?: ProfileData | null }) {
+export default function CandidateHeader({ profile: initialProfile }: { profile?: ProfileData | null }) {
   const router = useRouter();
   const { toggleChatMode } = useChatViewStore();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [profile, setProfile] = useState<ProfileData | null>(initialProfile || null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const profileDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     async function fetchNotifications() {
@@ -49,16 +52,44 @@ export default function CandidateHeader({ profile }: { profile?: ProfileData | n
       }
     }
 
+    async function fetchProfile() {
+      try {
+        const token = awsAuth.getToken();
+        if (!token) return;
+
+        const profileData = await apiClient.get(
+          "/candidate/profile",
+          token,
+        );
+        if (profileData) {
+          setProfile({
+            full_name: profileData.full_name,
+            current_role: profileData.current_role,
+            profile_photo_url: profileData.profile_photo_url,
+          });
+        }
+      } catch (err) {
+        console.error("Failed to load candidate profile:", err);
+      }
+    }
+
     fetchNotifications();
+    fetchProfile();
     const interval = setInterval(fetchNotifications, 60000);
 
-    // Close dropdown on outside click
+    // Close dropdowns on outside click
     function handleClickOutside(event: MouseEvent) {
       if (
         dropdownRef.current &&
         !dropdownRef.current.contains(event.target as Node)
       ) {
         setIsOpen(false);
+      }
+      if (
+        profileDropdownRef.current &&
+        !profileDropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsProfileOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -106,25 +137,18 @@ export default function CandidateHeader({ profile }: { profile?: ProfileData | n
     }
   };
 
-  const deleteNotification = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleLogout = async () => {
     try {
-      const token = awsAuth.getToken();
-      if (!token) return;
-
-      await apiClient.delete(`/notifications/${id}`, token);
-      setNotifications((prev) => {
-        const item = prev.find((n) => n.id === id);
-        if (item && !item.is_read) setUnreadCount((u) => Math.max(0, u - 1));
-        return prev.filter((n) => n.id !== id);
-      });
+      setIsProfileOpen(false);
+      await awsAuth.logout();
+      router.replace("/login");
     } catch (err) {
-      console.error("Failed to delete notification:", err);
+      console.error("Logout failed:", err);
     }
   };
 
   return (
-    <div className="flex items-center gap-3 p-4 absolute top-0 right-0 z-50">
+    <div className="flex items-center gap-3 p-4 absolute top-4 left-8 right-8 z-50">
       <button
         onClick={toggleChatMode}
         className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-black text-white rounded-2xl border border-slate-800 transition-all shadow-lg active:scale-95 group overflow-hidden relative"
@@ -133,151 +157,91 @@ export default function CandidateHeader({ profile }: { profile?: ProfileData | n
         <span className="text-[11px] font-black tracking-[0.1em] uppercase">AI Assistant</span>
       </button>
 
-      <div className="relative" ref={dropdownRef}>
+      <div className="ml-auto flex items-center gap-3">
+        <div className="relative" ref={dropdownRef}>
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="relative p-2.5 bg-white/80 backdrop-blur-md rounded-2xl border border-slate-200 hover:bg-white transition-all shadow-sm group active:scale-95 flex items-center gap-2"
+          className="relative p-2 bg-white rounded-2xl border border-slate-200 hover:bg-slate-50 transition-all shadow-sm group active:scale-95"
         >
           <Bell
-            className={`h-5 w-5 ${unreadCount > 0 ? "text-primary animate-pulse" : "text-slate-500"}`}
+            className={`h-5 w-5 ${unreadCount > 0 ? "text-blue-600 animate-pulse" : "text-slate-500"}`}
           />
           {unreadCount > 0 && (
-            <span className="absolute top-2 right-2 h-2.5 w-2.5 bg-primary rounded-full ring-2 ring-white"></span>
+            <span className="absolute top-1.5 right-1.5 h-2 w-2 bg-red-500 rounded-full ring-2 ring-white"></span>
           )}
         </button>
 
         {isOpen && (
-          <div className="absolute right-0 mt-4 w-104 bg-white border border-slate-200 rounded-3xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-4 duration-500 origin-top-right">
-            <div className="p-7 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-              <div className="flex items-center gap-3">
-                <div className="h-8 w-8 bg-primary rounded-xl flex items-center justify-center shadow-lg shadow-primary-light rotate-3 group-hover:rotate-0 transition-transform">
-                  <Zap className="h-4 w-4 text-white" />
-                </div>
-                <div>
-                  <h3 className="text-[11px] font-black text-slate-900 uppercase tracking-[0.2em] italic">
-                    Notification <span className="text-primary">Center</span>
-                  </h3>
-                  <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
-                    Your latest updates
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-4">
-                {unreadCount > 0 && (
-                  <button
-                    onClick={markAllRead}
-                    className="text-[9px] font-black text-primary uppercase tracking-widest hover:text-slate-900 transition-all border-b border-transparent hover:border-slate-900 pb-0.5"
-                  >
-                    SYNC ALL
-                  </button>
-                )}
+          <div className="absolute right-0 mt-3 w-96 bg-white/80 backdrop-blur-xl border border-slate-200 rounded-3xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 origin-top-right ring-1 ring-slate-900/5">
+            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-white/50">
+              <h3 className="text-sm font-black text-slate-900 uppercase tracking-tighter">
+                Notifications
+              </h3>
+              {unreadCount > 0 && (
                 <button
-                  onClick={() => setIsOpen(false)}
-                  className="p-2 hover:bg-slate-100 rounded-xl text-slate-400 transition-colors"
+                  onClick={markAllRead}
+                  className="text-[10px] font-bold text-blue-600 hover:text-blue-700 bg-blue-100 px-2.5 py-1 rounded-full flex items-center gap-1 transition-colors"
                 >
-                  <X className="h-4 w-4" />
+                  <Check className="h-3 w-3" />
+                  Mark All
                 </button>
-              </div>
+              )}
             </div>
 
-            <div className="max-h-144 overflow-y-auto custom-scrollbar p-3 space-y-2">
+            <div className="max-h-112.5 overflow-y-auto">
               {notifications.length === 0 ? (
-                <div className="py-20 text-center flex flex-col items-center justify-center">
-                  <div className="h-16 w-16 bg-slate-50 rounded-4xl flex items-center justify-center mb-6 border border-slate-100/60 relative">
-                    <div className="absolute inset-0 bg-primary-light rounded-4xl animate-ping opacity-20 scale-125" />
-                    <Sparkles className="h-7 w-7 text-slate-200" />
+                <div className="p-12 text-center">
+                  <div className="h-12 w-12 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-100">
+                    <Bell className="h-5 w-5 text-slate-300" />
                   </div>
-                  <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 mb-2">
-                    Transmission Quiet
-                  </h4>
-                  <p className="text-[9px] text-slate-300 font-bold max-w-xs uppercase tracking-widest leading-relaxed">
-                    Awaiting next matching pulse
+                  <p className="text-slate-400 font-bold text-sm tracking-tight">
+                    You&apos;re all caught up.
                   </p>
                 </div>
               ) : (
-                <div className="space-y-1.5 px-1">
+                <div className="divide-y divide-slate-50">
                   {notifications.map((notif) => (
                     <div
                       key={notif.id}
-                      className={`group p-5 rounded-4xl transition-all cursor-pointer relative overflow-hidden ${
-                        !notif.is_read
-                          ? "bg-primary-light/40 hover:bg-primary-light border border-primary-light/50 shadow-sm"
-                          : "hover:bg-slate-50/80 border border-transparent"
-                      }`}
+                      className={`p-5 transition-colors hover:bg-slate-50/50 flex gap-4 ${!notif.is_read ? "bg-blue-100/20" : ""}`}
+                      onClick={() => !notif.is_read && markAsRead(notif.id)}
                     >
-                      {!notif.is_read && (
-                        <div className="absolute top-0 left-0 w-1 h-full bg-primary" />
-                      )}
-
-                      <div className="flex justify-between gap-4 relative z-10">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1.5">
-                            {notif.type === "INTERVIEW_PROPOSED" && (
-                              <div className="h-6 w-6 bg-amber-50 rounded-lg flex items-center justify-center border border-amber-100/50">
-                                <Calendar className="h-3 w-3 text-amber-500" />
-                              </div>
-                            )}
-                            <h4
-                              className={`text-[13px] ${!notif.is_read ? "font-black" : "font-bold text-slate-700"} text-slate-900 leading-snug`}
-                            >
-                              {notif.title}
-                            </h4>
-                          </div>
+                      <div
+                        className={`h-10 w-10 rounded-2xl shrink-0 flex items-center justify-center border ${
+                          notif.type === "INTERVIEW_PROPOSED"
+                            ? "bg-amber-50 border-amber-100"
+                            : notif.type === "INTERVIEW_CONFIRMED"
+                              ? "bg-emerald-50 border-emerald-100"
+                              : "bg-blue-50 border-blue-100"
+                        }`}
+                      >
+                        <Bell
+                          className={`h-4 w-4 ${
+                            notif.type === "INTERVIEW_PROPOSED"
+                              ? "text-amber-500"
+                              : notif.type === "INTERVIEW_CONFIRMED"
+                                ? "text-emerald-500"
+                                : "text-blue-600"
+                          }`}
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex justify-between items-start mb-1">
                           <p
-                            className={`text-[11px] leading-relaxed italic line-clamp-2 ${!notif.is_read ? "text-slate-700 font-medium" : "text-slate-500 font-normal"}`}
+                            className={`text-sm font-bold ${!notif.is_read ? "text-slate-900" : "text-slate-600"}`}
                           >
-                            &quot;{notif.message}&quot;
+                            {notif.title}
                           </p>
-                          <div className="flex items-center gap-3 mt-4">
-                            <div className="px-2 py-0.5 bg-white/60 rounded flex items-center gap-1.5 border border-slate-100">
-                              <Clock className="h-2.5 w-2.5 text-slate-400" />
-                              <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">
-                                {new Date(notif.created_at).toLocaleTimeString(
-                                  [],
-                                  { hour: "2-digit", minute: "2-digit" },
-                                )}
-                              </span>
-                            </div>
-                            {!notif.is_read && (
-                              <div className="flex items-center gap-1">
-                                <div className="h-1 w-1 bg-primary rounded-full animate-pulse" />
-                                <span className="text-[8px] font-black text-primary uppercase tracking-widest">
-                                  UNREAD TRANSMISSION
-                                </span>
-                              </div>
-                            )}
-
-                            {notif.type === "INTERVIEW_PROPOSED" && (
-                              <button
-                                onClick={() =>
-                                  router.push(
-                                    "/dashboard/candidate/notifications",
-                                  )
-                                }
-                                className="px-2 py-0.5 bg-primary text-white rounded text-[8px] font-black uppercase tracking-widest hover:bg-slate-900 transition-colors"
-                              >
-                                PICK SLOT
-                              </button>
-                            )}
-                          </div>
+                          {!notif.is_read && (
+                            <div className="h-2 w-2 bg-blue-600 rounded-full"></div>
+                          )}
                         </div>
-
-                        <div className="flex flex-col gap-2 opacity-0 translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300">
-                          <button
-                            onClick={(e) => markAsRead(notif.id, e)}
-                            className="p-2 bg-white border border-slate-200 rounded-xl text-primary hover:bg-slate-900 hover:text-white hover:border-slate-900 shadow-md transition-all active:scale-90"
-                            title="Mark read"
-                          >
-                            <Check className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            onClick={(e) => deleteNotification(notif.id, e)}
-                            className="p-2 bg-white border border-slate-200 rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-50 hover:border-red-100 shadow-md transition-all active:scale-90"
-                            title="Delete"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
+                        <p className="text-xs text-slate-500 leading-relaxed font-medium mb-2">
+                          {notif.message}
+                        </p>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">
+                          {new Date(notif.created_at).toLocaleDateString()}
+                        </p>
                       </div>
                     </div>
                   ))}
@@ -285,22 +249,103 @@ export default function CandidateHeader({ profile }: { profile?: ProfileData | n
               )}
             </div>
 
-            <div className="px-6 py-5 bg-slate-900 text-center group cursor-pointer hover:bg-black transition-colors">
+            <div className="p-4 border-t border-slate-100 text-center bg-slate-50/50">
               <button
-                onClick={() => {
-                  setIsOpen(false);
-                }}
-                className="flex items-center justify-center gap-2 w-full"
+                onClick={() => setIsOpen(false)}
+                className="text-[10px] font-black text-slate-500 uppercase tracking-widest hover:text-slate-900 transition-colors"
               >
-                <div className="h-px flex-1 bg-white/10" />
-                <span className="text-[9px] font-black text-white uppercase tracking-[0.3em] group-hover:text-primary transition-colors">
-                  ENTER ANALYTICS NEXUS
-                </span>
-                <div className="h-px flex-1 bg-white/10" />
+                Close Notification Center
               </button>
             </div>
           </div>
         )}
+        </div>
+
+      {/* Profile Dropdown */}
+      <div className="relative" ref={profileDropdownRef}>
+        <button
+          onClick={() => setIsProfileOpen(!isProfileOpen)}
+          className="flex items-center gap-2 px-3 py-2 bg-white rounded-2xl border border-slate-200 hover:bg-slate-50 transition-all shadow-sm group active:scale-95"
+        >
+          {profile?.profile_photo_url ? (
+            <img
+              src={profile.profile_photo_url}
+              alt={profile.full_name || "Profile"}
+              className="h-6 w-6 rounded-xl object-cover"
+            />
+          ) : (
+            <div className="h-6 w-6 rounded-xl bg-slate-200 flex items-center justify-center">
+              <User className="h-3.5 w-3.5 text-slate-600" />
+            </div>
+          )}
+          <span className="text-xs font-bold text-slate-700 hidden sm:block max-w-32 truncate">
+            {profile?.full_name || "Profile"}
+          </span>
+        </button>
+
+        {isProfileOpen && (
+          <div className="absolute right-0 mt-3 w-64 bg-white border border-slate-200 rounded-3xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 origin-top-right">
+            {profile && (
+              <>
+                <div className="p-5 border-b border-slate-100 bg-white">
+                  <div className="flex items-center gap-3">
+                    {profile.profile_photo_url ? (
+                      <img
+                        src={profile.profile_photo_url}
+                        alt={profile.full_name || "Profile"}
+                        className="h-12 w-12 rounded-2xl object-cover border-2 border-slate-200"
+                      />
+                    ) : (
+                      <div className="h-12 w-12 rounded-2xl bg-slate-200 flex items-center justify-center border-2 border-slate-300">
+                        <User className="h-5 w-5 text-slate-600" />
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-sm font-bold text-slate-900">
+                        {profile.full_name || "Candidate"}
+                      </p>
+                      <p className="text-xs text-slate-500 capitalize">
+                        {profile.current_role || "Job Seeker"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-2 space-y-1">
+                  <button
+                    onClick={() => {
+                      router.push("/dashboard/candidate/profile");
+                      setIsProfileOpen(false);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-slate-700 hover:bg-slate-50 transition-colors rounded-xl text-sm font-medium"
+                  >
+                    <User className="h-4 w-4 text-primary" />
+                    View Profile
+                  </button>
+                  <button
+                    onClick={() => {
+                      router.push("/dashboard/candidate/settings");
+                      setIsProfileOpen(false);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-slate-700 hover:bg-slate-50 transition-colors rounded-xl text-sm font-medium"
+                  >
+                    <SettingsIcon className="h-4 w-4 text-slate-500" />
+                    Settings
+                  </button>
+                  <div className="h-px bg-slate-100 my-1" />
+                  <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-red-600 hover:bg-red-50 transition-colors rounded-xl text-sm font-medium"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Logout
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
       </div>
     </div>
   );

@@ -152,10 +152,10 @@ export default function RecruiterHeader() {
     <div className="flex items-center gap-3 p-4 absolute top-4 left-8 right-8 z-50">
       <button
         onClick={toggleChatMode}
-        className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-primary text-white rounded-2xl border border-blue-500/20 hover:from-blue-700 hover:to-primary-dark transition-all shadow-lg shadow-blue-500/20 active:scale-95 group"
+        className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-black text-white rounded-2xl border border-slate-800 transition-all shadow-lg active:scale-95 group overflow-hidden relative"
       >
-        <Sparkles className="h-4 w-4 text-blue-100 group-hover:rotate-12 transition-transform" />
-        <span className="text-sm font-semibold tracking-wide uppercase">AI Chat Mode</span>
+        <Sparkles className="h-4 w-4 text-primary group-hover:rotate-12 transition-transform" />
+        <span className="text-[11px] font-black tracking-[0.1em] uppercase">AI Assistant</span>
       </button>
 
       <div className="ml-auto flex items-center gap-3">
@@ -288,17 +288,17 @@ export default function RecruiterHeader() {
           <div className="absolute right-0 mt-3 w-64 bg-white border border-slate-200 rounded-3xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 origin-top-right">
             {profile && (
               <>
-                <div className="p-5 border-b border-slate-100 bg-gradient-to-br from-primary-light to-white">
+                <div className="p-5 border-b border-slate-100 bg-white">
                   <div className="flex items-center gap-3">
                     {profile.profile_photo_url ? (
                       <img
                         src={profile.profile_photo_url}
                         alt={profile.full_name || "Profile"}
-                        className="h-12 w-12 rounded-2xl object-cover border-2 border-white"
+                        className="h-12 w-12 rounded-2xl object-cover border-2 border-slate-200"
                       />
                     ) : (
-                      <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-primary to-primary flex items-center justify-center border-2 border-white">
-                        <User className="h-5 w-5 text-white" />
+                      <div className="h-12 w-12 rounded-2xl bg-slate-200 flex items-center justify-center border-2 border-slate-300">
+                        <User className="h-5 w-5 text-slate-600" />
                       </div>
                     )}
                     <div>
