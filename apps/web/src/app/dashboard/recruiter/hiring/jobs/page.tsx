@@ -25,7 +25,6 @@ import {
   CheckCircle,
   PauseCircle,
   XCircle,
-  Eye,
   AlertCircle,
 } from "lucide-react";
 import { awsAuth } from "@/lib/awsAuth";
@@ -199,40 +198,6 @@ export default function JobsManagement() {
             </Link>
           </header>
 
-          {/* Recent Job Views Section */}
-          {recentJobViews.length > 0 && (
-            <div className="bg-gradient-to-br from-blue-50 via-white to-indigo-50 border border-blue-100 rounded-3xl p-6 shadow-sm">
-              <div className="flex items-center gap-2 mb-4">
-                <Eye className="h-5 w-5 text-blue-600" />
-                <h2 className="text-lg font-bold text-slate-900">Recent Job Views</h2>
-                <span className="ml-auto bg-blue-100 text-blue-700 text-xs font-bold px-3 py-1 rounded-full">
-                  {recentJobViews.length} view{recentJobViews.length !== 1 ? 's' : ''} today
-                </span>
-              </div>
-              
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                {recentJobViews.map((view, idx) => (
-                  <div
-                    key={view.id}
-                    className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-100 hover:border-blue-200 hover:bg-blue-50/50 transition-all"
-                  >
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold text-slate-900">
-                        {view.candidate_name}
-                        <span className="text-slate-400 font-normal"> viewed </span>
-                        <span className="text-blue-600">{view.job_title}</span>
-                      </p>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        {new Date(view.viewed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} today
-                      </p>
-                    </div>
-                    <ArrowUpRight className="h-4 w-4 text-blue-400 ml-2 flex-shrink-0" />
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
           <div className="flex flex-col gap-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -251,7 +216,7 @@ export default function JobsManagement() {
                   onClick={() => setStatusFilter(status)}
                   className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors ${
                     statusFilter === status
-                      ? "bg-primary text-white"
+                      ? "bg-blue-600 text-white shadow-md"
                       : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
                   }`}
                 >
@@ -275,18 +240,18 @@ export default function JobsManagement() {
               </Link>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {filteredJobs.map((job) => (
                 <div
                   key={job.id}
-                  className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition-all flex flex-col group cursor-pointer"
+                  className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg hover:border-blue-200 transition-all flex flex-col group cursor-pointer"
                   onClick={() =>
                     router.push(`/dashboard/recruiter/hiring/jobs/${job.id}/edit`)
                   }
                 >
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="h-12 w-12 bg-slate-50 rounded-2xl flex items-center justify-center border border-slate-100 group-hover:bg-blue-100 transition-colors">
-                      <Briefcase className="h-6 w-6 text-slate-400 group-hover:text-blue-600" />
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="h-10 w-10 bg-slate-50 rounded-lg flex items-center justify-center border border-slate-100 group-hover:bg-blue-100 transition-colors">
+                      <Briefcase className="h-5 w-5 text-slate-400 group-hover:text-blue-600" />
                     </div>
                     <div className="relative">
                       <button
@@ -294,7 +259,7 @@ export default function JobsManagement() {
                           e.stopPropagation();
                           setActiveMenu(activeMenu === job.id ? null : job.id);
                         }}
-                        className="p-2 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-50 transition-colors"
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-50 transition-colors"
                       >
                         <MoreVertical className="w-4 h-4" />
                       </button>
@@ -372,31 +337,29 @@ export default function JobsManagement() {
                   </div>
 
                   <div className="flex-1">
-                    <h2 className="text-lg font-bold text-slate-900 line-clamp-1 group-hover:text-blue-600 transition-colors">
+                    <h2 className="text-base font-bold text-slate-900 line-clamp-1 group-hover:text-blue-600 transition-colors">
                       {job.title}
                     </h2>
-                    <div className="flex items-center gap-2 mt-2">
-                      <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">
                         {profile?.companies?.name || "Company"}
                       </span>
                       <span className="h-1 w-1 rounded-full bg-slate-200" />
-                      <span className="text-xs text-slate-500">{job.location || "Remote"}</span>
+                      <span className="text-[10px] text-slate-500">{job.location || "Remote"}</span>
                     </div>
                   </div>
 
-                  <div className="mt-6 space-y-3 border-t border-slate-100 pt-4">
+                  <div className="mt-4 space-y-2 border-t border-slate-100 pt-3">
                     <div className="flex items-center justify-between">
                       <div className="flex flex-col">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Positions</span>
-                        <span className="text-sm font-bold text-slate-900">{job.number_of_positions}</span>
+                        {getJobViewCount(job.id) > 0 && (
+                          <>
+                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Views</span>
+                            <span className="text-sm font-bold text-blue-600">{getJobViewCount(job.id)}</span>
+                          </>
+                        )}
                       </div>
                       <div className="flex flex-col items-end">
-                        {getJobViewCount(job.id) > 0 && (
-                          <div className="flex items-center gap-1 px-2.5 py-1 bg-blue-50 border border-blue-100 rounded-lg mb-2">
-                            <Eye className="h-3 w-3 text-blue-600" />
-                            <span className="text-xs font-bold text-blue-600">{getJobViewCount(job.id)}</span>
-                          </div>
-                        )}
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status</span>
                         <span
                           className={`text-xs font-bold uppercase tracking-wider ${
@@ -416,7 +379,7 @@ export default function JobsManagement() {
                         e.stopPropagation();
                         router.push("/dashboard/recruiter/hiring/applications");
                       }}
-                      className="w-full px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-bold hover:bg-slate-800 transition-colors"
+                      className="w-full px-3 py-1.5 bg-slate-900 text-white rounded-lg text-[11px] font-bold hover:bg-slate-800 transition-colors"
                     >
                       View Pipeline
                     </button>

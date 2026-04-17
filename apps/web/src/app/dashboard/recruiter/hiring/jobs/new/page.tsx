@@ -46,6 +46,8 @@ export default function NewJobPage() {
   const [aiLoading, setAiLoading] = useState(false);
   const [salaryLoading, setSalaryLoading] = useState(false);
   const [showAiAssistant, setShowAiAssistant] = useState(false);
+  const [skillsInput, setSkillsInput] = useState("");
+  const [positionsInput, setPositionsInput] = useState("1");
   const [matchPotential, setMatchPotential] = useState<{ count: number; message: string } | null>(null);
   const [checkingPotential, setCheckingPotential] = useState(false);
 
@@ -77,7 +79,26 @@ export default function NewJobPage() {
       const token = awsAuth.getToken();
       if (!token) return;
 
-      await apiClient.post("/recruiter/jobs", formData, token);
+      // Add any remaining skill in input
+      let finalSkills = [...formData.skills_required];
+      if (skillsInput.trim()) {
+        const skill = skillsInput.trim();
+        if (!finalSkills.includes(skill)) {
+          finalSkills = [...finalSkills, skill];
+        }
+      }
+
+      // Ensure positions has a valid default value
+      let finalPositions = formData.number_of_positions;
+      if (!positionsInput || parseInt(positionsInput, 10) < 1) {
+        finalPositions = 1;
+      }
+
+      await apiClient.post("/recruiter/jobs", { 
+        ...formData, 
+        skills_required: finalSkills,
+        number_of_positions: finalPositions,
+      }, token);
       router.push("/dashboard/recruiter/hiring/jobs");
     } catch (err) {
       console.error("Failed to create job:", err);
@@ -232,112 +253,113 @@ export default function NewJobPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50/30">
+    <div className="min-h-screen bg-slate-50">
       {/* Top Navigation Bar */}
-      <header className="border-b border-slate-200 h-16 flex items-center justify-between px-8 sticky top-0 z-20 w-full backdrop-blur-md bg-white/80">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => router.push("/dashboard/recruiter/hiring/jobs")}
-            className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-500"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <div className="h-4 w-px bg-slate-200" />
-          <h1 className="text-sm font-bold text-slate-900 uppercase tracking-widest">
-            Create New Role
-          </h1>
-        </div>
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => setShowAiAssistant(!showAiAssistant)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-              showAiAssistant
-                ? "bg-blue-600 text-white shadow-lg shadow-blue-200"
-                : "bg-blue-100 text-blue-600 hover:bg-blue-100 border border-blue-100"
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            AI Architect
-          </button>
-          <div className="h-4 w-px bg-slate-200" />
-          <button
-            onClick={handleCheckMatchPotential}
-            disabled={checkingPotential || formData.skills_required.length === 0}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-100 transition-all disabled:opacity-50"
-          >
-            {checkingPotential ? (
-              <div className="w-3.5 h-3.5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <Target className="w-3.5 h-3.5" />
-            )}
-            Preview Talent
-          </button>
-          <div className="h-4 w-px bg-slate-200" />
-          <button
-            onClick={handleCreateJob}
-            disabled={loading}
-            className="flex items-center gap-2 bg-slate-900 text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-md active:scale-95 disabled:opacity-50"
-          >
-            {loading ? (
-              "Publishing..."
-            ) : (
-              <>
-                <Send className="w-3.5 h-3.5" /> Publish
-              </>
-            )}
-          </button>
+      <header className="border-b border-slate-200 sticky top-0 z-20 w-full bg-white">
+        <div className="px-8 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-6">
+            <h1 className="text-lg font-black text-slate-900 uppercase tracking-tight">
+              Create New Role
+            </h1>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowAiAssistant(!showAiAssistant)}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-[11px] font-black uppercase tracking-widest transition-all ${
+                showAiAssistant
+                  ? "bg-blue-600 text-white shadow-lg"
+                  : "bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100"
+              }`}
+            >
+              Generate with AI
+            </button>
+            <div className="w-px h-6 bg-slate-200" />
+            <button
+              onClick={handleCheckMatchPotential}
+              disabled={checkingPotential || formData.skills_required.length === 0}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-[11px] font-black uppercase tracking-widest bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Preview matching candidates after adding skills"
+            >
+              {checkingPotential ? (
+                <div className="w-3.5 h-3.5 border-2 border-emerald-700 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Target className="w-4 h-4" />
+              )}
+              Preview Talent
+            </button>
+            <div className="w-px h-6 bg-slate-200" />
+            <button
+              onClick={handleCreateJob}
+              disabled={loading}
+              className="flex items-center gap-2 bg-slate-900 text-white px-5 py-2.5 rounded-lg text-[11px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-sm active:scale-95 disabled:opacity-50"
+            >
+              {loading ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Publishing
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4" />
+                  Publish
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </header>
 
-      {/* AI Assistant Overlay */}
+      {/* AI Assistant Modal - Clean & Professional */}
       {showAiAssistant && (
-        <div className="fixed inset-x-0 top-16 z-30 animate-in slide-in-from-top duration-300">
-          <div className="max-w-4xl mx-auto p-4">
-            <div className="bg-white rounded-2xl shadow-2xl p-6 border border-slate-200 relative overflow-hidden ring-1 ring-slate-200/50">
-              <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none">
-                <Sparkles className="w-32 h-32 text-blue-600" />
+        <div className="fixed top-20 left-0 right-0 z-30 animate-in slide-in-from-top duration-300 px-8 flex justify-center">
+          <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden w-full max-w-2xl">
+            <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50">
+              <div>
+                <h2 className="text-sm font-black text-slate-900 uppercase tracking-tight">
+                  Generate Role with AI
+                </h2>
+                <p className="text-[11px] text-slate-500 font-medium mt-1">Describe the role in detail, and AI will generate job description, requirements, and skills</p>
               </div>
-              <div className="relative z-10">
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <h2 className="text-slate-900 font-black text-sm uppercase tracking-widest flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-blue-600" />
-                      Smart Role Architect
-                    </h2>
-                    <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest opacity-80 mt-1">
-                      Describe the mission, AI will handle the details
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setShowAiAssistant(false)}
-                    className="text-slate-400 hover:text-slate-600 transition-colors p-1 hover:bg-slate-100 rounded-lg"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
+              <button
+                onClick={() => setShowAiAssistant(false)}
+                className="text-slate-400 hover:text-slate-600 hover:bg-slate-100 p-2 rounded-lg transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-                <div className="flex gap-4">
-                  <textarea
-                    value={aiPrompt}
-                    onChange={(e) => setAiPrompt(e.target.value)}
-                    placeholder="e.g. Senior Frontend Engineer for our DeFi platform. Expertise in React and Web3..."
-                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-4 text-slate-900 placeholder:text-slate-400 text-sm font-medium focus:ring-2 focus:ring-primary/20 outline-none resize-none h-24"
-                  />
-                  <button
-                    onClick={handleAIGenerate}
-                    disabled={aiLoading || !aiPrompt}
-                    className="bg-blue-600 text-white px-8 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-700 transition-all active:scale-95 disabled:opacity-50 shadow-lg shadow-blue-200 self-end h-16"
-                  >
-                    {aiLoading ? (
-                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        Thinking
-                      </div>
-                    ) : (
-                      "Generate"
-                    )}
-                  </button>
-                </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="text-[10px] font-black text-slate-600 uppercase tracking-wider block mb-2.5">Your Description</label>
+                <textarea
+                  value={aiPrompt}
+                  onChange={(e) => setAiPrompt(e.target.value)}
+                  placeholder="e.g., Senior Frontend Engineer for our DeFi platform. Expertise in React, TypeScript, and Web3. Must have 5+ years experience..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3.5 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none h-14"
+                />
+              </div>
+              <div className="flex gap-3 justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowAiAssistant(false)}
+                  className="px-4 py-2 text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAIGenerate}
+                  disabled={aiLoading || !aiPrompt}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg text-[11px] font-black uppercase tracking-wider hover:bg-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {aiLoading ? (
+                    <>
+                      <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    "Generate"
+                  )}
+                </button>
               </div>
             </div>
           </div>
@@ -345,73 +367,64 @@ export default function NewJobPage() {
       )}
 
       {/* Main Content */}
-      <main className="p-8 max-w-4xl mx-auto w-full pb-20">
+      <main className="w-full px-8 py-8 pb-20">
+        {/* Talent Match Alert */}
         {matchPotential && (
-          <div className={`mb-8 rounded-2xl p-6 flex flex-col gap-4 animate-in fade-in slide-in-from-top-4 border ${
+          <div className={`mb-8 rounded-xl p-5 border flex items-start gap-4 animate-in fade-in slide-in-from-top-4 ${
             matchPotential.count === 0 
-              ? "bg-amber-50 border-amber-100"
-              : "bg-emerald-50 border-emerald-100"
+              ? "bg-amber-50 border-amber-200"
+              : "bg-emerald-50 border-emerald-200"
           }`}>
-            {/* Header Section */}
-            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <div className={`p-3 rounded-xl shadow-sm border ${
-                  matchPotential.count === 0 
-                    ? "bg-white text-amber-600 border-amber-50"
-                    : "bg-white text-emerald-600 border-emerald-50"
-                }`}>
-                  <Users className="w-6 h-6" />
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-slate-900">{matchPotential.message}</p>
-                  <div className="flex items-center gap-4 mt-2">
-                    <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">
-                      ✓ AI Assessment Complete
-                    </p>
-                    {matchPotential.count > 0 && (
-                      <span className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full ${
-                        matchPotential.count >= 10
-                          ? "bg-emerald-600 text-white"
-                          : matchPotential.count >= 5
-                          ? "bg-emerald-500 text-white"
-                          : "bg-emerald-400 text-white"
-                      }`}>
-                        {matchPotential.count} Total Candidates
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
+            <div className={`p-2.5 rounded-lg flex-shrink-0 ${
+              matchPotential.count === 0 
+                ? "bg-amber-100 text-amber-600"
+                : "bg-emerald-100 text-emerald-600"
+            }`}>
+              <Users className="w-5 h-5" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className={`text-sm font-black uppercase tracking-tight ${
+                matchPotential.count === 0 
+                  ? "text-amber-900"
+                  : "text-emerald-900"
+              }`}>
+                {matchPotential.message}
+              </h3>
               {matchPotential.count > 0 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const skillsParam = encodeURIComponent(formData.skills_required.join(","));
-                    const locParam = encodeURIComponent(formData.location || "");
-                    router.push(`/dashboard/recruiter/talent-pool?filter=skill_match&skills=${skillsParam}&location=${locParam}`);
-                  }}
-                  className="px-6 py-2.5 bg-white border border-emerald-200 text-emerald-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-50 transition-all shadow-sm flex items-center gap-2 whitespace-nowrap"
-                >
-                  View All in Talent Pool
-                  <ArrowLeft className="w-3 h-3 rotate-180" />
-                </button>
+                <div className="flex items-center gap-3 mt-2">
+                  <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">
+                    {matchPotential.count} Matching Candidates
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const skillsParam = encodeURIComponent(formData.skills_required.join(","));
+                      const locParam = encodeURIComponent(formData.location || "");
+                      router.push(`/dashboard/recruiter/talent-pool?filter=skill_match&skills=${skillsParam}&location=${locParam}`);
+                    }}
+                    className="text-[10px] font-bold text-emerald-700 hover:text-emerald-800 uppercase tracking-wider underline"
+                  >
+                    View in Talent Pool →
+                  </button>
+                </div>
               )}
             </div>
-
           </div>
         )}
-        <form onSubmit={handleCreateJob} className="space-y-8">
-          {/* Section: Role Identity */}
+
+        {/* Form Sections */}
+        <form onSubmit={handleCreateJob} className="space-y-6">
+          {/* Section: Role Architecture */}
           <Section title="Role Architecture" icon={Briefcase}>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Field label="Job Title" icon={Target} fullWidth>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              <Field label="Job Title" icon={Target}>
                 <input
                   required
                   value={formData.title}
                   onChange={(e) =>
                     setFormData({ ...formData, title: e.target.value })
                   }
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-bold focus:ring-2 focus:ring-primary transition-all outline-none"
+                  className="w-full bg-white border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                   placeholder="e.g. Lead Software Architect"
                 />
               </Field>
@@ -424,7 +437,7 @@ export default function NewJobPage() {
                       experience_band: e.target.value,
                     })
                   }
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-bold focus:ring-2 focus:ring-primary transition-all outline-none appearance-none cursor-pointer"
+                  className="w-full bg-white border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none appearance-none cursor-pointer"
                 >
                   <option value="fresher">Fresher (0-1y)</option>
                   <option value="mid">Mid-Level (1-5y)</option>
@@ -438,7 +451,7 @@ export default function NewJobPage() {
                   onChange={(e) =>
                     setFormData({ ...formData, job_type: e.target.value })
                   }
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-bold focus:ring-2 focus:ring-primary transition-all outline-none appearance-none cursor-pointer"
+                  className="w-full bg-white border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none appearance-none cursor-pointer"
                 >
                   <option value="onsite">On-site</option>
                   <option value="hybrid">Hybrid</option>
@@ -458,15 +471,15 @@ export default function NewJobPage() {
                 onChange={(e) =>
                   setFormData({ ...formData, description: e.target.value })
                 }
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-primary transition-all outline-none resize-none"
+                className="w-full bg-white border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none"
                 placeholder="Describe the mission and daily impact of this role..."
               />
             </Field>
           </Section>
 
           {/* Section: Requirements & Skills */}
-          <Section title="Signal Alignment" icon={Sparkles}>
-            <div className="space-y-6">
+          <Section title="Requirements & Skills" icon={Sparkles}>
+            <div className="space-y-5">
               <Field label="Core Requirements" icon={Target} fullWidth>
                 <textarea
                   rows={4}
@@ -477,74 +490,159 @@ export default function NewJobPage() {
                       requirements: e.target.value.split("\n").filter(Boolean),
                     })
                   }
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-primary transition-all outline-none resize-none"
+                  className="w-full bg-white border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none"
                   placeholder="Define technical or professional prerequisites (one per line)..."
                 />
               </Field>
               <Field label="Technical Skills" icon={Zap} fullWidth>
-                <input
-                  value={formData.skills_required?.join(", ") || ""}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      skills_required: e.target.value
-                        .split(",")
-                        .map((s) => s.trim())
-                        .filter(Boolean),
-                    })
-                  }
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-primary transition-all outline-none"
-                  placeholder="e.g. Next.js, TypeScript, PostgreSQL (comma separated)"
-                />
+                <div className="space-y-3">
+                  <input
+                    value={skillsInput}
+                    onChange={(e) => {
+                      const input = e.target.value;
+                      const lastChar = input[input.length - 1];
+                      
+                      // Check if user added comma or space
+                      if ((lastChar === "," || lastChar === " ") && input.length > 1) {
+                        // Extract the skill (remove comma/space)
+                        const skill = input.slice(0, -1).trim();
+                        
+                        if (skill && !formData.skills_required.includes(skill)) {
+                          // Add to skills array
+                          setFormData({
+                            ...formData,
+                            skills_required: [...formData.skills_required, skill],
+                          });
+                        }
+                        // Clear input for next skill
+                        setSkillsInput("");
+                      } else {
+                        // Just update the input value
+                        setSkillsInput(input);
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      // Handle Enter key as well
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        const skill = skillsInput.trim();
+                        if (skill && !formData.skills_required.includes(skill)) {
+                          setFormData({
+                            ...formData,
+                            skills_required: [...formData.skills_required, skill],
+                          });
+                          setSkillsInput("");
+                        }
+                      }
+                    }}
+                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                    placeholder="Type a skill and press space, comma, or Enter to add"
+                  />
+                  {formData.skills_required.length > 0 && (
+                    <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100">
+                      {formData.skills_required.map((skill, index) => (
+                        <div
+                          key={index}
+                          className="inline-flex items-center gap-2 bg-blue-100 text-blue-700 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider"
+                        >
+                          {skill}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = formData.skills_required.filter((_, i) => i !== index);
+                              setFormData({
+                                ...formData,
+                                skills_required: updated,
+                              });
+                            }}
+                            className="ml-1 hover:text-blue-900 hover:bg-blue-200 rounded-full p-0.5 transition-colors"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <p className="text-[10px] text-slate-500 font-medium mt-2">💡 Add skills to unlock the "Preview Talent" feature above</p>
               </Field>
             </div>
           </Section>
 
           {/* Section: Market Alignment */}
-          <Section title="Market Logistics" icon={Globe}>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <Section title="Market Details" icon={Globe}>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
               <Field label="Location" icon={MapPin}>
                 <input
                   value={formData.location}
                   onChange={(e) =>
                     setFormData({ ...formData, location: e.target.value })
                   }
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-primary transition-all outline-none"
+                  className="w-full bg-white border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                   placeholder="City, Country"
                 />
               </Field>
-              <Field label="Openings" icon={Users}>
+              <Field label="Open Positions" icon={Users}>
                 <input
-                  type="number"
-                  min="1"
-                  value={formData.number_of_positions}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      number_of_positions: parseInt(e.target.value) || 1,
-                    })
-                  }
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-primary transition-all outline-none"
+                  type="text"
+                  inputMode="numeric"
+                  value={positionsInput}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    // Allow only numbers, empty string, or clear it completely
+                    if (value === "") {
+                      setPositionsInput("");
+                    } else if (/^\d+$/.test(value)) {
+                      // Only allow digits
+                      const num = parseInt(value, 10);
+                      if (num >= 1) {
+                        setPositionsInput(value);
+                        setFormData({
+                          ...formData,
+                          number_of_positions: num,
+                        });
+                      }
+                    }
+                  }}
+                  onBlur={(e) => {
+                    // When user leaves the field, ensure we have a valid number
+                    if (positionsInput === "" || parseInt(positionsInput, 10) < 1) {
+                      setPositionsInput("1");
+                      setFormData({
+                        ...formData,
+                        number_of_positions: 1,
+                      });
+                    }
+                  }}
+                  className="w-full bg-white border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  placeholder="Enter number of positions"
                 />
               </Field>
               <Field label="Salary Range" icon={DollarSign}>
-                <div className="relative group">
+                <div className="space-y-2">
                   <input
                     value={formData.salary_range}
                     onChange={(e) =>
                       setFormData({ ...formData, salary_range: e.target.value })
                     }
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-bold focus:ring-2 focus:ring-primary transition-all outline-none pr-10"
+                    className="w-full bg-white border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                     placeholder="e.g. $120k - $160k"
                   />
                   <button
                     type="button"
                     onClick={handleRecalculateSalary}
                     disabled={salaryLoading || !formData.location}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-blue-600 hover:text-blue-600 hover:bg-white rounded-md transition-all shadow-sm disabled:opacity-30 disabled:grayscale group-hover:scale-110 active:scale-95 border border-transparent hover:border-slate-100"
-                    title="Recalculate salary based on location & experience"
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg text-[10px] font-black uppercase tracking-wider hover:bg-blue-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
+                    title="Auto-detect salary range based on your location and experience level"
                   >
-                    <Sparkles className={`w-3.5 h-3.5 ${salaryLoading ? "animate-spin" : ""}`} />
+                    {salaryLoading ? (
+                      <>
+                        <div className="w-3 h-3 border-2 border-blue-700 border-t-transparent rounded-full animate-spin" />
+                        Detecting...
+                      </>
+                    ) : (
+                      "Auto-Detect Salary"
+                    )}
                   </button>
                 </div>
               </Field>
@@ -556,7 +654,7 @@ export default function NewJobPage() {
   );
 }
 
-// Reusable UI Components based on Profile Style
+// Reusable UI Components
 function Section({
   title,
   icon: Icon,
@@ -567,8 +665,8 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <div className="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm hover:shadow-md transition-shadow">
-      <h2 className="text-sm font-black text-slate-900 mb-8 flex items-center gap-3 uppercase tracking-widest">
+    <div className="bg-white rounded-lg border border-slate-200 p-6 shadow-sm">
+      <h2 className="text-sm font-black text-slate-900 mb-6 flex items-center gap-3 uppercase tracking-tight">
         <div className="p-2 bg-blue-100 rounded-lg text-blue-600">
           <Icon className="w-4 h-4" />
         </div>
@@ -592,8 +690,8 @@ function Field({
 }) {
   return (
     <div className={fullWidth ? "md:col-span-2" : ""}>
-      <label className="flex items-center text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2.5 ml-1">
-        <Icon className="w-3.5 h-3.5 mr-2 text-slate-300" />
+      <label className="flex items-center text-[10px] font-black text-slate-600 uppercase tracking-wider mb-2">
+        <Icon className="w-3 h-3 mr-2 text-slate-400" />
         {label}
       </label>
       {children}

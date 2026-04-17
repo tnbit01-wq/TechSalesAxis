@@ -7,8 +7,8 @@ export default function RecruiterLayoutClient({ children }: { children: ReactNod
   const { isOpen } = useSidebar();
 
   return (
-    <div className={`flex-1 ${isOpen ? "ml-64" : "ml-20"} min-h-screen relative overflow-x-hidden transition-all duration-300`}>
-      <div className="relative">
+    <div className={`flex-1 ${isOpen ? "ml-64" : "ml-20"} min-h-screen w-full relative overflow-x-hidden transition-all duration-300`}>
+      <div className="relative w-full">
         {children}
       </div>
     </div>

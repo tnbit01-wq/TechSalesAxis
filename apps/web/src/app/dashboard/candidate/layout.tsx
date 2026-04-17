@@ -66,7 +66,7 @@ export default function CandidateDashboardLayout({
         />
         <CandidateLayoutClient>
           <CandidateHeader />
-          <main className="pt-24 p-8">{children}</main>
+          <main className="w-full px-8 py-8 pt-24">{children}</main>
         </CandidateLayoutClient>
       </div>
     </SidebarProvider>

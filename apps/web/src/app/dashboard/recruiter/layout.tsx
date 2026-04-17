@@ -70,7 +70,7 @@ export default function RecruiterDashboardLayout({
         />
         <RecruiterLayoutClient>
           <RecruiterHeader />
-          <main className="p-8 pt-20">{children}</main>
+          <main className="w-full px-8 py-8 pt-20">{children}</main>
         </RecruiterLayoutClient>
       </div>
     </SidebarProvider>
