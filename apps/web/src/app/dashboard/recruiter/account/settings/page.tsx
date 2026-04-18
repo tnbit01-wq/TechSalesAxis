@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import { 
@@ -54,6 +54,7 @@ interface SettingsData {
 }
 
 export default function RecruiterSettingsPage() {
+  const logoInputRef = useRef<HTMLInputElement>(null);
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [company, setCompany] = useState<CompanyData | null>(null);
   const [settings, setSettings] = useState<SettingsData | null>(null);
@@ -65,7 +66,7 @@ export default function RecruiterSettingsPage() {
   const [showOldPassword, setShowOldPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
-  const [activeTab, setActiveTab] = useState<"profile" | "company" | "security" | "notifications" | "privacy">("profile");
+  const [activeTab, setActiveTab] = useState<"profile" | "company" | "security" | "notifications">("profile");
 
   useEffect(() => {
     async function fetchData() {
@@ -241,6 +242,42 @@ export default function RecruiterSettingsPage() {
     }
   };
 
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setSaving(true);
+    setMessage({ type: "success", text: "Uploading company logo..." });
+
+    try {
+      const token = awsAuth.getToken();
+      if (!token) throw new Error("Authentication failed");
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const uploadRes = await apiClient.post(
+        "/storage/upload/branding",
+        formData,
+        token
+      );
+
+      const logoUrl = uploadRes.url || uploadRes.path;
+
+      setCompany(c => c ? { ...c, logo_url: logoUrl } : null);
+      
+      // Save to backend
+      await syncData("/recruiter/profile", { companies: { logo_url: logoUrl } }, "Company Logo Updated");
+      
+      setMessage({ type: "success", text: "Company Logo Uploaded Successfully." });
+    } catch (err: any) {
+      const errorMsg = err.message || "Failed to upload logo.";
+      setMessage({ type: "error", text: `Upload Failed: ${errorMsg}` });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
@@ -279,7 +316,7 @@ export default function RecruiterSettingsPage() {
               onClick={() => setActiveTab("profile")}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all font-medium text-sm ${
                 activeTab === "profile"
-                  ? "bg-primary text-white border-primary"
+                  ? "bg-blue-600 text-white border-blue-600"
                   : "bg-white text-slate-700 border-slate-200 hover:border-slate-300"
               }`}
             >
@@ -290,7 +327,7 @@ export default function RecruiterSettingsPage() {
               onClick={() => setActiveTab("company")}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all font-medium text-sm ${
                 activeTab === "company"
-                  ? "bg-primary text-white border-primary"
+                  ? "bg-blue-600 text-white border-blue-600"
                   : "bg-white text-slate-700 border-slate-200 hover:border-slate-300"
               }`}
             >
@@ -301,7 +338,7 @@ export default function RecruiterSettingsPage() {
               onClick={() => setActiveTab("security")}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all font-medium text-sm ${
                 activeTab === "security"
-                  ? "bg-primary text-white border-primary"
+                  ? "bg-blue-600 text-white border-blue-600"
                   : "bg-white text-slate-700 border-slate-200 hover:border-slate-300"
               }`}
             >
@@ -312,23 +349,12 @@ export default function RecruiterSettingsPage() {
               onClick={() => setActiveTab("notifications")}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all font-medium text-sm ${
                 activeTab === "notifications"
-                  ? "bg-primary text-white border-primary"
+                  ? "bg-blue-600 text-white border-blue-600"
                   : "bg-white text-slate-700 border-slate-200 hover:border-slate-300"
               }`}
             >
               <Bell className="h-4 w-4" />
               Notifications
-            </button>
-            <button
-              onClick={() => setActiveTab("privacy")}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all font-medium text-sm ${
-                activeTab === "privacy"
-                  ? "bg-primary text-white border-primary"
-                  : "bg-white text-slate-700 border-slate-200 hover:border-slate-300"
-              }`}
-            >
-              <Eye className="h-4 w-4" />
-              Privacy
             </button>
           </div>
         </div>
@@ -367,35 +393,43 @@ export default function RecruiterSettingsPage() {
           {activeTab === "company" && (
             <div className="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm space-y-8">
               <div className="flex items-center gap-6 mb-8">
-                <div className="h-20 w-20 rounded-full bg-slate-100 border-2 border-slate-200 flex items-center justify-center relative overflow-hidden flex-shrink-0">
-                  {company?.logo_url ? <Image src={company.logo_url} alt="" fill className="object-contain p-2" /> : <Building2 className="text-slate-400" size={32} />}
+                <div 
+                  onClick={() => logoInputRef.current?.click()}
+                  className="h-24 w-24 rounded-full bg-slate-100 border-2 border-slate-200 flex items-center justify-center relative overflow-hidden flex-shrink-0 cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all group"
+                >
+                  {company?.logo_url ? (
+                    <img 
+                      src={company.logo_url} 
+                      alt="Company Logo" 
+                      className="h-full w-full object-cover" 
+                    />
+                  ) : (
+                    <Building2 className="text-slate-400 group-hover:text-blue-500 transition-all" size={40} />
+                  )}
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-full transition-all flex items-center justify-center">
+                    <Upload className="text-white opacity-0 group-hover:opacity-100 transition-all" size={18} />
+                  </div>
+                  <input 
+                    ref={logoInputRef}
+                    type="file" 
+                    accept="image/*" 
+                    className="hidden" 
+                    onChange={handleLogoUpload} 
+                    disabled={saving}
+                  />
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-slate-900">Company Logo</h3>
-                  <p className="text-sm text-slate-500 mt-1">Visible on all your job postings and career pages.</p>
+                  <p className="text-sm text-slate-500 mt-1">Click the logo to upload. Visible on all your job postings and career pages.</p>
                 </div>
               </div>
 
               <form onSubmit={handleCompanySave} className="space-y-6">
                 <InputGroup label="Company Name" value={company?.name} onChange={(val) => setCompany(c => c ? {...c, name: val} : null)} />
                 <InputGroup label="Website URL" value={company?.website} onChange={(val) => setCompany(c => c ? {...c, website: val} : null)} />
-                
-                <div className="p-6 rounded-lg bg-slate-50 border border-slate-200">
-                  <label className="text-sm font-bold text-slate-900 mb-4 block">Company Brand Colors</label>
-                  <div className="flex gap-8">
-                    <div className="space-y-2">
-                      <div className="h-12 w-12 rounded-lg shadow-sm border border-slate-200" style={{backgroundColor: company?.brand_colors?.primary}} />
-                      <span className="text-xs font-medium text-slate-600">Primary Color</span>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="h-12 w-12 rounded-lg shadow-sm border border-slate-200" style={{backgroundColor: company?.brand_colors?.secondary}} />
-                      <span className="text-xs font-medium text-slate-600">Secondary Color</span>
-                    </div>
-                  </div>
-                </div>
 
                 <div className="pt-6">
-                  <button type="submit" disabled={saving} className="bg-primary text-white px-6 py-3 rounded-lg text-sm font-bold hover:bg-primary-dark transition-all flex items-center gap-2 disabled:opacity-50">
+                  <button type="submit" disabled={saving} className="bg-blue-600 text-white px-6 py-3 rounded-lg text-sm font-bold hover:bg-blue-700 transition-all flex items-center gap-2 disabled:opacity-50">
                     {saving ? "Updating..." : "Save Changes"}
                     <Save size={16} />
                   </button>
@@ -440,11 +474,11 @@ export default function RecruiterSettingsPage() {
                     <InputGroup label="Confirm New Password" value={confirmPassword} onChange={setConfirmPassword} isPassword={!showNewPassword} />
                   </div>
                   
-                  <div className="flex items-center gap-3 pt-4">
+                  <div className="flex items-center gap-3 pt-6">
                     <button 
                       onClick={handleUpdatePassword}
                       disabled={saving || !newPassword || !oldPassword || !confirmPassword || newPassword !== confirmPassword}
-                      className="bg-primary text-white px-6 py-3 rounded-lg text-sm font-bold hover:bg-primary-dark transition-all disabled:opacity-50"
+                      className="bg-blue-600 text-white px-6 py-3 rounded-lg text-sm font-bold hover:bg-blue-700 transition-all disabled:opacity-50 disabled:bg-slate-300"
                     >
                       {saving ? "Updating..." : "Update Password"}
                     </button>
@@ -521,26 +555,7 @@ export default function RecruiterSettingsPage() {
             </div>
           )}
 
-          {activeTab === "privacy" && (
-            <div className="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm">
-              <div className="flex flex-col md:flex-row items-center gap-8">
-                <div className={`h-24 w-24 rounded-full flex items-center justify-center flex-shrink-0 shadow-lg ${settings?.ghost_mode ? "bg-slate-900" : "bg-primary"}`}>
-                  {settings?.ghost_mode ? <EyeOff className="text-white" size={40} /> : <Eye className="text-white" size={40} />}
-                </div>
-                <div className="flex-1 text-center md:text-left">
-                  <h3 className="text-xl font-bold text-slate-900 mb-2">{settings?.ghost_mode ? "Private (Ghost) Mode" : "Public Recruiter Mode"}</h3>
-                  <p className="text-slate-600 mb-4">
-                    {settings?.ghost_mode 
-                      ? "Your profile is hidden from candidates. You will only be visible during active interviews." 
-                      : "Your profile is visible to candidates. They can find you in the candidate pool and view your details."}
-                  </p>
-                  <button onClick={() => handleSettingsSave({ ghost_mode: !settings?.ghost_mode })} className="bg-primary text-white px-6 py-2.5 rounded-lg text-sm font-bold hover:bg-primary-dark transition-all">
-                    {settings?.ghost_mode ? "Disable Private Mode" : "Enable Private Mode"}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
+
         </div>
       </div>
     </div>
@@ -562,15 +577,15 @@ function InputGroup({ label, value, onChange, isTextArea = false, isPassword = f
 
 function ToggleCard({ title, desc, icon, active, onToggle }: { title: string, desc: string, icon: React.ReactNode, active: boolean, onToggle: (v: boolean) => void }) {
   return (
-    <div onClick={() => onToggle(!active)} className={`p-6 rounded-lg border-2 transition-all cursor-pointer hover:shadow-md ${active ? "bg-white border-primary shadow-lg" : "bg-slate-50 border-slate-200"}`}>
-      <div className={`h-10 w-10 rounded-lg mb-4 flex items-center justify-center transition-all ${active ? "bg-primary text-white" : "bg-slate-200 text-slate-400"}`}>
+    <div onClick={() => onToggle(!active)} className={`p-6 rounded-lg border-2 transition-all cursor-pointer hover:shadow-md ${active ? "bg-blue-50 border-blue-600 shadow-md" : "bg-slate-50 border-slate-200"}`}>
+      <div className={`h-10 w-10 rounded-lg mb-4 flex items-center justify-center transition-all ${active ? "bg-blue-600 text-white" : "bg-slate-200 text-slate-400"}`}>
         {icon}
       </div>
-      <h4 className="font-bold text-slate-900 text-sm mb-1">{title}</h4>
+      <h4 className={`font-bold text-sm mb-1 ${active ? "text-slate-900" : "text-slate-700"}`}>{title}</h4>
       <p className="text-xs text-slate-500 leading-relaxed">{desc}</p>
       <div className="mt-4 flex items-center gap-2">
         <div className={`h-2 w-2 rounded-full ${active ? "bg-emerald-500" : "bg-slate-300"}`} />
-        <span className="text-xs font-medium text-slate-500">{active ? "Enabled" : "Disabled"}</span>
+        <span className={`text-xs font-medium ${active ? "text-blue-600 font-semibold" : "text-slate-500"}`}>{active ? "Enabled" : "Disabled"}</span>
       </div>
     </div>
   );
