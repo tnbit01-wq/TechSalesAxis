@@ -61,7 +61,7 @@ function OnboardingContent() {
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [suggestedSkills, setSuggestedSkills] = useState<string[]>([]);
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
-  const [onboardingMode, setOnboardingMode] = useState<"structured" | "conversational" | null>(null);
+  const [onboardingMode, setOnboardingMode] = useState<"structured" | "conversational">("structured");
   const [manualResumeData, setManualResumeData] = useState<ManualResumeData>({
     bio: "",
     education: [],
@@ -344,18 +344,28 @@ function OnboardingContent() {
           }
 
         setState(savedStep);
-        // Also restore the mode if it was saved
-        setOnboardingMode("structured"); // Default to structured for resumed sessions
       } else {
-        // Fresh start - show mode selection first
+        // Fresh start - automatically start with Guided Questions
         const userName = extractNameFromEmail(user.email || "");
         addMessage(
           `Hi ${userName}! 👋 Welcome to TechSales Axis onboarding!`,
           "bot"
         );
         
-        // Don't set state yet, wait for user to select mode
-        // Mode selection will be shown in UI when state is "INITIAL"
+        // Show first question after brief delay
+        setTimeout(() => {
+          addMessage(
+            "Let's start by understanding your career situation. What's your current employment status?",
+            "bot",
+            [
+              "I'm currently employed",
+              "I'm between roles",
+              "I'm a student",
+              "I'm not working",
+            ]
+          );
+          setState("AWAITING_EMPLOYMENT_STATUS");
+        }, 500);
       }
     }
     init();
