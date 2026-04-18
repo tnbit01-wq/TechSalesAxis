@@ -6,6 +6,7 @@ from src.core.models import (
 )
 from src.models.invitation import TeamInvitation
 from src.services.s3_service import S3Service
+from src.core.config import S3_BUCKET_NAME, AWS_REGION
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, text, desc, and_, or_
 import json
@@ -18,6 +19,22 @@ from datetime import datetime
 import re
 from src.core.config import OPENAI_API_KEY
 import uuid
+
+def get_s3_url_with_fallback(file_path: Optional[str]) -> Optional[str]:
+    """Get S3 URL with fallback to public URL if signed URL fails."""
+    if not file_path:
+        return None
+    
+    # Try to get signed URL first
+    signed_url = S3Service.get_signed_url(file_path)
+    if signed_url:
+        return signed_url
+    
+    # Fallback to public S3 URL if signed URL fails
+    if not file_path.startswith("http"):
+        return f"https://{S3_BUCKET_NAME}.s3.{AWS_REGION}.amazonaws.com/{file_path}"
+    
+    return file_path
 
 # --- Utility for City Tiering ---
 TIER_1_CITIES = ['bangalore', 'bengaluru', 'mumbai', 'delhi', 'hyderabad', 'chennai', 'kolkata', 'pune', 'ahmedabad']
@@ -830,7 +847,7 @@ Respond with ONLY the domain in format: domain.com (no https://, no www., just t
                     "culture_match_score": score,
                     "match_reasoning": reasoning,
                     "skills": c.skills or [],
-                    "profile_photo_url": c.profile_photo_url,
+                    "profile_photo_url": get_s3_url_with_fallback(c.profile_photo_url) or f"https://api.dicebear.com/7.x/avataaars/svg?seed={(c.full_name or 'User').replace(' ', '%20')}",
                     "resume_path": S3Service.get_signed_url(c.resume_path) if c.resume_path else None,
                     "identity_verified": c.identity_verified or False,
                     "profile_strength": "Lead" if is_shadow else (c.profile_strength or "Medium"),

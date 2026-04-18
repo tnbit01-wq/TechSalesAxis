@@ -107,7 +107,9 @@ export default function Home() {
 
           <div className="hidden md:flex items-center gap-8 text-xs font-bold uppercase tracking-widest text-slate-600">
             <Link href="#how" className="hover:text-slate-900 transition-colors">Features</Link>
-            <Link href="#for-both" className="hover:text-slate-900 transition-colors">For Both</Link>
+            <Link href="#candidates" className="hover:text-slate-900 transition-colors">Candidates</Link>
+            <Link href="#recruiters" className="hover:text-slate-900 transition-colors">Recruiters</Link>
+            <Link href="#why-us" className="hover:text-slate-900 transition-colors">Why Choose Us</Link>
             <Link href="/login" className="px-5 py-2 bg-slate-900 text-white rounded-lg hover:bg-blue-600 transition-all shadow-lg">Sign In</Link>
             <button
               onClick={() => setShowRegisterModal(true)}
@@ -388,7 +390,7 @@ export default function Home() {
         </section>
 
         {/* For Candidates - Compact */}
-        <section className="py-10 animate-fadeInUp">
+        <section id="candidates" className="py-10 animate-fadeInUp">
           <div className="mx-auto max-w-7xl px-6 lg:px-12">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-start">
               <div>
@@ -505,7 +507,7 @@ export default function Home() {
         </section>
 
         {/* For Recruiters - Compact */}
-        <section className="py-10 bg-slate-50 animate-fadeInUp">
+        <section id="recruiters" className="py-10 bg-slate-50 animate-fadeInUp">
           <div className="mx-auto max-w-7xl px-6 lg:px-12">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-start">
               <div className="relative order-2 lg:order-1 animate-slideInLeft">
@@ -623,7 +625,7 @@ export default function Home() {
         </section>
 
         {/* Why Different - Built for Both */}
-        <section id="for-both" className="py-10 bg-gradient-to-b from-slate-100 to-white border-y border-slate-200 animate-fadeInUp">
+        <section id="why-us" className="py-10 bg-gradient-to-b from-slate-100 to-white border-y border-slate-200 animate-fadeInUp">
           <div className="mx-auto max-w-7xl px-6 lg:px-12">
             <div className="mb-10">
               <h2 className="text-3xl font-black tracking-tight text-slate-900 uppercase animate-slideInLeft">
@@ -844,7 +846,7 @@ export default function Home() {
             {/* Bottom Bar */}
             <div className="border-t border-slate-200 pt-8 flex flex-col md:flex-row justify-between items-center gap-6">
               <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                © 2026 TechSales Axis. All Rights Reserved.
+                © 2026, TechSalesAxis.com The Next Big Idea Technologies Pvt. Ltd . All rights reserved.
               </p>
               <div className="flex items-center gap-6">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Made for verified talent</span>

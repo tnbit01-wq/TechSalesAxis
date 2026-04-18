@@ -804,7 +804,7 @@ export default function AssessmentExam() {
                 </span>
              </div>
              <span className="text-[10px] font-bold text-gray-700 tracking-widest uppercase">
-                &copy; 2026 TECHSALES AXIS AI
+                &copy; 2026, TechSalesAxis.com The Next Big Idea Technologies Pvt. Ltd . All rights reserved.
              </span>
           </div>
         </div>

@@ -109,10 +109,28 @@ async def get_profile(
             
         # Add Signed URL for Profile Photo & Resume (S3)
         if profile_data.get("profile_photo_url"):
-            profile_data["profile_photo_url"] = S3Service.get_signed_url(profile_data["profile_photo_url"])
+            signed_url = S3Service.get_signed_url(profile_data["profile_photo_url"])
+            # Fallback to public S3 URL if signed URL fails
+            if signed_url:
+                profile_data["profile_photo_url"] = signed_url
+            elif not profile_data["profile_photo_url"].startswith("http"):
+                from src.core.config import S3_BUCKET_NAME, AWS_REGION
+                # Construct public S3 URL from the file path
+                profile_data["profile_photo_url"] = f"https://{S3_BUCKET_NAME}.s3.{AWS_REGION}.amazonaws.com/{profile_data['profile_photo_url']}"
+        else:
+            # Generate default avatar if no profile photo
+            safe_name = (profile_data.get("full_name") or "User").replace(" ", "%20")
+            profile_data["profile_photo_url"] = f"https://api.dicebear.com/7.x/avataaars/svg?seed={safe_name}"
 
         if profile_data.get("resume_path"):
-            profile_data["resume_path"] = S3Service.get_signed_url(profile_data["resume_path"])
+            signed_url = S3Service.get_signed_url(profile_data["resume_path"])
+            # Fallback to public S3 URL if signed URL fails
+            if signed_url:
+                profile_data["resume_path"] = signed_url
+            elif not profile_data["resume_path"].startswith("http"):
+                from src.core.config import S3_BUCKET_NAME, AWS_REGION
+                # Construct public S3 URL from the file path
+                profile_data["resume_path"] = f"https://{S3_BUCKET_NAME}.s3.{AWS_REGION}.amazonaws.com/{profile_data['resume_path']}"
                 
         return profile_data
     except Exception as e:

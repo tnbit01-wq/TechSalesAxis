@@ -204,7 +204,7 @@ export default function CandidateHeader({ profile: initialProfile }: { profile?:
                     <div
                       key={notif.id}
                       className={`p-5 transition-colors hover:bg-slate-50/50 flex gap-4 ${!notif.is_read ? "bg-blue-100/20" : ""}`}
-                      onClick={() => !notif.is_read && markAsRead(notif.id)}
+                      onClick={(e) => !notif.is_read && markAsRead(notif.id, e)}
                     >
                       <div
                         className={`h-10 w-10 rounded-2xl shrink-0 flex items-center justify-center border ${
@@ -350,4 +350,3 @@ export default function CandidateHeader({ profile: initialProfile }: { profile?:
     </div>
   );
 }
-

@@ -994,7 +994,7 @@ export default function RecruiterOnboarding() {
                     <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">Encryption: Shield-V3.0-AES-256</span>
                   </div>
                 </div>
-                <span className="text-[10px] font-bold text-zinc-700 uppercase tracking-widest">© 2026 TechSales Axis AI</span>
+                <span className="text-[10px] font-bold text-zinc-700 uppercase tracking-widest">© 2026, TechSalesAxis.com The Next Big Idea Technologies Pvt. Ltd . All rights reserved.</span>
               </div>
             </div>
           </div>

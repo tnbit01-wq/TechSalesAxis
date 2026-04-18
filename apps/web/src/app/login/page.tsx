@@ -262,7 +262,7 @@ function LoginForm() {
           onClick={handleLogout}
           className="text-xs font-semibold uppercase tracking-wider text-slate-400 hover:text-red-500 transition-colors"
         >
-          Logout / Clear Session
+          Logout
         </button>
       </header>
 
@@ -300,7 +300,7 @@ function LoginForm() {
       <div className="p-4 bg-white border-t sm:p-6 shadow-[0_-4px_10px_-1px_rgba(0,0,0,0.05)]">
         <form
           onSubmit={handleSend}
-          className="max-w-3xl mx-auto flex items-center gap-3 relative"
+          className="max-w-3xl mx-auto flex items-end gap-3 relative w-full"
         >
           <input
             type={state === "AWAITING_PASSWORD" && !showPassword ? "password" : "text"}
@@ -360,7 +360,7 @@ function LoginForm() {
           <button
             type="submit"
             disabled={!input.trim() || isLoading || state === "COMPLETED"}
-            className="p-3 bg-primary text-white rounded-xl hover:bg-primary-dark transition-all disabled:bg-slate-300 disabled:text-slate-600 disabled:cursor-not-allowed shadow-md shadow-primary-light"
+            className="p-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all disabled:bg-slate-300 disabled:text-slate-600 disabled:cursor-not-allowed shadow-md shadow-blue-500/30 font-semibold"
           >
             <svg
               className="w-5 h-5"

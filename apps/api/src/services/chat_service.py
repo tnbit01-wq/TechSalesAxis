@@ -4,6 +4,24 @@ from datetime import datetime
 from src.core.database import SessionLocal
 from src.core.models import ChatThread, ChatMessage, AssessmentSession, RecruiterProfile, JobApplication, Job, ChatReport, CandidateProfile
 from sqlalchemy import or_, and_, desc
+from src.services.s3_service import S3Service
+from src.core.config import S3_BUCKET_NAME, AWS_REGION
+
+def get_s3_url_with_fallback(file_path: Optional[str]) -> Optional[str]:
+    """Get S3 URL with fallback to public URL if signed URL fails."""
+    if not file_path:
+        return None
+    
+    # Try to get signed URL first
+    signed_url = S3Service.get_signed_url(file_path)
+    if signed_url:
+        return signed_url
+    
+    # Fallback to public S3 URL if signed URL fails
+    if not file_path.startswith("http"):
+        return f"https://{S3_BUCKET_NAME}.s3.{AWS_REGION}.amazonaws.com/{file_path}"
+    
+    return file_path
 
 class ChatService:
     @staticmethod
@@ -197,9 +215,13 @@ class ChatService:
                 recruiter = db.query(RecruiterProfile).filter(RecruiterProfile.user_id == t.recruiter_id).first()
                 
                 if candidate:
+                    photo_url = get_s3_url_with_fallback(getattr(candidate, "profile_photo_url", None))
+                    if not photo_url:
+                        safe_name = (candidate.full_name or "User").replace(" ", "%20")
+                        photo_url = f"https://api.dicebear.com/7.x/avataaars/svg?seed={safe_name}"
                     t_dict["candidate_profiles"] = {
                         "full_name": candidate.full_name,
-                        "profile_photo_url": getattr(candidate, "profile_photo_url", None)
+                        "profile_photo_url": photo_url
                     }
                 
                 if recruiter:
@@ -249,7 +271,7 @@ class ChatService:
                     if other:
                         t_dict["candidate_profiles"] = {
                             "full_name": other.full_name,
-                            "avatar_url": getattr(other, "profile_photo_url", None)
+                            "avatar_url": get_s3_url_with_fallback(getattr(other, "profile_photo_url", None))
                         }
                 else:
                     other = db.query(RecruiterProfile).filter(RecruiterProfile.user_id == t.recruiter_id).first()

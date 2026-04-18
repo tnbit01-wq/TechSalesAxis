@@ -38,6 +38,7 @@ from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_
+from src.core.config import S3_BUCKET_NAME, AWS_REGION
 
 router = APIRouter(prefix="/recruiter", tags=["recruiter"])
 
@@ -47,6 +48,22 @@ def get_db():
         yield db
     finally:
         db.close()
+
+def get_s3_url_with_fallback(file_path: Optional[str]) -> Optional[str]:
+    """Get S3 URL with fallback to public URL if signed URL fails."""
+    if not file_path:
+        return None
+    
+    # Try to get signed URL first
+    signed_url = S3Service.get_signed_url(file_path)
+    if signed_url:
+        return signed_url
+    
+    # Fallback to public S3 URL if signed URL fails
+    if not file_path.startswith("http"):
+        return f"https://{S3_BUCKET_NAME}.s3.{AWS_REGION}.amazonaws.com/{file_path}"
+    
+    return file_path
 
 class RegistrationUpdate(BaseModel):
     registration_number: str
@@ -106,7 +123,6 @@ def _profile_to_dict(profile: RecruiterProfile | None, company: Company | None =
             "id": str(company.id),
             "name": company.name,
             "website": company.website,
-            "logo_url": company.logo_url,
             "description": company.description,
             "location": company.location,
             "industry_category": company.industry_category,
@@ -118,8 +134,8 @@ def _profile_to_dict(profile: RecruiterProfile | None, company: Company | None =
             "hiring_focus_areas": company.hiring_focus_areas or [],
             "avg_deal_size_range": company.avg_deal_size_range,
             "brand_colors": company.brand_colors or {},
-            "logo_url": S3Service.get_signed_url(company.logo_url) if company.logo_url else None,
-            "life_at_photo_urls": [S3Service.get_signed_url(u) for u in (company.life_at_photo_urls or [])],
+            "logo_url": get_s3_url_with_fallback(company.logo_url),
+            "life_at_photo_urls": [get_s3_url_with_fallback(u) for u in (company.life_at_photo_urls or [])],
         }
     return payload
 
@@ -623,7 +639,7 @@ async def applications_pipeline(user: dict = Depends(get_current_user), db: Sess
                 "birthdate": candidate.birthdate if candidate else None,
                 "referral": None,
                 "bio": candidate.bio if candidate else None,
-                "profile_photo_url": candidate.profile_photo_url if candidate else None,
+                "profile_photo_url": (get_s3_url_with_fallback(candidate.profile_photo_url) or (f"https://api.dicebear.com/7.x/avataaars/svg?seed={(candidate.full_name or 'User').replace(' ', '%20')}" if candidate else None)) if candidate else None,
                 "email": user_row.email if user_row else None,
                 "resume_path": S3Service.get_signed_url(candidate.resume_path) if candidate and candidate.resume_path else None,
             },
@@ -739,8 +755,8 @@ async def candidate_pool(db: Session = Depends(get_db)):
             "trust_score": candidate.final_profile_score or 0,
             "assessment_status": candidate.assessment_status or "not_started",
             "skills": resume.skills if resume and resume.skills else [],
-            "profile_photo_url": S3Service.get_signed_url(candidate.profile_photo_url) if candidate.profile_photo_url else None,
-            "resume_path": S3Service.get_signed_url(candidate.resume_path) if candidate.resume_path else None,
+            "profile_photo_url": get_s3_url_with_fallback(candidate.profile_photo_url) or f"https://api.dicebear.com/7.x/avataaars/svg?seed={(candidate.full_name or 'User').replace(' ', '%20')}",
+            "resume_path": get_s3_url_with_fallback(candidate.resume_path),
             # ========== CRO FIELDS (Career Readiness & Opportunity Focus) ==========
             "career_readiness_score": candidate.career_readiness_score or 0,
             "role_urgency_level": candidate.role_urgency_level or "passive",
@@ -892,8 +908,8 @@ async def get_candidate(candidate_id: str, db: Session = Depends(get_db)):
         "phone_number": candidate.phone_number,
         "gender": candidate.gender,
         "birthdate": candidate.birthdate,
-        "profile_photo_url": S3Service.get_signed_url(candidate.profile_photo_url) if candidate.profile_photo_url else None,
-        "resume_path": S3Service.get_signed_url(candidate.resume_path) if candidate.resume_path else None,
+        "profile_photo_url": get_s3_url_with_fallback(candidate.profile_photo_url) or f"https://api.dicebear.com/7.x/avataaars/svg?seed={(candidate.full_name or 'User').replace(' ', '%20')}",
+        "resume_path": get_s3_url_with_fallback(candidate.resume_path),
         "skills": resume.skills if resume else [],
         "resume_data": {
             "timeline": resume.timeline if resume else None,
