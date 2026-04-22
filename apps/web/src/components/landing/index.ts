@@ -1,0 +1,9 @@
+export { Navigation } from './Navigation';
+export { HeroSection } from './HeroSection';
+export { FeaturesSection } from './FeaturesSection';
+export { CandidatesSection } from './CandidatesSection';
+export { RecruitersSection } from './RecruitersSection';
+export { BidirectionalSection } from './BidirectionalSection';
+export { CtaSection } from './CtaSection';
+export { Footer } from './Footer';
+export { LandingPageTemplate } from './LandingPageTemplate';
