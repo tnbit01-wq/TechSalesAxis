@@ -14,7 +14,6 @@ router = APIRouter(tags=["auth"])
 
 class SignupRequest(BaseModel):
     email: EmailStr
-    password: str
     role: str
     full_name: str
 
@@ -43,6 +42,9 @@ class ForgotPasswordRequest(BaseModel):
 class ResetPasswordRequest(BaseModel):
     token: str
     password: str
+
+class EmailCheckRequest(BaseModel):
+    email: EmailStr
 
 @router.post("/forgot-password")
 async def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db)):
@@ -102,19 +104,35 @@ PERSONAL_DOMAINS = [
 async def signup(request: SignupRequest):
     """
     Step 1 of AWS registration: Create unverified user and send OTP via SES.
+    Allows re-attempting signup if account exists but is incomplete (no password set).
     """
     db = SessionLocal()
     try:
-        # Check if user exists and is verified
+        # Check if user exists
         existing = db.query(User).filter(User.email == request.email).first()
-        if existing and existing.is_verified:
-            raise HTTPException(status_code=400, detail="This email is already registered. Please login instead.")
         
-        # If user exists but NOT verified, allow re-signup (user wants to retry)
-        if existing and not existing.is_verified:
-            # Delete the old unverified record to allow fresh signup
-            db.delete(existing)
-            db.commit()
+        if existing:
+            # Case 1: Account is fully registered (verified + has password)
+            if existing.is_verified and existing.hashed_password and existing.hashed_password != "":
+                raise HTTPException(status_code=400, detail="This email is already registered. Please login instead.")
+            
+            # Case 2: Account is incomplete (verified but NO password) - allow them to try again
+            if existing.is_verified and (not existing.hashed_password or existing.hashed_password == ""):
+                # Just resend OTP, don't recreate the account
+                otp = generate_otp()
+                existing.otp_code = otp
+                existing.otp_expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
+                db.commit()
+                send_otp_email(existing.email, otp, existing.full_name or request.full_name)
+                return {
+                    "status": "success",
+                    "message": f"Verification code sent to {existing.email}. Please check your inbox and spam folder. Code expires in 10 minutes."
+                }
+            
+            # Case 3: Account exists but NOT verified - delete old one and create fresh
+            if not existing.is_verified:
+                db.delete(existing)
+                db.commit()
 
         # Validation logic (Candidate must be personal, Recruiter must be work)
         domain = request.email.split("@")[1].lower()
@@ -125,12 +143,13 @@ async def signup(request: SignupRequest):
             raise HTTPException(status_code=400, detail="Recruiters must use a professional email address")
 
         otp = generate_otp()
+        # Create user without password - password will be set after OTP verification
         new_user = User(
             id=uuid.uuid4(),
             email=request.email,
             role=request.role,
             full_name=request.full_name,
-            hashed_password=get_password_hash(request.password),
+            hashed_password="",  # Empty password until user sets one during signup
             is_verified=False,
             otp_code=otp,
             otp_expires_at=datetime.now(timezone.utc) + timedelta(minutes=10)
@@ -152,6 +171,8 @@ async def signup(request: SignupRequest):
 async def verify_otp(request: OTPVerifyRequest):
     """
     Step 2 of AWS registration: Verify OTP and activate user account.
+    Returns a temporary token that must be used to set password.
+    Full access token is only issued after password is set.
     """
     db = SessionLocal()
     try:
@@ -171,8 +192,35 @@ async def verify_otp(request: OTPVerifyRequest):
         user.otp_code = None  # Clear OTP
         db.commit()
 
-        access_token = create_access_token(data={"sub": str(user.id), "email": user.email, "role": user.role})
-        return {"access_token": access_token, "token_type": "bearer"}
+        # Return temporary token for password setup (not full JWT)
+        # This token can only be used to set password, not to access protected resources
+        temp_token = create_access_token(data={"sub": str(user.id), "email": user.email, "role": user.role, "purpose": "password_setup"})
+        return {"access_token": temp_token, "token_type": "bearer", "requires_password_setup": True}
+    finally:
+        db.close()
+
+@router.post("/resume-signup")
+async def resume_signup(request: EmailValidationRequest):
+    """
+    Resume incomplete signup for user who verified OTP but didn't set password.
+    Returns temporary token to complete password setup.
+    """
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.email == request.email).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="No account found with this email. Please start signup again.")
+        
+        # Check if this is an incomplete signup (verified but no password)
+        if not user.is_verified:
+            raise HTTPException(status_code=400, detail="Your email hasn't been verified yet. Please check your email for the verification code.")
+        
+        if user.hashed_password and user.hashed_password != "":
+            raise HTTPException(status_code=400, detail="Your account is already complete. Please log in instead.")
+        
+        # Return temporary token to set password
+        temp_token = create_access_token(data={"sub": str(user.id), "email": user.email, "role": user.role, "purpose": "password_setup"})
+        return {"access_token": temp_token, "token_type": "bearer", "requires_password_setup": True, "message": "Welcome back! Please set your password to complete signup."}
     finally:
         db.close()
 
@@ -217,6 +265,14 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
             headers={"WWW-Authenticate": "Bearer"},
         )
     
+    # Check if password has been set (empty password means signup not completed)
+    if not user.hashed_password or user.hashed_password == "":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Your account signup is incomplete. Please visit the signup page to complete your registration and set a password.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
     if not verify_password(request.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -242,6 +298,7 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
 async def update_password(request: SetPasswordRequest, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     """
     Update user password after OTP verification during signup.
+    Returns full access token after password is successfully set.
     """
     db = SessionLocal()
     try:
@@ -249,10 +306,16 @@ async def update_password(request: SetPasswordRequest, db: Session = Depends(get
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
+        # Verify this is a password_setup token (not a regular login)
+        if current_user.get("purpose") != "password_setup":
+            raise HTTPException(status_code=403, detail="This endpoint can only be used during signup password setup")
+        
         user.hashed_password = get_password_hash(request.new_password)
         db.commit()
         
-        return {"status": "success", "message": "Password updated successfully"}
+        # Now issue a full access token since password is set
+        access_token = create_access_token(data={"sub": str(user.id), "email": user.email, "role": user.role})
+        return {"status": "success", "access_token": access_token, "token_type": "bearer", "message": "Password set successfully. You are now signed in."}
     finally:
         db.close()
 
@@ -268,6 +331,30 @@ def validate_email(request: EmailValidationRequest):
         raise HTTPException(status_code=400, detail="Recruiters must use a professional email address")
     
     return {"status": "valid"}
+
+@router.post("/check-email-exists")
+async def check_email_exists(request: EmailCheckRequest, db: Session = Depends(get_db)):
+    """
+    Check if an email is registered in the system.
+    Used by login page to determine if user exists before asking for password.
+    """
+    user = db.query(User).filter(User.email == request.email).first()
+    
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="No account found with this email. Please sign up first."
+        )
+    
+    # Return whether account has password set (for incomplete signups)
+    has_password = bool(user.hashed_password and user.hashed_password != "")
+    
+    return {
+        "exists": True,
+        "has_password": has_password,
+        "is_verified": user.is_verified,
+        "email": user.email
+    }
 
 @router.post("/post-login")
 async def post_login(current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -302,13 +389,14 @@ async def post_login(current_user: dict = Depends(get_current_user), db: Session
 
     return {"next_step": "/", "role": user_role}
 
-@router.post("/update-password")
-async def update_password(
+@router.post("/change-password")
+async def change_password(
     request: UpdatePasswordRequest,
     current_user: dict = Depends(get_current_user)
 ):
     """
     Updates user password in AWS RDS after verifying the old password.
+    Used by logged-in users to change their existing password.
     """
     db = SessionLocal()
     try:

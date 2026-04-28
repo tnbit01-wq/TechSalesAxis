@@ -88,7 +88,16 @@ export default function RecruiterOnboarding() {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const initialized = useRef(false);
 
-  const { isListening, transcript, startListening, stopListening } = useVoice();
+  const { isListening, transcript, startListening, stopListening, hasSupport } = useVoice();
+
+  const handleMicToggle = useCallback(() => {
+    if (!hasSupport) return;
+    if (isListening) {
+      stopListening();
+    } else {
+      startListening();
+    }
+  }, [hasSupport, isListening, startListening, stopListening]);
 
   const addMessage = useCallback(
     (text: string, sender: "bot" | "user", options?: string[]) => {
@@ -854,259 +863,815 @@ export default function RecruiterOnboarding() {
     };
   }, [isAssessmentActive, timeLeft, handleSend]);
 
+  const leftSteps = isAssessmentActive
+    ? [
+        {
+          step: "01",
+          title: "Assessment is required",
+          description: "This confirms recruiter quality before the dashboard unlocks.",
+        },
+        {
+          step: "02",
+          title: "Answer one question at a time",
+          description: "Each answer is checked separately so the review stays clear and fair.",
+        },
+        {
+          step: "03",
+          title: "Stay on the page",
+          description: "Switching tabs is monitored to protect the assessment process.",
+        },
+      ]
+    : [
+        {
+          step: "01",
+          title: "Company verification",
+          description: "Enter your registration details to begin with a trusted company profile.",
+        },
+        {
+          step: "02",
+          title: "Profile completion",
+          description: "Add website, location, and description to improve visibility and matching quality.",
+        },
+        {
+          step: "03",
+          title: "Recruiter assessment",
+          description: "Finish the short assessment to unlock your dashboard and candidate signals.",
+        },
+      ];
+
   return (
-    <div className={`flex flex-col h-screen ${isAssessmentActive ? "bg-black text-white" : "bg-white text-slate-900"} font-sans transition-colors duration-700`}>
-      {/* Dynamic Header */}
-      <header className={`flex justify-between items-center py-4 px-6 border-b ${isAssessmentActive ? "border-zinc-800 bg-black/80" : "border-slate-100 bg-white/80"} backdrop-blur-md sticky top-0 z-50`}>
-        <div className="flex items-center gap-4">
-          {!isAssessmentActive && (
-            <Link
-              href="/"
-              className="p-2 hover:bg-slate-50 rounded-full transition-colors text-slate-400 hover:text-primary"
-              aria-label="Back to home"
-            >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-            </Link>
-          )}
-          <div className="flex items-center gap-2.5">
-            <div className={`h-9 w-9 rounded-xl ${isAssessmentActive ? "bg-blue-600 shadow-blue-900/20" : "bg-primary shadow-primary-light"} flex items-center justify-center shadow-lg`}>
-              <div className={`h-4 w-4 rounded ${isAssessmentActive ? "bg-black" : "bg-white"} rotate-45`} />
-            </div>
-            <h1 className={`text-xl font-bold tracking-tight ${isAssessmentActive ? "text-white uppercase italic" : "text-slate-800"}`}>
-              TechSales Axis {isAssessmentActive ? "" : <span className="font-medium text-slate-400 ml-1">Onboarding</span>}
-            </h1>
+    <div className="onboarding-shell">
+      <aside className={`onboarding-hero ${isAssessmentActive ? "assessment" : "setup"}`}>
+        <div className="onboarding-badge">Recruiter onboarding</div>
+        <div className="onboarding-brand">
+          <img src="/images/talentflow-logo.png" alt="TechSalesAxis" className="onboarding-logo" />
+          <div>
+            <div className="onboarding-kicker">{isAssessmentActive ? "Assessment mode" : "Company setup"}</div>
+            <h1>{isAssessmentActive ? "Complete the recruiter assessment." : "Set up your hiring workspace."}</h1>
           </div>
         </div>
-        <div className="flex items-center gap-6">
-          {isAssessmentActive ? (
-            <div className="flex items-center gap-6">
-              <div className="flex items-center gap-3 bg-zinc-900 px-4 py-2 rounded-xl border border-zinc-800">
-                <div className="flex items-center gap-2 text-zinc-500">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span className="text-[10px] font-bold uppercase tracking-widest">Countdown</span>
-                </div>
-                <span className={`font-mono text-sm font-bold ${timeLeft < 15 ? "text-red-500 animate-pulse" : "text-blue-400"}`}>
-                  00:{timeLeft.toString().padStart(2, "0")}
-                </span>
+        <p className="onboarding-copy">
+          {isAssessmentActive
+            ? "Keep responses focused and concise. The assessment confirms recruiter quality and trust signals before your dashboard opens."
+            : "The setup flow is short and role-specific so company verification, profile completion, and assessment feel clear and easy to finish."}
+        </p>
+
+        <div className="onboarding-cards">
+          {leftSteps.map((item) => (
+            <div className="onboarding-card" key={item.step}>
+              <div className="onboarding-step">{item.step}</div>
+              <div>
+                <h2>{item.title}</h2>
+                <p>{item.description}</p>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="h-1.5 w-24 bg-zinc-800 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-blue-600 transition-all duration-500" 
-                    style={{ width: `${((currentQuestionIndex + 1) / dynamicQuestions.length) * 100}%` }}
-                  />
+            </div>
+          ))}
+        </div>
+
+        {!isAssessmentActive && null}
+      </aside>
+
+      <div className="onboarding-panel">
+        <header className={`onboarding-header ${isAssessmentActive ? "assessment" : "setup"}`}>
+          <div className="header-left">
+            {!isAssessmentActive && (
+              <Link href="/" className="back-link" aria-label="Back to home">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+              </Link>
+            )}
+            <div>
+              <div className="panel-kicker">TechSales Axis</div>
+              <div className="panel-title">{isAssessmentActive ? "Recruiter Assessment" : "Recruiter Onboarding"}</div>
+            </div>
+          </div>
+
+          <div className="header-right">
+            {isAssessmentActive ? (
+              <>
+                <div className="metric-chip">
+                  <span className="metric-label">Countdown</span>
+                  <span className={`metric-value ${timeLeft < 15 ? "danger" : ""}`}>00:{timeLeft.toString().padStart(2, "0")}</span>
                 </div>
-                <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-                  Signal: {currentQuestionIndex + 1} / {dynamicQuestions.length}
-                </span>
+                <div className="progress-chip">
+                  <span className="progress-text">Signal {currentQuestionIndex + 1} / {dynamicQuestions.length}</span>
+                  <div className="progress-bar">
+                    <div
+                      className="progress-fill"
+                      style={{ width: `${((currentQuestionIndex + 1) / Math.max(dynamicQuestions.length || 1, 1)) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              </>
+            ) : (
+              <button onClick={handleLogout} className="logout-btn">Logout</button>
+            )}
+          </div>
+        </header>
+
+        <main className={`panel-body ${isAssessmentActive ? "assessment" : "setup"}`}>
+          {isAssessmentActive ? (
+            <div className="assessment-view">
+              <div className="question-head">
+                <div className="question-label">Assessment question</div>
+                <h2>{dynamicQuestions[currentQuestionIndex]?.question_text || dynamicQuestions[currentQuestionIndex]?.text}</h2>
+              </div>
+
+              <div className="assessment-box">
+                <textarea
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder="Type your strategic response..."
+                  className="assessment-input"
+                  onCopy={(e) => e.preventDefault()}
+                  onPaste={(e) => e.preventDefault()}
+                />
+                <div className="assessment-actions">
+                  <button
+                    onClick={handleMicToggle}
+                    disabled={!hasSupport}
+                    title={hasSupport ? (isListening ? "Stop voice input" : "Start voice input") : "Voice not supported in this browser"}
+                    className={`action-icon ${isListening ? "recording" : "idle"}`}
+                  >
+                    <MicIcon />
+                  </button>
+                  <button
+                    onClick={() => handleSend()}
+                    disabled={isLoading || !input.trim()}
+                    className="send-btn"
+                  >
+                    <span>Transmit Signal</span>
+                    <SendIcon />
+                  </button>
+                </div>
+              </div>
+
+              <div className="assessment-footer">
+                <span>Evaluation mode active</span>
+                <span>Encryption Shield-V3.0-AES-256</span>
+                <span>© 2026 TechSalesAxis.com</span>
               </div>
             </div>
           ) : (
-            <div className="flex items-center gap-6">
-              <button
-                onClick={handleLogout}
-                className="flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-red-600 transition-colors py-2 px-3 rounded-lg hover:bg-red-50"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                </svg>
-                Logout
-              </button>
-            </div>
-          )}
-          {isAssessmentActive && (
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 text-sm font-semibold text-zinc-500 hover:text-red-500 transition-colors py-2 px-3 rounded-lg hover:bg-red-950/30"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
-              Logout
-            </button>
-          )}
-        </div>
-      </header>
-
-      <main className={`flex-1 overflow-hidden relative flex flex-col ${isAssessmentActive ? "max-w-4xl" : "max-w-5xl"} mx-auto w-full`}>
-        {isAssessmentActive ? (
-          /* Assessment View (Second Image Style) */
-          <div className="flex-1 flex flex-col px-6 py-12 space-y-12">
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 text-blue-500">
-                <div className="h-px w-8 bg-blue-500" />
-                <span className="text-[10px] font-bold uppercase tracking-[0.3em]">System_Origin: Audit_Module</span>
-              </div>
-              <h2 className="text-3xl font-bold leading-tight tracking-tight text-zinc-100 max-w-3xl">
-                {dynamicQuestions[currentQuestionIndex]?.question_text || dynamicQuestions[currentQuestionIndex]?.text}
-              </h2>
-            </div>
-
-            <div className="flex-1 flex flex-col justify-end pb-12">
-              <div className="relative group">
-                <div className="absolute -inset-1 bg-gradient-to-r from-blue-600/20 to-purple-600/20 rounded-2xl blur opacity-25 group-focus-within:opacity-100 transition duration-1000"></div>
-                <div className="relative flex flex-col bg-zinc-900/50 border border-zinc-800 focus-within:border-blue-500/50 transition-all rounded-2xl p-4">
-                  <textarea
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    placeholder="Type your strategic response..."
-                    className="w-full bg-transparent border-none focus:ring-0 text-zinc-200 placeholder:text-zinc-600 text-lg min-h-[160px] resize-none font-medium"
-                    onCopy={(e) => e.preventDefault()}
-                    onPaste={(e) => e.preventDefault()}
-                  />
-                  <div className="flex justify-between items-center mt-4 border-t border-zinc-800/50 pt-4">
-                    <button
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        if (!isListening) startListening();
-                      }}
-                      onMouseUp={(e) => {
-                        e.preventDefault();
-                        if (isListening) stopListening();
-                      }}
-                      className={`p-3 rounded-xl transition-all ${isListening ? "bg-red-500 text-white" : "text-zinc-500 hover:text-white"}`}
-                    >
-                      <MicIcon />
-                    </button>
-                    <button
-                      onClick={() => handleSend()}
-                      disabled={isLoading || !input.trim()}
-                      className="flex items-center gap-3 bg-zinc-800 hover:bg-blue-600 text-white hover:text-white px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-[0.2em] transition-all disabled:opacity-50 group"
-                    >
-                      <span>Transmit Signal</span>
-                      <SendIcon />
-                    </button>
-                  </div>
-                </div>
-              </div>
-              <div className="flex justify-between items-center mt-6 px-2">
-                <div className="flex items-center gap-6">
-                  <div className="flex items-center gap-2">
-                    <div className="h-1 w-1 rounded-full bg-blue-500 animate-pulse" />
-                    <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">Evaluation_Mode: Active</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="h-1 w-1 rounded-full bg-zinc-700" />
-                    <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">Encryption: Shield-V3.0-AES-256</span>
-                  </div>
-                </div>
-                <span className="text-[10px] font-bold text-zinc-700 uppercase tracking-widest">© 2026, TechSalesAxis.com The Next Big Idea Technologies Pvt. Ltd . All rights reserved.</span>
-              </div>
-            </div>
-          </div>
-        ) : (
-          /* Onboarding View (First Image Style) */
-          <>
-            <div
-              ref={scrollRef}
-              className="flex-1 overflow-y-auto px-6 py-8 space-y-8 scroll-smooth"
-            >
-              {messages.map((m) => (
-                <div
-                  key={m.id}
-                  className={`flex w-full ${m.sender === "bot" ? "justify-start" : "justify-end animate-in slide-in-from-right-4 duration-300"}`}
-                >
-                  <div className={`max-w-[80%] flex flex-col ${m.sender === "bot" ? "items-start" : "items-end"}`}>
-                    <div
-                      className={`px-5 py-4 rounded-2xl shadow-sm text-sm leading-relaxed ${
-                        m.sender === "bot" 
-                          ? "bg-slate-50 border border-slate-100 text-slate-700 rounded-tl-none" 
-                          : "bg-primary text-slate-900 border border-primary-dark rounded-tr-none shadow-primary-light font-semibold"
-                      }`}
-                    >
-                      <p className="whitespace-pre-wrap font-medium">
-                        {m.text}
-                      </p>
+            <>
+              <div ref={scrollRef} className="chat-scroll">
+                {messages.map((m) => (
+                  <div key={m.id} className={`message-row ${m.sender === "bot" ? "left" : "right"}`}>
+                    <div className={`message-card ${m.sender === "bot" ? "bot" : "user"}`}>
+                      <p>{m.text}</p>
                     </div>
-                    
                     {m.options && (
-                      <div className="flex flex-wrap gap-2.5 mt-4">
+                      <div className="option-row">
                         {m.options.map((opt) => (
-                          <button
-                            key={opt}
-                            onClick={() => handleSend(opt)}
-                            disabled={isLoading}
-                          className="px-5 py-2.5 bg-white hover:bg-primary-light border border-slate-200 hover:border-primary-light rounded-full text-sm font-semibold text-slate-800 hover:text-primary transition-all shadow-sm active:scale-95 disabled:opacity-50"
-                          >
+                          <button key={opt} onClick={() => handleSend(opt)} disabled={isLoading} className="option-pill">
                             {opt}
                           </button>
                         ))}
                       </div>
                     )}
                   </div>
-                </div>
-              ))}
-              
-              {isLoading && (
-                <div className="flex justify-start">
-                  <div className="bg-slate-50 px-5 py-4 rounded-2xl border border-slate-100 rounded-tl-none shadow-sm">
-                    <div className="flex space-x-1.5 items-center h-4">
-                      <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce"></div>
-                      <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce delay-100"></div>
-                      <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce delay-200"></div>
+                ))}
+
+                {isLoading && (
+                  <div className="typing-row">
+                    <div className="typing-card">
+                      <span />
+                      <span />
+                      <span />
                     </div>
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
 
-            {/* Action Bar */}
-            <div className="px-6 py-6 bg-white border-t border-slate-100">
-              <div className="max-w-4xl mx-auto relative">
-                <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 focus-within:border-primary focus-within:ring-4 focus-within:ring-primary-light transition-all px-2 py-2 rounded-2xl">
+              <div className="composer-wrap">
+                <div className="composer">
                   <input
                     type="text"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyPress={(e) => e.key === "Enter" && handleSend()}
                     placeholder={isListening ? "Listening..." : "Type your response..."}
-                    className="flex-1 bg-transparent px-4 py-2 text-slate-700 placeholder:text-slate-500 focus:outline-none text-sm font-medium"
+                    className="composer-input"
                     autoComplete="off"
                   />
-                  <div className="flex items-center gap-1.5">
+                  <div className="composer-actions">
                     <button
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        if (!isListening) startListening();
-                      }}
-                      onMouseUp={(e) => {
-                        e.preventDefault();
-                        if (isListening) stopListening();
-                      }}
-                      onTouchStart={(e) => {
-                        e.preventDefault();
-                        if (!isListening) startListening();
-                      }}
-                      onTouchEnd={(e) => {
-                        e.preventDefault();
-                        if (isListening) stopListening();
-                      }}
-                      className={`p-2.5 rounded-xl transition-all ${
-                        isListening 
-                          ? "bg-red-500 text-white animate-pulse" 
-                          : "text-slate-400 hover:text-primary hover:bg-white border border-transparent hover:border-slate-100"
-                      }`}
+                      onClick={handleMicToggle}
+                      disabled={!hasSupport}
+                      title={hasSupport ? (isListening ? "Stop voice input" : "Start voice input") : "Voice not supported in this browser"}
+                      className={`action-icon small ${isListening ? "recording" : "idle"}`}
                     >
                       <MicIcon />
                     </button>
-                    <button
-                      onClick={() => handleSend()}
-                      disabled={isLoading || !input.trim()}
-                      className="bg-primary hover:bg-primary-dark text-white p-2.5 rounded-xl transition-all shadow-md shadow-primary-light disabled:opacity-40 active:scale-95"
-                    >
+                    <button onClick={() => handleSend()} disabled={isLoading || !input.trim()} className="send-btn small">
                       <SendIcon />
                     </button>
                   </div>
                 </div>
               </div>
-            </div>
-          </>
-        )}
-      </main>
+            </>
+          )}
+        </main>
+      </div>
+
+      <style jsx>{`
+        .onboarding-shell {
+          height: 100dvh;
+          min-height: 100dvh;
+          padding: 0.9rem;
+          display: grid;
+          grid-template-columns: minmax(280px, 0.75fr) minmax(0, 1.75fr);
+          gap: 1.25rem;
+          overflow: hidden;
+          box-sizing: border-box;
+          background:
+            radial-gradient(circle at 12% 18%, rgba(255, 152, 0, 0.14) 0%, transparent 30%),
+            radial-gradient(circle at 90% 85%, rgba(255, 152, 0, 0.08) 0%, transparent 30%),
+            linear-gradient(135deg, #fffaf5 0%, #fff5ea 100%);
+        }
+
+        .onboarding-hero,
+        .onboarding-panel {
+          min-height: 0;
+          border-radius: 1.4rem;
+          border: 1px solid rgba(255, 152, 0, 0.2);
+          box-shadow: 0 18px 40px rgba(0, 0, 0, 0.08);
+          overflow: hidden;
+        }
+
+        .onboarding-hero {
+          background: linear-gradient(180deg, rgba(255, 255, 255, 0.97) 0%, rgba(255, 248, 238, 0.95) 100%);
+          padding: 1.05rem;
+          display: flex;
+          flex-direction: column;
+          gap: 0.7rem;
+          overflow: hidden;
+        }
+
+        .onboarding-badge,
+        .panel-kicker {
+          font-size: 0.74rem;
+          font-weight: 800;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: #ff9800;
+        }
+
+        .onboarding-brand {
+          display: flex;
+          align-items: center;
+          gap: 0.8rem;
+        }
+
+        .onboarding-logo {
+          width: 3.5rem;
+          height: 3.5rem;
+          object-fit: contain;
+          mix-blend-mode: multiply;
+        }
+
+        .onboarding-kicker {
+          font-size: 0.8rem;
+          font-weight: 700;
+          color: #64748b;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          margin-bottom: 0.35rem;
+        }
+
+        .onboarding-hero h1 {
+          margin: 0;
+          font-size: clamp(1.35rem, 2vw, 2.1rem);
+          line-height: 1.06;
+          color: #000;
+          max-width: 14ch;
+        }
+
+        .onboarding-copy {
+          margin: 0;
+          font-size: 0.8rem;
+          line-height: 1.35;
+          color: #334155;
+          max-width: 28rem;
+        }
+
+        .onboarding-cards {
+          display: grid;
+          gap: 0.55rem;
+        }
+
+        .onboarding-card {
+          display: grid;
+          grid-template-columns: 2.55rem 1fr;
+          gap: 0.7rem;
+          align-items: start;
+          padding: 0.7rem 0.8rem;
+          background: rgba(255, 255, 255, 0.78);
+          border: 1px solid rgba(255, 152, 0, 0.18);
+          border-radius: 1rem;
+        }
+
+        .onboarding-step {
+          width: 2.55rem;
+          height: 2.55rem;
+          border-radius: 0.85rem;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          background: linear-gradient(135deg, #111 0%, #2f2f2f 100%);
+          color: #ff9800;
+          font-weight: 800;
+          letter-spacing: 0.06em;
+        }
+
+        .onboarding-card h2 {
+          margin: 0 0 0.18rem;
+          font-size: 0.88rem;
+          color: #000;
+        }
+
+        .onboarding-card p {
+          margin: 0;
+          font-size: 0.76rem;
+          line-height: 1.28;
+          color: #475569;
+        }
+
+        .onboarding-panel {
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+          background: rgba(255, 255, 255, 0.92);
+        }
+
+        .onboarding-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 1rem;
+          padding: 1rem 1.25rem;
+          border-bottom: 1px solid rgba(255, 152, 0, 0.16);
+          backdrop-filter: blur(10px);
+        }
+
+        .onboarding-header.setup {
+          background: linear-gradient(180deg, rgba(255, 255, 255, 0.99) 0%, rgba(255, 248, 238, 0.98) 100%);
+        }
+
+        .onboarding-header.assessment {
+          background: linear-gradient(180deg, rgba(16, 16, 16, 0.98) 0%, rgba(28, 28, 28, 0.98) 100%);
+          border-bottom-color: rgba(255, 255, 255, 0.08);
+        }
+
+        .header-left,
+        .header-right {
+          display: flex;
+          align-items: center;
+          gap: 0.85rem;
+          min-width: 0;
+        }
+
+        .back-link {
+          width: 2.2rem;
+          height: 2.2rem;
+          border-radius: 999px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          color: #64748b;
+          background: rgba(255, 152, 0, 0.08);
+        }
+
+        .panel-title {
+          font-size: 1rem;
+          font-weight: 800;
+          color: inherit;
+        }
+
+        .onboarding-header.assessment .panel-title,
+        .onboarding-header.assessment .panel-kicker,
+        .onboarding-header.assessment .metric-label,
+        .onboarding-header.assessment .progress-text {
+          color: #f8fafc;
+        }
+
+        .onboarding-header.assessment .back-link {
+          background: rgba(255, 255, 255, 0.06);
+          color: #f8fafc;
+        }
+
+        .metric-chip,
+        .progress-chip {
+          display: grid;
+          gap: 0.2rem;
+          padding: 0.6rem 0.8rem;
+          border-radius: 0.9rem;
+          background: rgba(255, 152, 0, 0.08);
+          border: 1px solid rgba(255, 152, 0, 0.18);
+        }
+
+        .metric-label,
+        .progress-text {
+          font-size: 0.7rem;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          color: #64748b;
+          font-weight: 800;
+        }
+
+        .metric-value {
+          font-size: 0.98rem;
+          font-weight: 800;
+          color: #0f172a;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        }
+
+        .metric-value.danger {
+          color: #ef4444;
+        }
+
+        .progress-bar {
+          width: 10rem;
+          height: 0.45rem;
+          border-radius: 999px;
+          overflow: hidden;
+          background: rgba(255, 255, 255, 0.14);
+        }
+
+        .progress-fill {
+          height: 100%;
+          border-radius: inherit;
+          background: linear-gradient(135deg, #ff9800 0%, #ff6f00 100%);
+        }
+
+        .logout-btn {
+          font-size: 0.75rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          color: #64748b;
+          background: rgba(255, 152, 0, 0.08);
+          border: 1px solid rgba(255, 152, 0, 0.15);
+          border-radius: 999px;
+          padding: 0.6rem 0.9rem;
+        }
+
+        .panel-body {
+          flex: 1;
+          min-height: 0;
+          display: flex;
+          flex-direction: column;
+        }
+
+        .chat-scroll {
+          flex: 1;
+          min-height: 0;
+          overflow-y: auto;
+          padding: 1.25rem 1.25rem 0.75rem;
+          background: radial-gradient(circle at top right, rgba(255, 152, 0, 0.05) 0%, transparent 26%), #fff;
+        }
+
+        .message-row {
+          display: flex;
+          flex-direction: column;
+          gap: 0.85rem;
+          margin-bottom: 1rem;
+        }
+
+        .message-row.left {
+          align-items: flex-start;
+        }
+
+        .message-row.right {
+          align-items: flex-end;
+        }
+
+        .message-card {
+          max-width: min(80%, 44rem);
+          border-radius: 1.1rem;
+          padding: 0.95rem 1rem;
+          box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06);
+        }
+
+        .message-card.bot {
+          background: linear-gradient(180deg, #ffffff 0%, #fff8ee 100%);
+          border: 1px solid rgba(255, 152, 0, 0.12);
+          color: #111827;
+          border-top-left-radius: 0.4rem;
+        }
+
+        .message-card.user {
+          background: linear-gradient(135deg, #ff9800 0%, #ff6f00 100%);
+          color: #fff;
+          border-top-right-radius: 0.4rem;
+        }
+
+        .message-card p {
+          margin: 0;
+          white-space: pre-wrap;
+          line-height: 1.55;
+          font-size: 0.95rem;
+        }
+
+        .option-row {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.65rem;
+        }
+
+        .option-pill {
+          padding: 0.65rem 0.95rem;
+          border-radius: 999px;
+          background: #fff;
+          border: 1px solid rgba(255, 152, 0, 0.18);
+          color: #111827;
+          font-size: 0.9rem;
+          font-weight: 700;
+          box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
+        }
+
+        .typing-row {
+          display: flex;
+          justify-content: flex-start;
+          margin-bottom: 0.75rem;
+        }
+
+        .typing-card {
+          display: inline-flex;
+          gap: 0.4rem;
+          padding: 0.85rem 1rem;
+          border-radius: 1rem;
+          background: #fff;
+          border: 1px solid rgba(255, 152, 0, 0.12);
+        }
+
+        .typing-card span {
+          width: 0.45rem;
+          height: 0.45rem;
+          border-radius: 999px;
+          background: #ff9800;
+          animation: bounce 0.9s infinite alternate;
+        }
+
+        .typing-card span:nth-child(2) {
+          animation-delay: 0.15s;
+        }
+
+        .typing-card span:nth-child(3) {
+          animation-delay: 0.3s;
+        }
+
+        .composer-wrap {
+          padding: 1rem 1.25rem 1.25rem;
+          background: linear-gradient(180deg, rgba(255, 255, 255, 0.99) 0%, rgba(255, 248, 238, 0.99) 100%);
+          border-top: 1px solid rgba(255, 152, 0, 0.14);
+        }
+
+        .composer {
+          max-width: 56rem;
+          margin: 0 auto;
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          padding: 0.7rem;
+          border-radius: 1.15rem;
+          background: #fff;
+          border: 1px solid rgba(255, 152, 0, 0.18);
+          box-shadow: 0 12px 30px rgba(0, 0, 0, 0.05);
+        }
+
+        .composer-input {
+          flex: 1;
+          min-width: 0;
+          background: transparent;
+          border: none;
+          outline: none;
+          padding: 0.45rem 0.55rem;
+          font-size: 0.95rem;
+          color: #111827;
+        }
+
+        .composer-input::placeholder {
+          color: #64748b;
+        }
+
+        .composer-actions {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        }
+
+        .action-icon,
+        .send-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 0.95rem;
+          transition: all 0.2s ease;
+        }
+
+        .action-icon {
+          width: 2.75rem;
+          height: 2.75rem;
+          background: rgba(17, 17, 17, 0.05);
+          color: #6b7280;
+          border: 1px solid transparent;
+        }
+
+        .action-icon.small {
+          width: 2.45rem;
+          height: 2.45rem;
+        }
+
+        .action-icon.recording {
+          background: #ef4444;
+          color: #fff;
+        }
+
+        .action-icon:disabled {
+          opacity: 0.45;
+          cursor: not-allowed;
+        }
+
+        .send-btn {
+          gap: 0.5rem;
+          background: linear-gradient(135deg, #ff9800 0%, #ff6f00 100%);
+          color: #fff;
+          font-weight: 800;
+          padding: 0.8rem 1rem;
+          box-shadow: 0 10px 24px rgba(255, 152, 0, 0.22);
+        }
+
+        .send-btn.small {
+          width: 2.85rem;
+          height: 2.85rem;
+          padding: 0;
+        }
+
+        .send-btn:hover,
+        .option-pill:hover,
+        .logout-btn:hover,
+        .action-icon:hover {
+          transform: translateY(-1px);
+        }
+
+        .assessment-view {
+          padding: 1.4rem 1.25rem 1.1rem;
+          min-height: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
+          height: 100%;
+          background:
+            radial-gradient(circle at top right, rgba(255, 152, 0, 0.05) 0%, transparent 28%),
+            linear-gradient(180deg, #111 0%, #181818 100%);
+          color: #f8fafc;
+        }
+
+        .question-head h2 {
+          margin: 0;
+          font-size: clamp(1.7rem, 2.6vw, 2.4rem);
+          line-height: 1.2;
+          max-width: 34rem;
+        }
+
+        .question-label {
+          font-size: 0.74rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.12em;
+          color: #ff9800;
+          margin-bottom: 0.5rem;
+        }
+
+        .assessment-box {
+          margin-top: auto;
+          display: flex;
+          flex-direction: column;
+          gap: 0.9rem;
+          padding: 1rem;
+          border-radius: 1.25rem;
+          border: 1px solid rgba(255, 152, 0, 0.14);
+          background: rgba(17, 17, 17, 0.58);
+          box-shadow: 0 18px 40px rgba(0, 0, 0, 0.18);
+        }
+
+        .assessment-input {
+          width: 100%;
+          min-height: 190px;
+          resize: none;
+          background: transparent;
+          border: none;
+          outline: none;
+          color: #f8fafc;
+          font-size: 1rem;
+          line-height: 1.65;
+          padding: 0.25rem;
+        }
+
+        .assessment-input::placeholder {
+          color: #64748b;
+        }
+
+        .assessment-actions {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.75rem;
+          padding-top: 0.9rem;
+          border-top: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .assessment-footer {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.7rem 1rem;
+          align-items: center;
+          justify-content: space-between;
+          padding: 0.4rem 0.25rem 0;
+          font-size: 0.72rem;
+          font-weight: 800;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: rgba(248, 250, 252, 0.7);
+        }
+
+        .assessment-footer span:last-child {
+          text-align: right;
+        }
+
+        @media (max-width: 1100px) {
+          .onboarding-shell {
+            height: auto;
+            min-height: 100vh;
+            overflow: visible;
+            grid-template-columns: 1fr;
+          }
+
+          .onboarding-hero,
+          .assessment-view {
+            padding: 1.5rem;
+          }
+
+          .question-head h2,
+          .onboarding-hero h1 {
+            max-width: none;
+          }
+        }
+
+        @media (max-width: 720px) {
+          .onboarding-shell {
+            padding: 0.75rem;
+          }
+
+          .onboarding-header,
+          .composer-wrap,
+          .chat-scroll {
+            padding-left: 0.9rem;
+            padding-right: 0.9rem;
+          }
+
+          .onboarding-brand {
+            align-items: flex-start;
+          }
+
+          .header-right {
+            flex-wrap: wrap;
+            justify-content: flex-end;
+          }
+
+          .composer {
+            flex-wrap: wrap;
+          }
+
+          .composer-actions {
+            width: 100%;
+            justify-content: flex-end;
+          }
+
+          .assessment-actions {
+            flex-direction: column;
+            align-items: stretch;
+          }
+
+          .assessment-footer {
+            flex-direction: column;
+            align-items: flex-start;
+          }
+        }
+
+        @keyframes bounce {
+          from {
+            transform: translateY(0);
+            opacity: 0.55;
+          }
+          to {
+            transform: translateY(-4px);
+            opacity: 1;
+          }
+        }
+      `}</style>
     </div>
   );
 }
