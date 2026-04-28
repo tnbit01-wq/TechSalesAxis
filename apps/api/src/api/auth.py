@@ -14,7 +14,6 @@ router = APIRouter(tags=["auth"])
 
 class SignupRequest(BaseModel):
     email: EmailStr
-    password: str
     role: str
     full_name: str
 
