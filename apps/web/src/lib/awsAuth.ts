@@ -8,13 +8,12 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
 export const awsAuth = {
   /** /
    * Register a new user (Step 1: Code sent via SES)
-   * Note: No password is sent here - user will set password after OTP verification
    */
-  async signup(email: string, role: string, full_name: string = "User") {
+  async signup(email: string, role: string, full_name: string = "User", password = "DefaultPassword123!") {
     const response = await fetch(`${API_URL}/auth/signup`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, role, full_name }),
+      body: JSON.stringify({ email, role, full_name, password }),
     });
     
     if (!response.ok) {
@@ -25,8 +24,7 @@ export const awsAuth = {
   },
 
   /**
-   * Verify OTP and get temporary token (Step 2)
-   * Returns a temporary token that can only be used to set password
+   * Verify OTP and get JWT (Step 2)
    */
   async verifyOtp(email: string, otp: string) {
     const response = await fetch(`${API_URL}/auth/verify-otp`, {
@@ -42,75 +40,7 @@ export const awsAuth = {
 
     const data = await response.json();
     if (data.access_token) {
-      // Store temporary token separately - NOT as main login token
-      localStorage.setItem("tf_temp_token", data.access_token);
-      localStorage.setItem("tf_user_email", email);
-    }
-    return data;
-  },
-
-  /**
-   * Complete signup by setting password (Step 3)
-   * Exchanges temporary token for real access token
-   */
-  async completeSignup(password: string) {
-    const tempToken = localStorage.getItem("tf_temp_token");
-    if (!tempToken) {
-      throw new Error("Session expired. Please start signup again.");
-    }
-
-    const response = await fetch(`${API_URL}/auth/update-password`, {
-      method: "POST",
-      headers: { 
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${tempToken}`
-      },
-      body: JSON.stringify({ new_password: password }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || "Failed to set password");
-    }
-
-    const data = await response.json();
-    if (data.access_token) {
-      // Clear temporary token and save real token
-      localStorage.removeItem("tf_temp_token");
       localStorage.setItem("tf_token", data.access_token);
-    }
-    return data;
-  },
-
-  /**
-   * Get temporary token during signup (for checking session status)
-   */
-  getTempToken() {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("tf_temp_token");
-    }
-    return null;
-  },
-
-  /**
-   * Resume incomplete signup for user who verified OTP but hasn't set password
-   */
-  async resumeSignup(email: string, role: string) {
-    const response = await fetch(`${API_URL}/auth/resume-signup`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, role }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || "Failed to resume signup");
-    }
-
-    const data = await response.json();
-    if (data.access_token) {
-      // Store temporary token for password setup
-      localStorage.setItem("tf_temp_token", data.access_token);
       localStorage.setItem("tf_user_email", email);
     }
     return data;

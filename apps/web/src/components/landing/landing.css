@@ -12,7 +12,7 @@ nav {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.42rem 1.2rem;
+  padding: 0.85rem 1.5rem;
   background: #fff;
   position: sticky;
   top: 0;
@@ -35,24 +35,24 @@ nav {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 4.6rem;
-  height: 4.6rem;
+  width: 6rem;
+  height: 6rem;
   border-radius: 0.8rem;
   background: transparent;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .nav-logo-image {
-  width: 4.6rem;
-  height: 4.6rem;
+  width: 6rem;
+  height: 6rem;
   object-fit: contain;
-  transform: scale(1.42);
+  transform: scale(1.45);
   mix-blend-mode: multiply;
 }
 
 .nav-links {
   display: flex;
-  gap: 1.35rem;
+  gap: 2rem;
   align-items: center;
 }
 
@@ -79,16 +79,16 @@ nav {
 
 .nav-ctas {
   display: flex;
-  gap: 0.75rem;
+  gap: 1rem;
   align-items: center;
 }
 
 .btn {
-  padding: 0.55rem 1rem;
-  font-size: 0.875rem;
-  font-weight: 700;
-  text-transform: none;
-  letter-spacing: 0.01em;
+  padding: 0.75rem 1.5rem;
+  font-size: 0.75rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   border-radius: 0.5rem;
   text-decoration: none;
   border: none;
@@ -125,9 +125,8 @@ nav {
 }
 
 .btn-brand-lg {
-  padding: 0.62rem 1.15rem;
+  padding: 1rem 2rem;
   font-size: 0.875rem;
-  font-weight: 700;
   background: linear-gradient(135deg, #ff9800 0%, #ff6f00 100%);
   color: white;
   transition: all 0.3s ease;
@@ -150,14 +149,6 @@ section.hero {
   justify-content: center;
   align-items: center;
   text-align: center;
-}
-
-section.features,
-section.candidates,
-section.recruiters,
-section.bidirectional,
-section.cta {
-  scroll-margin-top: 105px;
 }
 
 .hero-grid-bg {
@@ -210,7 +201,7 @@ section.cta {
 }
 
 h1 {
-  font-size: 2.8rem;
+  font-size: 3rem;
   font-weight: 900;
   color: #000;
   line-height: 1.2;
@@ -304,9 +295,10 @@ h1 {
 
 .hero-stats {
   display: grid;
-  grid-template-columns: repeat(4, minmax(170px, 1fr));
-  gap: 0.8rem;
-  padding-top: 0.5rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid rgba(255, 152, 0, 0.25);
   max-width: 920px;
   width: 100%;
   position: relative;
@@ -314,10 +306,10 @@ h1 {
 }
 
 .hero-stats > div {
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(255, 152, 0, 0.2);
-  border-radius: 0.7rem;
-  padding: 0.75rem 0.65rem;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(255, 152, 0, 0.24);
+  border-radius: 0.75rem;
+  padding: 0.8rem 0.5rem;
 }
 
 .hero-stats > div {
@@ -325,18 +317,18 @@ h1 {
 }
 
 .hero-stat-num {
-  font-size: 1rem;
-  font-weight: 700;
-  color: #111;
-  line-height: 1.25;
+  font-size: 1.875rem;
+  font-weight: 900;
+  color: #ff9800;
   animation: slideInUp 0.8s ease 0.6s both;
 }
 
 .hero-stat-lbl {
-  font-size: 0.72rem;
-  color: #4b5563;
-  letter-spacing: 0.02em;
-  margin-top: 0.35rem;
+  font-size: 0.75rem;
+  color: #000;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 0.5rem;
   font-weight: 600;
 }
 
@@ -382,7 +374,7 @@ section.features {
 
 .feature-cards {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1rem;
 }
 
@@ -397,8 +389,7 @@ section.features {
   transition: all 0.3s ease;
   text-align: left;
   animation: slideInUp 0.6s ease forwards;
-  min-height: 176px;
-  height: 100%;
+  min-height: 188px;
   overflow: hidden;
 }
 
@@ -460,11 +451,6 @@ section.features {
   align-items: center;
   gap: 0.75rem;
   margin-bottom: 0.75rem;
-}
-
-.feature-card .feature-title-row,
-.bidir-card .bidir-title-row {
-  align-items: center;
 }
 
 .feature-title-icon {
@@ -774,13 +760,10 @@ section.bidirectional {
     linear-gradient(180deg, #ffffff 0%, #fff7ec 100%);
   border: 1px solid rgba(255, 152, 0, 0.32);
   border-radius: 0.9rem;
-  text-align: left;
+  text-align: center;
   transition: all 0.3s ease;
   animation: slideInUp 0.6s ease forwards;
   overflow: hidden;
-  min-height: 176px;
-  display: flex;
-  flex-direction: column;
 }
 
 .bidir-card::after {
@@ -821,15 +804,9 @@ section.bidirectional {
 .bidir-title-row {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
   gap: 0.75rem;
   margin-bottom: 0.75rem;
-}
-
-.bidir-card {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
 }
 
 .bidir-title-icon {
@@ -856,10 +833,6 @@ section.bidirectional {
   font-size: 0.875rem;
   color: #333;
   line-height: 1.5;
-}
-
-.bidir-card .bidir-description {
-  max-width: 34ch;
 }
 
 /* CTA SECTION */
@@ -932,13 +905,12 @@ section.cta {
 .btn-white {
   background: white;
   color: #000;
-  padding: 0.62rem 1.1rem;
+  padding: 0.75rem 1.5rem;
   border-radius: 0.5rem;
   text-decoration: none;
   font-weight: 700;
   font-size: 0.875rem;
-  text-transform: none;
-  letter-spacing: 0.01em;
+  text-transform: uppercase;
   transition: all 0.3s ease;
   border: 2px solid white;
   animation: fadeInUp 0.6s ease 0.7s both;
@@ -955,13 +927,12 @@ section.cta {
   background: transparent;
   color: white;
   border: 2px solid white;
-  padding: 0.62rem 1.1rem;
+  padding: 0.75rem 1.5rem;
   border-radius: 0.5rem;
   text-decoration: none;
   font-weight: 700;
   font-size: 0.875rem;
-  text-transform: none;
-  letter-spacing: 0.01em;
+  text-transform: uppercase;
   transition: all 0.3s ease;
   animation: fadeInUp 0.6s ease 0.8s both;
 }

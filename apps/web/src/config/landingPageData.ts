@@ -159,7 +159,7 @@ export const defaultLandingPageConfig: LandingPageConfig = {
       { label: 'Why choose us', href: '#trust' },
     ],
     actions: [
-      { label: 'Sign in', href: '/login', variant: 'ghost' },
+      { label: 'Sign in', href: '/auth/candidate/login', variant: 'ghost' },
       { label: 'Get started', href: '/get-started', variant: 'brand' },
     ],
   },
@@ -200,10 +200,10 @@ export const defaultLandingPageConfig: LandingPageConfig = {
     },
   ],
   heroStats: [
-    { value: 'Signal rich', label: 'Talent profiles' },
-    { value: 'Role aware', label: 'Matching engine' },
-    { value: 'Conversation led', label: 'Hiring flow' },
-    { value: 'Interview ready', label: 'Candidate quality' },
+    { value: 'Signal-Rich', label: 'Talent profiles' },
+    { value: 'Role-Aware', label: 'Matching engine' },
+    { value: 'Conversation-Led', label: 'Hiring flow' },
+    { value: 'Interview-Ready', label: 'Candidate quality' },
   ],
   features: {
     sectionLabel: 'Powered by real technology',
@@ -387,7 +387,7 @@ export const defaultLandingPageConfig: LandingPageConfig = {
     ],
     buttons: [
       { label: 'Get started free', href: '/get-started', variant: 'white' },
-      { label: 'Sign in', href: '/login', variant: 'outline-white' },
+      { label: 'Sign in', href: '/auth/candidate/login', variant: 'outline-white' },
     ],
   },
   footer: {
@@ -399,14 +399,14 @@ export const defaultLandingPageConfig: LandingPageConfig = {
         title: 'For candidates',
         links: [
           { label: 'Create profile', href: '/signup?role=candidate' },
-          { label: 'Candidate login', href: '/login' },
+          { label: 'Candidate login', href: '/auth/candidate/login' },
         ],
       },
       {
         title: 'For recruiters',
         links: [
           { label: 'Start hiring', href: '/signup?role=recruiter' },
-          { label: 'Recruiter login', href: '/login?role=recruiter' },
+          { label: 'Recruiter login', href: '/auth/recruiter/login' },
         ],
       },
     ],

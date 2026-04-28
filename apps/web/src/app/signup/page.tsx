@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import { useVoice } from "@/hooks/useVoice";
-import { usePageMount } from "@/hooks/usePageLoad";
 import {
   isPersonalEmail,
   isValidEmail,
@@ -42,16 +41,15 @@ function SignupForm() {
   const [customPassword, setCustomPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const otpTriggerRef = useRef(false); // Track if OTP trigger has been executed
+  const initialized = useRef(false);
 
   const { isListening, transcript, startListening, stopListening, hasSupport } =
     useVoice();
 
-  // Auto-trigger signup when email is passed from login and state becomes AWAITING_OTP_TRIGGER
+  // Auto-trigger signup when email is passed from login
   useEffect(() => {
-    const triggerOtp = async () => {
-      if (state === "AWAITING_OTP_TRIGGER" && email && userName && !otpTriggerRef.current) {
-        otpTriggerRef.current = true; // Mark as executed to prevent duplicate calls
+    const autoSignup = async () => {
+      if (state === "AWAITING_OTP_TRIGGER" && email && userName) {
         setIsLoading(true);
         try {
           await apiClient.post("/auth/validate-email", {
@@ -73,21 +71,19 @@ function SignupForm() {
               "bot",
             );
             setState("AWAITING_EMAIL");
-            otpTriggerRef.current = false; // Reset on error so user can retry
           }
         } catch (err) {
           const errorMessage =
             err instanceof Error ? err.message : "Email validation failed.";
           addMessage(errorMessage, "bot");
           setState("AWAITING_EMAIL");
-          otpTriggerRef.current = false; // Reset on error so user can retry
         } finally {
           setIsLoading(false);
         }
       }
     };
 
-    triggerOtp();
+    autoSignup();
   }, [state, email, userName, role]);
 
   // Scroll to bottom whenever messages change
@@ -96,17 +92,6 @@ function SignupForm() {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
-
-  // Save signup state to sessionStorage for refresh recovery
-  useEffect(() => {
-    if (state === "AWAITING_PASSWORD_SET") {
-      sessionStorage.setItem("signup_state", "AWAITING_PASSWORD_SET");
-      sessionStorage.setItem("signup_messages", JSON.stringify(messages));
-    } else {
-      sessionStorage.removeItem("signup_state");
-      sessionStorage.removeItem("signup_messages");
-    }
-  }, [state, messages]);
 
   // Handle voice transcript
   useEffect(() => {
@@ -127,73 +112,48 @@ function SignupForm() {
     ]);
   };
 
-  // Initialize page only once when mounted
-  usePageMount(async () => {
-    const token = awsAuth.getToken();
-    const tempToken = awsAuth.getTempToken();
-
-    // Check if user is resuming incomplete signup (password setup needed)
-    if (tempToken && !token) {
-      const savedEmail = localStorage.getItem("tf_user_email");
-      const savedState = sessionStorage.getItem("signup_state");
-      const savedMessages = sessionStorage.getItem("signup_messages");
-      
-      // Only resume if we have evidence of actual OTP verification
-      if (savedEmail && (savedState === "AWAITING_PASSWORD_SET" || savedMessages)) {
-        setEmail(savedEmail);
-        const name = extractNameFromEmail(savedEmail);
-        setUserName(name);
-        
-        if (savedMessages) {
-          try {
-            setMessages(JSON.parse(savedMessages));
-          } catch {
-            addMessage("Great! Your email is verified. Now please create a password (at least 8 characters).", "bot");
-          }
-        } else {
-          addMessage("Great! Your email is verified. Now please create a password (at least 8 characters).", "bot");
+  useEffect(() => {
+    async function checkSession() {
+      const token = awsAuth.getToken();
+      if (token) {
+        try {
+          const handshake = await apiClient.post(
+            "/auth/post-login",
+            {},
+            token,
+          );
+          router.replace(handshake.next_step);
+        } catch (err) {
+          console.error("Handshake failed during session check:", err);
+          // Don't auto-logout, allow them to continue signup or refresh
         }
-        setState("AWAITING_PASSWORD_SET");
-        return; // Skip rest of initialization
-      } else {
-        // Stale token - clear it and start fresh
-        localStorage.removeItem("tf_temp_token");
-        localStorage.removeItem("tf_user_email");
-        sessionStorage.removeItem("signup_state");
-        sessionStorage.removeItem("signup_messages");
       }
     }
 
-    // If logged in, redirect to appropriate page
-    if (token) {
-      try {
-        const handshake = await apiClient.post(
-          "/auth/post-login",
-          {},
-          token,
-        );
-        router.replace(handshake.next_step);
-      } catch (err) {
-        console.error("Handshake failed during session check:", err);
-      }
-      return;
+    if (state === "INITIAL" && !initialized.current) {
+      initialized.current = true;
+      checkSession().then(() => {
+        // Check if email was passed from login (account not found)
+        const emailParam = searchParams.get("email");
+        
+        if (emailParam) {
+          // Auto-start signup with provided email
+          window.history.replaceState({}, "", window.location.pathname + `?role=${role}`);
+          const decodedEmail = decodeURIComponent(emailParam);
+          const name = extractNameFromEmail(decodedEmail);
+          setUserName(name);
+          setEmail(decodedEmail);
+          addMessage(`Welcome ${name}! Let's set up your account. Sending verification code...`, "bot");
+          // Trigger signup with the email
+          setState("AWAITING_OTP_TRIGGER");
+        } else {
+          const greeting = `Welcome! Let's get you started. Please enter your email address.`;
+          addMessage(greeting, "bot");
+          setState("AWAITING_EMAIL");
+        }
+      });
     }
-
-    // New signup - check if email passed from login
-    const emailParam = searchParams.get("email");
-    if (emailParam) {
-      window.history.replaceState({}, "", window.location.pathname + `?role=${role}`);
-      const decodedEmail = decodeURIComponent(emailParam);
-      const name = extractNameFromEmail(decodedEmail);
-      setUserName(name);
-      setEmail(decodedEmail);
-      setState("AWAITING_OTP_TRIGGER");
-    } else {
-      const greeting = `Welcome! Let's get you started. Please enter your email address.`;
-      addMessage(greeting, "bot");
-      setState("AWAITING_EMAIL");
-    }
-  });
+  }, [state, role, router, searchParams]);
 
   const handleSend = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -264,7 +224,6 @@ function SignupForm() {
                   // Store email temporarily and redirect to login
                   setTimeout(() => {
                     const email = workingInput.toLowerCase();
-                    sessionStorage.setItem("tf_login_email_handoff", email);
                     router.replace(`/login?email=${encodeURIComponent(email)}`);
                   }, 1500);
                 } else {
@@ -343,36 +302,31 @@ function SignupForm() {
         }
 
         try {
-          // Save signup state to sessionStorage so it survives page refresh
-          sessionStorage.setItem("signup_state", "AWAITING_PASSWORD_SET");
-          sessionStorage.setItem("signup_messages", JSON.stringify(messages));
-          
-          // Use the new completeSignup function that exchanges temp token for real token
-          await awsAuth.completeSignup(password);
+          // Update user's password in the backend
+          const token = awsAuth.getToken();
+          if (token) {
+            await apiClient.post(
+              "/auth/update-password",
+              { new_password: password },
+              token,
+            );
+          }
 
           addMessage(
             "Perfect! Your account is ready. Taking you to sign in...",
             "bot",
           );
           setState("COMPLETED");
-          
-          // Clear signup state from sessionStorage
-          sessionStorage.removeItem("signup_state");
-          sessionStorage.removeItem("signup_messages");
 
           // After password set, redirect to login
           setTimeout(() => {
             router.replace("/login");
           }, 1500);
         } catch (err: any) {
-          const errorMsg = err.message || "An error occurred";
           addMessage(
-            `We couldn't create your password. ${errorMsg}`,
+            `We couldn't create your password. Please try again.`,
             "bot",
           );
-          // Clear sessionStorage on error so user can retry
-          sessionStorage.removeItem("signup_state");
-          sessionStorage.removeItem("signup_messages");
         }
       }
     } catch {
@@ -383,428 +337,178 @@ function SignupForm() {
   };
 
   return (
-    <div className="auth-shell">
-      <aside className="auth-hero">
-        <div className="auth-hero-badge">{role} onboarding</div>
-        <div className="auth-hero-brand">
-          <img src="/images/talentflow-logo.png" alt="TechSalesAxis" className="auth-hero-logo" />
-          <div>
-            <div className="auth-hero-kicker">Create your account</div>
-            <h1>{role === "recruiter" ? "Set up a verified hiring workspace." : "Build a profile that stands out."}</h1>
-          </div>
-        </div>
-        <p className="auth-hero-copy">
-          {role === "recruiter"
-            ? "Create a recruiter account with a short verified flow so your workspace opens with trust signals and the right access."
-            : "Create a candidate account with a short verified flow so your profile is ready for matching and onboarding."}
-        </p>
-        <div className="auth-hero-points">
-          <div>
-            <span>01</span>
-            <p>
-              <strong>{role === "recruiter" ? "Use work email" : "Use personal email"}</strong>
-              {role === "recruiter"
-                ? "This keeps recruiter access tied to a verified company identity."
-                : "This keeps candidate identity consistent and avoids company-email conflicts."}
-            </p>
-          </div>
-          <div>
-            <span>02</span>
-            <p>
-              <strong>Verify with OTP</strong>
-              Email verification confirms ownership before activation.
-            </p>
-          </div>
-          <div>
-            <span>03</span>
-            <p>
-              <strong>Create password</strong>
-              Secure your account, then continue to role-specific onboarding.
-            </p>
-          </div>
-        </div>
-      </aside>
-
-      <div className="auth-panel">
-        {/* Header */}
-        <header className="bg-white border-b px-6 py-4 flex items-center justify-between shadow-sm">
-          <div className="flex items-center gap-4">
-            <Link
-              href="/"
-              className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500 hover:text-primary"
-              aria-label="Back to home"
+    <div className="flex flex-col h-screen bg-slate-50">
+      {/* Header */}
+      <header className="bg-white border-b px-6 py-4 flex items-center justify-between shadow-sm">
+        <div className="flex items-center gap-4">
+          <Link
+            href="/"
+            className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500 hover:text-primary"
+            aria-label="Back to home"
+          >
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
             >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M10 19l-7-7m0 0l7-7m-7 7h18"
-                />
-              </svg>
-            </Link>
-            <div className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-                <div className="h-4 w-4 rounded-sm bg-white rotate-45" />
-              </div>
-              <span className="font-bold text-slate-900 tracking-tight">
-                TechSales Axis Onboarding
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M10 19l-7-7m0 0l7-7m-7 7h18"
+              />
+            </svg>
+          </Link>
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
+              <div className="h-4 w-4 rounded-sm bg-white rotate-45" />
+            </div>
+            <span className="font-bold text-slate-900 tracking-tight">
+              TechSales Axis Onboarding
+            </span>
+          </div>
+        </div>
+        <div className="text-xs font-medium text-slate-400 uppercase tracking-widest bg-slate-100 px-2 py-1 rounded">
+          {role} signup
+        </div>
+      </header>
+
+      {/* Chat Area */}
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto p-4 space-y-4 max-w-3xl mx-auto w-full scroll-smooth"
+      >
+        {messages.map((msg) => (
+          <div
+            key={msg.id}
+            className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"}`}
+          >
+            <div
+              className={`max-w-[80%] rounded-2xl px-4 py-3 shadow-sm ${
+                msg.sender === "user"
+                  ? "bg-blue-600 text-white rounded-tr-none"
+                  : "bg-white text-slate-800 border border-slate-200 rounded-tl-none"
+              }`}
+            >
+              <p className="text-sm leading-relaxed">{msg.text}</p>
+              <span className="text-[10px] opacity-50 mt-1 block text-right">
+                {msg.timestamp.toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
               </span>
             </div>
           </div>
-          <div className="text-xs font-medium text-slate-400 uppercase tracking-widest bg-slate-100 px-2 py-1 rounded">
-            {role} signup
+        ))}
+        {isLoading && (
+          <div className="flex justify-start">
+            <div className="bg-white border border-slate-100 rounded-2xl rounded-tl-none px-4 py-3 shadow-sm">
+              <div className="flex gap-1">
+                <div className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce" />
+                <div className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce [animation-delay:0.2s]" />
+                <div className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce [animation-delay:0.4s]" />
+              </div>
+            </div>
           </div>
-        </header>
-
-        {/* Chat Area */}
-        <div
-          ref={scrollRef}
-          className="flex-1 overflow-y-auto px-4 py-4 space-y-4 w-full scroll-smooth"
-        >
-          {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex w-full ${msg.sender === "user" ? "justify-end" : "justify-start"}`}
-            >
-              <div
-                className={`max-w-[calc(100%-1rem)] rounded-[1.1rem] px-4 py-3 shadow-sm ${
-                  msg.sender === "user"
-                    ? "bg-gradient-to-r from-[#ff9800] to-[#ff6f00] text-white rounded-tr-[0.4rem]"
-                    : "bg-gradient-to-b from-white to-[#fff8ee] text-slate-900 border border-orange-100 rounded-tl-[0.4rem]"
-                }`}
-              >
-                <p className="text-sm leading-relaxed">{msg.text}</p>
-                <span className="text-[10px] opacity-50 mt-1 block text-right">
-                  {msg.timestamp.toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </span>
-              </div>
-            </div>
-          ))}
-          {isLoading && (
-            <div className="flex justify-start">
-              <div className="bg-gradient-to-b from-white to-[#fff8ee] border border-orange-100 rounded-[1.1rem] rounded-tl-[0.4rem] px-4 py-3 shadow-sm">
-                <div className="flex gap-1">
-                  <div className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce" />
-                  <div className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce [animation-delay:0.2s]" />
-                  <div className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce [animation-delay:0.4s]" />
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Input Area */}
-        <div className="p-4 bg-white border-t sm:p-6 shadow-[0_-4px_10px_-1px_rgba(0,0,0,0.05)]">
-          <form
-            onSubmit={handleSend}
-            className="flex items-end gap-3 relative w-full"
-          >
-            <input
-              type={state === "AWAITING_PASSWORD_SET" && !showPassword ? "password" : "text"}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Type your message..."
-              disabled={isLoading || state === "COMPLETED"}
-              className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
-            />
-
-            {state === "AWAITING_PASSWORD_SET" && (
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                disabled={isLoading}
-                className="p-3 rounded-xl transition-all bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed"
-                title={showPassword ? "Hide password" : "Show password"}
-              >
-                {showPassword ? (
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-4.803m5.596-3.856a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0M15 12a3 3 0 11-6 0 3 3 0 016 0zm6 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                ) : (
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                  </svg>
-                )}
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={isListening ? stopListening : startListening}
-              disabled={isLoading || state === "COMPLETED" || !hasSupport}
-              className={`p-3 rounded-xl transition-all ${
-                isListening
-                  ? "bg-red-500 text-white animate-pulse"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              } disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed`}
-              title={isListening ? "Stop listening" : "Start voice input"}
-            >
-              <svg
-                className="w-5 h-5"
-                fill="#19005d"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m8 0h-8m4-29a3 3 0 013 3v10a3 3 0 01-3 3 3 3 0 01-3-3V7a3 3 0 013-3z"
-                />
-              </svg>
-            </button>
-
-            <button
-              type="submit"
-              disabled={!input.trim() || isLoading || state === "COMPLETED"}
-              className="p-3 bg-primary text-white rounded-xl hover:bg-primary-dark transition-all disabled:bg-slate-300 disabled:text-slate-600 disabled:cursor-not-allowed shadow-md shadow-primary-light"
-            >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-                />
-              </svg>
-            </button>
-          </form>
-          <p className="max-w-3xl mx-auto mt-2 text-[10px] text-center text-slate-400 uppercase tracking-widest font-medium">
-            Powered by TechSales Axis Trust Layer
-          </p>
-        </div>
+        )}
       </div>
 
-      <style jsx>{`
-        .auth-shell {
-          height: 100dvh;
-          min-height: 100dvh;
-          padding: 1rem;
-          display: grid;
-          grid-template-columns: minmax(320px, 0.4fr) minmax(0, 0.6fr);
-          gap: 1.25rem;
-          overflow: hidden;
-          box-sizing: border-box;
-          background:
-            radial-gradient(circle at 12% 18%, rgba(255, 152, 0, 0.16) 0%, transparent 28%),
-            radial-gradient(circle at 88% 82%, rgba(255, 152, 0, 0.1) 0%, transparent 28%),
-            linear-gradient(135deg, #fffaf5 0%, #fff4e7 100%);
-        }
+      {/* Input Area */}
+      <div className="p-4 bg-white border-t sm:p-6 shadow-[0_-4px_10px_-1px_rgba(0,0,0,0.05)]">
+        <form
+          onSubmit={handleSend}
+          className="max-w-3xl mx-auto flex items-center gap-3 relative"
+        >
+          <input
+            type={state === "AWAITING_PASSWORD_SET" && !showPassword ? "password" : "text"}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Type your message..."
+            disabled={isLoading || state === "COMPLETED"}
+            className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
+          />
 
-        .auth-hero {
-          border: 1px solid rgba(255, 152, 0, 0.22);
-          border-radius: 1.35rem;
-          background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(255, 248, 238, 0.95) 100%);
-          box-shadow: 0 18px 40px rgba(0, 0, 0, 0.08);
-          padding: 1.3rem;
-          display: flex;
-          flex-direction: column;
-          justify-content: flex-start;
-          gap: 0.85rem;
-          overflow: hidden;
-        }
+          {state === "AWAITING_PASSWORD_SET" && (
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              disabled={isLoading}
+              className="p-3 rounded-xl transition-all bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed"
+              title={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? (
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-4.803m5.596-3.856a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0M15 12a3 3 0 11-6 0 3 3 0 016 0zm6 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              ) : (
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+              )}
+            </button>
+          )}
 
-        .auth-hero-badge {
-          align-self: flex-start;
-          font-size: 0.74rem;
-          font-weight: 800;
-          letter-spacing: 0.08em;
-          text-transform: uppercase;
-          color: #ff9800;
-        }
+          <button
+            type="button"
+            onClick={isListening ? stopListening : startListening}
+            disabled={isLoading || state === "COMPLETED" || !hasSupport}
+            className={`p-3 rounded-xl transition-all ${
+              isListening
+                ? "bg-red-500 text-white animate-pulse"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+            } disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed`}
+            title={isListening ? "Stop listening" : "Start voice input"}
+          >
+            <svg
+              className="w-5 h-5"
+              fill="#19005d"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m8 0h-8m4-29a3 3 0 013 3v10a3 3 0 01-3 3 3 3 0 01-3-3V7a3 3 0 013-3z"
+              />
+            </svg>
+          </button>
 
-        .auth-hero-brand {
-          display: flex;
-          align-items: center;
-          gap: 0.85rem;
-        }
-
-        .auth-hero-logo {
-          width: 3.5rem;
-          height: 3.5rem;
-          object-fit: contain;
-          mix-blend-mode: multiply;
-        }
-
-        .auth-hero-kicker {
-          font-size: 0.8rem;
-          font-weight: 700;
-          color: #64748b;
-          text-transform: uppercase;
-          letter-spacing: 0.08em;
-          margin-bottom: 0.35rem;
-        }
-
-        .auth-hero h1 {
-          margin: 0;
-          font-size: clamp(1.45rem, 2vw, 2.1rem);
-          line-height: 1.08;
-          color: #000;
-          max-width: 15ch;
-        }
-
-        .auth-hero-copy {
-          margin: 0;
-          font-size: 0.82rem;
-          line-height: 1.4;
-          color: #334155;
-          max-width: 28rem;
-        }
-
-        .auth-hero-points {
-          display: grid;
-          gap: 0.6rem;
-        }
-
-        .auth-hero-points div {
-          display: grid;
-          grid-template-columns: 2.55rem 1fr;
-          gap: 0.7rem;
-          align-items: start;
-          padding: 0.72rem 0.85rem;
-          border-radius: 1rem;
-          background: rgba(255, 255, 255, 0.75);
-          border: 1px solid rgba(255, 152, 0, 0.2);
-        }
-
-        .auth-hero-points span {
-          width: 2.55rem;
-          height: 2.55rem;
-          border-radius: 0.85rem;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          background: linear-gradient(135deg, #111 0%, #2f2f2f 100%);
-          color: #ff9800;
-          font-weight: 800;
-          letter-spacing: 0.06em;
-        }
-
-        .auth-hero-points p {
-          margin: 0;
-          color: #111;
-          font-size: 0.78rem;
-          line-height: 1.35;
-        }
-
-        .auth-hero-points p strong {
-          display: block;
-          margin-bottom: 0.12rem;
-          font-size: 0.82rem;
-          color: #000;
-        }
-
-        .auth-panel {
-          min-width: 0;
-          border: 1px solid rgba(255, 152, 0, 0.18);
-          border-radius: 1.35rem;
-          overflow: hidden;
-          background: rgba(255, 255, 255, 0.9);
-          box-shadow: 0 18px 40px rgba(0, 0, 0, 0.08);
-          display: flex;
-          flex-direction: column;
-        }
-
-        .auth-panel header {
-          background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(255, 248, 238, 0.98) 100%);
-          border-bottom: 1px solid rgba(255, 152, 0, 0.18);
-          box-shadow: none;
-        }
-
-        .auth-panel .text-xs {
-          background: rgba(255, 152, 0, 0.08);
-          color: #000;
-        }
-
-        .auth-panel .flex-1.overflow-y-auto {
-          background: radial-gradient(circle at top right, rgba(255, 152, 0, 0.06) 0%, transparent 32%), #fff;
-        }
-
-        .auth-panel .bg-white.border-t {
-          background: linear-gradient(180deg, rgba(255, 255, 255, 0.99) 0%, rgba(255, 248, 238, 0.99) 100%);
-          border-top: 1px solid rgba(255, 152, 0, 0.18);
-        }
-
-        .auth-panel input {
-          border-color: rgba(255, 152, 0, 0.22);
-          background: #fff;
-        }
-
-        .auth-panel input:focus {
-          box-shadow: 0 0 0 2px rgba(255, 152, 0, 0.18);
-        }
-
-        .auth-panel button[type="submit"] {
-          background: linear-gradient(135deg, #ff9800 0%, #ff6f00 100%);
-          box-shadow: 0 10px 24px rgba(255, 152, 0, 0.24);
-        }
-
-        .auth-panel button[type="submit"]:hover {
-          background: linear-gradient(135deg, #ffad33 0%, #ff8a00 100%);
-        }
-
-        .auth-panel .bg-slate-100 {
-          background: rgba(17, 17, 17, 0.06);
-          color: #111827;
-        }
-
-        .auth-panel .hover\\:text-primary:hover,
-        .auth-panel .text-primary {
-          color: #ff9800;
-        }
-
-        @media (max-width: 1100px) {
-          .auth-shell {
-            grid-template-columns: 1fr;
-            height: auto;
-            min-height: 100vh;
-            overflow: visible;
-          }
-
-          .auth-hero {
-            padding: 1.5rem;
-          }
-
-          .auth-hero h1 {
-            max-width: none;
-          }
-        }
-
-        @media (max-width: 640px) {
-          .auth-shell {
-            padding: 0.75rem;
-          }
-
-          .auth-hero-brand {
-            align-items: flex-start;
-          }
-
-          .auth-panel header {
-            padding-left: 1rem;
-            padding-right: 1rem;
-          }
-        }
-      `}</style>
+          <button
+            type="submit"
+            disabled={!input.trim() || isLoading || state === "COMPLETED"}
+            className="p-3 bg-primary text-white rounded-xl hover:bg-primary-dark transition-all disabled:bg-slate-300 disabled:text-slate-600 disabled:cursor-not-allowed shadow-md shadow-primary-light"
+          >
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+              />
+            </svg>
+          </button>
+        </form>
+        <p className="max-w-3xl mx-auto mt-2 text-[10px] text-center text-slate-400 uppercase tracking-widest font-medium">
+          Powered by TechSales Axis Trust Layer
+        </p>
+      </div>
     </div>
   );
 }
 
 export default function Page() {
-  return <SignupForm />;
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <SignupForm />
+    </Suspense>
+  );
 }
 

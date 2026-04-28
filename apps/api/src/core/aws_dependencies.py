@@ -23,7 +23,6 @@ async def get_current_user(
         payload = decode_access_token(token)
         user_id = payload.get("sub")
         email = payload.get("email")
-        purpose = payload.get("purpose")  # Extract purpose if it exists (e.g., "password_setup")
         
         if user_id is None:
             raise HTTPException(
@@ -41,16 +40,11 @@ async def get_current_user(
                     detail="User no longer exists in AWS"
                 )
             
-            # Build response - include purpose if it was in the token
-            result = {
+            return {
                 "sub": str(user.id),
                 "email": user.email,
                 "role": user.role
             }
-            if purpose:
-                result["purpose"] = purpose
-            
-            return result
         finally:
             db.close()
 
