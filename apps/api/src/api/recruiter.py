@@ -415,7 +415,7 @@ async def analyze_email(data: EmailAnalysisRequest):
         return result
     except Exception as e:
         print(f"ERROR in analyze_email: {str(e)}")
-        return {"company_name": "", "domain": "", "confidence": "low", "error": str(e)}
+        return {"company_name": "", "domain": "", "confidence": "low", "website": "", "description": "", "error": str(e)}
 
 @router.post("/find-company-details")
 async def find_company_details(data: CompanyDetailsRequest):

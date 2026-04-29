@@ -145,17 +145,17 @@ class RecruiterService:
 
     async def analyze_email_and_detect_company(self, email: str) -> Dict[str, Any]:
         """
-        Analyze recruiter email to detect company name and domain.
-        Smart detection: tries to find actual website, only guesses if needed.
-        Returns: {"company_name": str, "domain": str, "confidence": str}
+        Analyze recruiter email to detect company name, domain, website, and description.
+        Smart detection: tries to find actual website across multiple TLDs, auto-generates bio.
+        Returns: {"company_name": str, "domain": str, "confidence": str, "website": str, "description": str}
         """
         try:
             if not email:
-                return {"company_name": "", "domain": "", "confidence": "low"}
+                return {"company_name": "", "domain": "", "confidence": "low", "website": "", "description": ""}
             
             # Extract domain from email
             if "@" not in email:
-                return {"company_name": "", "domain": "", "confidence": "low"}
+                return {"company_name": "", "domain": "", "confidence": "low", "website": "", "description": ""}
             
             domain = email.split("@")[1].lower()
             domain_name = domain.split(".")[0]
@@ -165,15 +165,30 @@ class RecruiterService:
             # Skip personal email domains
             personal_domains = ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "aol.com", "mail.com", "mailinator.com"]
             if domain in personal_domains:
-                return {"company_name": "", "domain": domain, "confidence": "low"}
+                return {"company_name": "", "domain": domain, "confidence": "low", "website": "", "description": ""}
             
-            # Try to fetch the domain directly to verify it's a valid company website
+            # Build comprehensive URL list — start with the actual email domain,
+            # then try many TLD variants so we don't miss .in, .ai, .io, etc.
             potential_urls = [
                 f"https://{domain}",
                 f"https://www.{domain}",
-                f"https://{domain_name}.com",
-                f"https://www.{domain_name}.com",
             ]
+            
+            common_tlds = [".com", ".in", ".ai", ".io", ".co", ".co.in", ".org", ".net", ".tech", ".dev", ".app"]
+            for tld in common_tlds:
+                potential_urls.append(f"https://{domain_name}{tld}")
+                potential_urls.append(f"https://www.{domain_name}{tld}")
+            
+            # Deduplicate while preserving order (email domain URLs checked first)
+            seen = set()
+            unique_urls = []
+            for url in potential_urls:
+                if url not in seen:
+                    seen.add(url)
+                    unique_urls.append(url)
+            potential_urls = unique_urls
+            
+            print(f"DEBUG: Trying {len(potential_urls)} URL candidates: {potential_urls[:6]}...")
             
             company_website = None
             for url in potential_urls:
@@ -208,10 +223,17 @@ Respond with ONLY the company name, nothing else. If unclear, respond with the d
                     
                     if company_name and company_name.strip():
                         print(f"DEBUG: Extracted company from website: {company_name}")
+                        
+                        # Also generate bio/description from the website we already found
+                        description = await self.generate_company_bio(company_website)
+                        print(f"DEBUG: Auto-generated description from website: {bool(description)}")
+                        
                         return {
                             "company_name": company_name.strip(),
                             "domain": domain,
-                            "confidence": "high"
+                            "confidence": "high",
+                            "website": company_website,
+                            "description": description or ""
                         }
                 except Exception as e:
                     print(f"DEBUG: Failed to extract from website: {str(e)}")
@@ -222,12 +244,14 @@ Respond with ONLY the company name, nothing else. If unclear, respond with the d
             return {
                 "company_name": fallback_name,
                 "domain": domain,
-                "confidence": "low"
+                "confidence": "low",
+                "website": "",
+                "description": ""
             }
             
         except Exception as e:
             print(f"DEBUG: Email analysis failed: {str(e)}")
-            return {"company_name": "", "domain": "", "confidence": "low"}
+            return {"company_name": "", "domain": "", "confidence": "low", "website": "", "description": ""}
 
     async def find_company_details_by_name(self, company_name: str) -> Dict[str, Any]:
         """

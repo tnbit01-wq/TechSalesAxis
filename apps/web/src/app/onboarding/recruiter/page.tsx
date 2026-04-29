@@ -20,6 +20,11 @@ type OnboardingState =
   | "INITIAL"
   | "EMAIL_ANALYSIS"
   | "COMPANY_CONFIRMATION"
+  | "REVIEW_BIO"
+  | "EDITING_BIO"
+  | "CONFIRM_LOCATION"
+  | "RECRUITER_NAME"
+  | "RECRUITER_EXPERIENCE"
   | "REVIEW_DETAILS"
   | "EDITING_DETAIL"
   | "LOCATION"
@@ -218,7 +223,6 @@ export default function RecruiterOnboarding() {
         if (state === "COMPANY_CONFIRMATION") {
           if (val === "Yes, that's right") {
             // User confirmed the detected company
-            // Now ask for registration number (this will create the company and give us company_id)
             const confirmedDetails = { ...companyDetails };
             
             if (detectedCompanyName && !confirmedDetails.name) {
@@ -227,12 +231,22 @@ export default function RecruiterOnboarding() {
 
             setCompanyDetails(confirmedDetails);
             
-            // Move to REGISTRATION to create the company
-            setState("REGISTRATION");
-            addMessage(
-              "Great! Now please enter your Company Registration Number (CIN or GSTIN) so I can verify the company.",
-              "bot",
-            );
+            // Move to REVIEW_BIO to let them confirm/edit the extracted description
+            if (confirmedDetails.description) {
+              setState("REVIEW_BIO");
+              addMessage(
+                `Here's what I found about **${confirmedDetails.name}**:\n\n"${confirmedDetails.description}"\n\nIs this description accurate?`,
+                "bot",
+                ["Yes, looks good", "No, let me edit"],
+              );
+            } else {
+              // No description found, ask them to provide one
+              setState("EDITING_BIO");
+              addMessage(
+                "I couldn't find a description for your company. Please provide a brief description of what your company does.",
+                "bot",
+              );
+            }
             setIsLoading(false);
             return;
           } else if (val === "No, let me provide the name") {
@@ -265,15 +279,125 @@ export default function RecruiterOnboarding() {
               console.warn("Could not find company details:", err);
             }
 
-            // Move to REGISTRATION
-            setState("REGISTRATION");
-            addMessage(
-              "Perfect! Now please enter your Company Registration Number (CIN or GSTIN).",
-              "bot",
-            );
+            // Move to REVIEW_BIO
+            if (nextDetails.description) {
+              setState("REVIEW_BIO");
+              addMessage(
+                `Here's what I found about **${nextDetails.name}**:\n\n"${nextDetails.description}"\n\nIs this description accurate?`,
+                "bot",
+                ["Yes, looks good", "No, let me edit"],
+              );
+            } else {
+              setState("EDITING_BIO");
+              addMessage(
+                "Please provide a brief description of what your company does.",
+                "bot",
+              );
+            }
             setIsLoading(false);
             return;
           }
+        }
+
+        // REVIEW_BIO state - confirm or edit company description
+        if (state === "REVIEW_BIO") {
+          if (val === "Yes, looks good") {
+            // Bio confirmed, move to location
+            setState("CONFIRM_LOCATION");
+            addMessage(
+              "Where is your company headquartered? (e.g., Bangalore, India)",
+              "bot",
+            );
+          } else if (val === "No, let me edit") {
+            setState("EDITING_BIO");
+            // Pre-fill the input with the existing bio so they can edit it
+            setInput(companyDetails.description || "");
+            addMessage(
+              "Edit the description below and send it when you're happy with it.",
+              "bot",
+            );
+          }
+          setIsLoading(false);
+          return;
+        }
+
+        // EDITING_BIO state - user provides/edits company description
+        if (state === "EDITING_BIO") {
+          const nextDetails = { ...companyDetails };
+          nextDetails.description = val;
+          setCompanyDetails(nextDetails);
+          addMessage("✅ Description updated.", "bot");
+          setState("CONFIRM_LOCATION");
+          addMessage(
+            "Where is your company headquartered? (e.g., Bangalore, India)",
+            "bot",
+          );
+          setIsLoading(false);
+          return;
+        }
+
+        // CONFIRM_LOCATION state - ask for headquarters
+        if (state === "CONFIRM_LOCATION") {
+          const nextDetails = { ...companyDetails };
+          nextDetails.location = val;
+          setCompanyDetails(nextDetails);
+          addMessage("✅ Headquarters noted.", "bot");
+          setState("RECRUITER_NAME");
+          addMessage(
+            "Now, let's know about you. What is your full name?",
+            "bot",
+          );
+          setIsLoading(false);
+          return;
+        }
+
+        // RECRUITER_NAME state - ask for recruiter's full name
+        if (state === "RECRUITER_NAME") {
+          // Save recruiter name to profile
+          try {
+            await apiClient.patch(
+              "/recruiter/profile",
+              { full_name: val, onboarding_step: "RECRUITER_EXPERIENCE" },
+              token,
+            );
+            console.log("Recruiter name saved:", val);
+          } catch (err) {
+            console.warn("Failed to save recruiter name:", err);
+          }
+          addMessage(`Nice to meet you, ${val}! 👋`, "bot");
+          setState("RECRUITER_EXPERIENCE");
+          addMessage(
+            "How many years of recruiting experience do you have?",
+            "bot",
+          );
+          setIsLoading(false);
+          return;
+        }
+
+        // RECRUITER_EXPERIENCE state - ask for years of recruiting
+        if (state === "RECRUITER_EXPERIENCE") {
+          const years = parseInt(val, 10);
+          const yearsValue = isNaN(years) ? val : years;
+          
+          // Save years of recruiting to professional_persona
+          try {
+            await apiClient.patch(
+              "/recruiter/profile",
+              { professional_persona: { years_experience: yearsValue }, onboarding_step: "REGISTRATION" },
+              token,
+            );
+            console.log("Years of recruiting saved:", yearsValue);
+          } catch (err) {
+            console.warn("Failed to save recruiting experience:", err);
+          }
+          addMessage(`${typeof yearsValue === "number" ? yearsValue + " years" : yearsValue} — great experience! 🎯`, "bot");
+          setState("REGISTRATION");
+          addMessage(
+            "Now please enter your Company Registration Number (CIN or GSTIN) so I can verify the company.",
+            "bot",
+          );
+          setIsLoading(false);
+          return;
         }
 
         // LOCATION state - asking for company headquarters
@@ -660,13 +784,48 @@ export default function RecruiterOnboarding() {
           // If user already passed EMAIL_ANALYSIS, respect that
           if (currentStep && currentStep !== "INITIAL") {
             setState(currentStep);
-            if (currentStep === "REGISTRATION") {
+            if (currentStep === "REVIEW_BIO") {
+              const desc = profile.companies?.description;
+              if (desc) {
+                addMessage(
+                  `Welcome back, ${name}! Let's confirm your company description:\n\n"${desc}"\n\nIs this accurate?`,
+                  "bot",
+                  ["Yes, looks good", "No, let me edit"],
+                );
+              } else {
+                setState("EDITING_BIO");
+                addMessage(
+                  `Welcome back, ${name}! Please provide a brief description of your company.`,
+                  "bot",
+                );
+              }
+            } else if (currentStep === "EDITING_BIO") {
+              addMessage(
+                `Welcome back, ${name}! Please provide a brief description of your company.`,
+                "bot",
+              );
+            } else if (currentStep === "CONFIRM_LOCATION") {
+              addMessage(
+                `Welcome back, ${name}! Where is your company headquartered? (e.g., Bangalore, India)`,
+                "bot",
+              );
+            } else if (currentStep === "RECRUITER_NAME") {
+              addMessage(
+                `Welcome back! What is your full name?`,
+                "bot",
+              );
+            } else if (currentStep === "RECRUITER_EXPERIENCE") {
+              addMessage(
+                `Welcome back! How many years of recruiting experience do you have?`,
+                "bot",
+              );
+            } else if (currentStep === "REGISTRATION") {
               addMessage(
                 `Welcome, ${name}! Let's set up your company profile.`,
                 "bot",
               );
               addMessage(
-                "First, please enter your Company Registration Number (CIN or GSTIN).",
+                "Please enter your Company Registration Number (CIN or GSTIN).",
                 "bot",
               );
             } else if (currentStep === "DETAILS") {
@@ -708,26 +867,41 @@ export default function RecruiterOnboarding() {
               setDetectedDomain(analysisRes.domain || "");
 
               // Try to fetch detailed company info
-              try {
-                console.log("Fetching details for:", analysisRes.company_name);
-                const detailsRes = await apiClient.post(
-                  "/recruiter/find-company-details",
-                  { company_name: analysisRes.company_name },
-                  token,
-                );
+              // Use website and description from email analysis if already available
+              let detectedWebsite = analysisRes.website || "";
+              let detectedDescription = analysisRes.description || "";
 
-                console.log("Company details response:", detailsRes);
+              // Only call find-company-details if email analysis didn't return website/description
+              if (!detectedWebsite && !detectedDescription) {
+                try {
+                  console.log("Fetching details for:", analysisRes.company_name);
+                  const detailsRes = await apiClient.post(
+                    "/recruiter/find-company-details",
+                    { company_name: analysisRes.company_name },
+                    token,
+                  );
 
-                if (detailsRes.website || detailsRes.description) {
-                  setCompanyDetails({
-                    name: analysisRes.company_name,
-                    website: detailsRes.website || "",
-                    description: detailsRes.description || "",
-                    location: "",
-                  });
+                  console.log("Company details response:", detailsRes);
+
+                  if (detailsRes.website || detailsRes.description) {
+                    detectedWebsite = detailsRes.website || "";
+                    detectedDescription = detailsRes.description || "";
+                  }
+                } catch (err) {
+                  console.warn("Could not fetch company details:", err);
                 }
-              } catch (err) {
-                console.warn("Could not fetch company details:", err);
+              } else {
+                console.log("Using website and description from email analysis directly");
+              }
+
+              if (detectedWebsite || detectedDescription) {
+                setCompanyDetails({
+                  name: analysisRes.company_name,
+                  website: detectedWebsite,
+                  description: detectedDescription,
+                  location: "",
+                });
+              } else {
                 setCompanyDetails((prev) => ({
                   ...prev,
                   name: analysisRes.company_name,
