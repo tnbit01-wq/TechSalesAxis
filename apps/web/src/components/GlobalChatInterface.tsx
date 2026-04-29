@@ -36,8 +36,8 @@ export default function GlobalChatInterface() {
   const recognitionRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Determine if user is recruiter based on pathname
-  const isRecruiter = pathname?.includes('/recruiter/') ?? false;
+  const userInfo = typeof window !== 'undefined' ? awsAuth.getUser() : null;
+  const userRole = (userInfo as any)?.role as string | undefined;
 
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -76,18 +76,6 @@ export default function GlobalChatInterface() {
 
   const handleSend = async () => {
     if (!input.trim() || loading) return;
-
-    // Check if user is recruiter
-    if (!isRecruiter) {
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: "🔒 Access Denied: Candidate Search is only available to recruiters. Please switch to recruiter mode to access this feature.",
-        timestamp: new Date(),
-        data_type: 'error'
-      }]);
-      setInput('');
-      return;
-    }
     
     const userMsg: ChatMessage = { role: 'user', content: input, timestamp: new Date() };
     setMessages(prev => [...prev, userMsg]);
@@ -102,7 +90,7 @@ export default function GlobalChatInterface() {
       
       // Use environment variable or fallback to default
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
-      const intentEndpoint = `${apiUrl}/ai/strategic-intent/process`;
+      const intentEndpoint = `${apiUrl}/ai/assistant/chat`;
       
       console.log("📡 API URL:", apiUrl);
       console.log("📡 Endpoint:", intentEndpoint);
@@ -114,7 +102,14 @@ export default function GlobalChatInterface() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ prompt: input })
+        body: JSON.stringify({ 
+          prompt: input,
+          client_context: {
+            role: userRole,
+            path: pathname,
+            source: 'global_chat'
+          }
+        })
       });
 
       console.log("📡 Response status:", response.status);
@@ -213,6 +208,78 @@ export default function GlobalChatInterface() {
                           <span className="text-[10px] font-mono text-zinc-400">SCORE: {Math.round(item.culture_match_score || 0)}%</span>
                        </div>
                     </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {msg.data_type === 'job_list' && msg.data_results && msg.data_results.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {msg.data_results?.map((job: any, idx: number) => (
+              <div key={idx} className="bg-zinc-900/40 border border-white/5 rounded-3xl p-5 hover:bg-zinc-800/50 transition-all group relative">
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-blue-500/20 flex items-center justify-center">
+                    <Briefcase className="w-6 h-6 text-emerald-400" />
+                  </div>
+                  <div className="space-y-1 flex-1">
+                    <h4 className="font-bold text-base text-white tracking-tight">
+                      {job.title || job.job_title || 'Role'}
+                    </h4>
+                    <p className="text-xs text-zinc-400">
+                      {job.company_name || 'Company'} • {job.location || 'Location'}
+                    </p>
+                    <p className="text-[11px] text-zinc-500">
+                      {job.salary_range || job.comp_band || 'Competitive compensation'}
+                    </p>
+                    <div className="mt-3 flex items-center gap-3 flex-wrap">
+                      {typeof job.match_score === 'number' && (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-[10px] text-emerald-300 font-mono">
+                          <BarChart3 className="w-3 h-3" />
+                          MATCH {Math.round(job.match_score)}%
+                        </span>
+                      )}
+                      {job.experience_band && (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-zinc-800/80 border border-zinc-700 text-[10px] text-zinc-300 font-mono">
+                          <Target className="w-3 h-3" />
+                          {job.experience_band}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {msg.data_type === 'company_list' && msg.data_results && msg.data_results.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {msg.data_results?.map((company: any, idx: number) => (
+              <div key={idx} className="bg-zinc-900/40 border border-white/5 rounded-3xl p-5 hover:bg-zinc-800/60 transition-all group relative">
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 flex items-center justify-center">
+                    <Building2 className="w-6 h-6 text-indigo-300" />
+                  </div>
+                  <div className="space-y-1 flex-1">
+                    <h4 className="font-bold text-base text-white tracking-tight">
+                      {company.company_name || company.name || 'Company'}
+                    </h4>
+                    <p className="text-xs text-zinc-400">
+                      {company.industry || company.industry_category || 'High-growth environment'}
+                    </p>
+                    <p className="text-[11px] text-zinc-500">
+                      {company.location || 'Global'} • {company.size || company.size_band || 'Growth-stage'}
+                    </p>
+                    {company.match_score && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 text-[10px] text-blue-300 font-mono">
+                          <ShieldCheck className="w-3 h-3" />
+                          FIT {Math.round(company.match_score)}%
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

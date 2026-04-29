@@ -98,6 +98,7 @@ export const awsAuth = {
 
   /**
    * Get basic user info from storage
+   * Includes role when present in JWT payload.
    */
   getUser() {
     if (typeof window !== "undefined") {
@@ -117,6 +118,7 @@ export const awsAuth = {
         return {
           email: payload.email,
           id: payload.sub, // 'sub' contains the actual database UUID from AWS
+          role: payload.role,
         };
       } catch (err) {
         console.error("JWT decoding failed:", err);

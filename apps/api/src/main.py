@@ -13,6 +13,7 @@ from src.api.chat import router as chat_router
 from src.api.interviews import router as interviews_router
 from src.api.career_gps import router as career_gps_router
 from src.api.ai_intent import router as ai_intent_router
+from src.api.assistant_chat import router as assistant_chat_router
 from src.api.storage import router as storage_router
 from src.api.analytics import router as analytics_router
 from src.api.admin import router as admin_router
@@ -72,6 +73,7 @@ app.include_router(career_gps_router)
 app.include_router(storage_router)
 app.include_router(analytics_router)
 app.include_router(ai_intent_router) # AI Intelligence Core
+app.include_router(assistant_chat_router)  # Unified AI Assistant
 app.include_router(intelligence_router, prefix="/api/v1") # ✨ NEW: AI Personalization
 app.include_router(admin_router)
 app.include_router(admin_unified_router, prefix="/api/v1")  # Unified admin endpoints
