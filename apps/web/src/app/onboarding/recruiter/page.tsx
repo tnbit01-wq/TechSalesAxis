@@ -22,6 +22,7 @@ type OnboardingState =
   | "COMPANY_CONFIRMATION"
   | "REVIEW_BIO"
   | "EDITING_BIO"
+  | "ASK_WEBSITE"
   | "CONFIRM_LOCATION"
   | "RECRUITER_NAME"
   | "RECRUITER_EXPERIENCE"
@@ -239,6 +240,12 @@ export default function RecruiterOnboarding() {
                 "bot",
                 ["Yes, looks good", "No, let me edit"],
               );
+            } else if (!confirmedDetails.website) {
+              setState("ASK_WEBSITE");
+              addMessage(
+                "I couldn't find a website for your company. Please provide your company's website URL.",
+                "bot",
+              );
             } else {
               // No description found, ask them to provide one
               setState("EDITING_BIO");
@@ -287,6 +294,12 @@ export default function RecruiterOnboarding() {
                 "bot",
                 ["Yes, looks good", "No, let me edit"],
               );
+            } else if (!nextDetails.website) {
+              setState("ASK_WEBSITE");
+              addMessage(
+                "I couldn't find a website for your company. Please provide your company's website URL.",
+                "bot",
+              );
             } else {
               setState("EDITING_BIO");
               addMessage(
@@ -297,6 +310,49 @@ export default function RecruiterOnboarding() {
             setIsLoading(false);
             return;
           }
+        }
+
+        // ASK_WEBSITE state - user provides website, we try to extract bio
+        if (state === "ASK_WEBSITE") {
+          const nextDetails = { ...companyDetails };
+          nextDetails.website = val;
+          setCompanyDetails(nextDetails);
+
+          addMessage("Analyzing your website to extract company details...", "bot");
+          
+          try {
+            const res = await apiClient.post(
+              "/recruiter/generate-bio",
+              { website: val },
+              token,
+            );
+
+            if (res && res.bio && res.bio.trim()) {
+              nextDetails.description = res.bio;
+              setCompanyDetails(nextDetails);
+              setState("REVIEW_BIO");
+              addMessage(
+                `Here's what I found:\n\n"${res.bio}"\n\nIs this description accurate?`,
+                "bot",
+                ["Yes, looks good", "No, let me edit"],
+              );
+            } else {
+              setState("EDITING_BIO");
+              addMessage(
+                "I couldn't extract a description from the website. Please provide a brief description of what your company does.",
+                "bot",
+              );
+            }
+          } catch (err) {
+            console.error("Bio generation error:", err);
+            setState("EDITING_BIO");
+            addMessage(
+              "I couldn't extract details from the website. Please provide a brief description of what your company does.",
+              "bot",
+            );
+          }
+          setIsLoading(false);
+          return;
         }
 
         // REVIEW_BIO state - confirm or edit company description
@@ -342,29 +398,22 @@ export default function RecruiterOnboarding() {
           nextDetails.location = val;
           setCompanyDetails(nextDetails);
           addMessage("✅ Headquarters noted.", "bot");
-          setState("RECRUITER_NAME");
-          addMessage(
-            "Now, let's know about you. What is your full name?",
-            "bot",
-          );
-          setIsLoading(false);
-          return;
-        }
+          
+          const user = awsAuth.getUser();
+          const extractedName = extractNameFromEmail(user?.email || "");
 
-        // RECRUITER_NAME state - ask for recruiter's full name
-        if (state === "RECRUITER_NAME") {
-          // Save recruiter name to profile
+          // Save recruiter name to profile automatically
           try {
             await apiClient.patch(
               "/recruiter/profile",
-              { full_name: val, onboarding_step: "RECRUITER_EXPERIENCE" },
+              { full_name: extractedName, onboarding_step: "RECRUITER_EXPERIENCE" },
               token,
             );
-            console.log("Recruiter name saved:", val);
+            console.log("Recruiter name auto-saved:", extractedName);
           } catch (err) {
-            console.warn("Failed to save recruiter name:", err);
+            console.warn("Failed to auto-save recruiter name:", err);
           }
-          addMessage(`Nice to meet you, ${val}! 👋`, "bot");
+
           setState("RECRUITER_EXPERIENCE");
           addMessage(
             "How many years of recruiting experience do you have?",
@@ -799,6 +848,11 @@ export default function RecruiterOnboarding() {
                   "bot",
                 );
               }
+            } else if (currentStep === "ASK_WEBSITE") {
+              addMessage(
+                `Welcome back, ${name}! Please provide your company's website URL.`,
+                "bot",
+              );
             } else if (currentStep === "EDITING_BIO") {
               addMessage(
                 `Welcome back, ${name}! Please provide a brief description of your company.`,
@@ -807,11 +861,6 @@ export default function RecruiterOnboarding() {
             } else if (currentStep === "CONFIRM_LOCATION") {
               addMessage(
                 `Welcome back, ${name}! Where is your company headquartered? (e.g., Bangalore, India)`,
-                "bot",
-              );
-            } else if (currentStep === "RECRUITER_NAME") {
-              addMessage(
-                `Welcome back! What is your full name?`,
                 "bot",
               );
             } else if (currentStep === "RECRUITER_EXPERIENCE") {
