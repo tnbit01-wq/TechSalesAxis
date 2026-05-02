@@ -6,7 +6,7 @@ import Link from "next/link";
 import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import { useVoice } from "@/hooks/useVoice";
-import { extractNameFromEmail } from "@/utils/emailValidation";
+import { extractNameFromEmail, isValidEmail } from "@/utils/emailValidation";
 
 type Message = {
   id: string;
@@ -63,27 +63,43 @@ function LoginForm() {
   };
 
   useEffect(() => {
-    async function checkSession() {
+    async function checkSession(): Promise<boolean> {
       const token = awsAuth.getToken();
       if (token) {
-        // If already logged in, run the post-login handshake to find where they belong
         try {
+          // Check if the user still needs to set a password
+          const user = awsAuth.getUser();
+          if (user?.email) {
+            const checkRes = await apiClient.post("/auth/check-email", { email: user.email });
+            if (!checkRes.exists) {
+              // User has incomplete signup (no password set).
+              // Clear the stale token so they can start fresh.
+              localStorage.removeItem("tf_token");
+              localStorage.removeItem("tf_user_email");
+              return false; // Let normal login flow show
+            }
+          }
+
+          // If already logged in, run the post-login handshake to find where they belong
           const handshake = await apiClient.post(
             "/auth/post-login",
             {},
             token,
           );
           router.replace(handshake.next_step);
+          return true; // Handled — redirecting
         } catch (err) {
           console.error("Handshake failed during session check:", err);
-          // Don't auto-logout here, let the user stay on the page or try again
         }
       }
+      return false; // Not handled — show normal login
     }
 
     if (state === "INITIAL" && !initialized.current) {
       initialized.current = true;
-      checkSession().then(() => {
+      checkSession().then((handled) => {
+        if (handled) return; // checkSession already took care of it
+
         // Check for error in URL (e.g. from tab-switch block)
         const urlParams = new URLSearchParams(window.location.search);
         const error = urlParams.get("error");
@@ -98,6 +114,7 @@ function LoginForm() {
           window.history.replaceState({}, "", window.location.pathname);
           const decodedEmail = decodeURIComponent(emailParam);
           setEmail(decodedEmail);
+          setInput(""); // Ensure input is clean
           const name = extractNameFromEmail(decodedEmail);
           addMessage(`Hi ${name}. Now please enter your password.`, "bot");
           setState("AWAITING_PASSWORD");
@@ -146,8 +163,31 @@ function LoginForm() {
       }
 
       if (state === "AWAITING_EMAIL") {
-        setEmail(workingInput.toLowerCase().trim());
-        const name = extractNameFromEmail(workingInput);
+        const emailInput = workingInput.toLowerCase().trim();
+        if (!isValidEmail(emailInput)) {
+          addMessage("That doesn't look like a valid email address. Please enter a valid email (e.g. name@example.com).", "bot");
+          setIsLoading(false);
+          return;
+        }
+
+        // Check if account exists before asking for password
+        try {
+          const checkRes = await apiClient.post("/auth/check-email", { email: emailInput });
+          if (!checkRes.exists) {
+            addMessage("You don't have an account yet. Redirecting to sign up...", "bot");
+            setTimeout(() => {
+              router.replace(`/signup?email=${encodeURIComponent(emailInput)}`);
+            }, 1500);
+            setIsLoading(false);
+            return;
+          }
+        } catch (err) {
+          console.error("Error checking email:", err);
+          // If check fails, proceed and let the login endpoint handle it
+        }
+
+        setEmail(emailInput);
+        const name = extractNameFromEmail(emailInput);
         addMessage(`Hi ${name}. Now please enter your password.`, "bot");
         setState("AWAITING_PASSWORD");
       } else if (state === "AWAITING_PASSWORD") {
@@ -199,18 +239,17 @@ function LoginForm() {
           }
         } catch (err: any) {
           const errorMessage = err.message || "Login failed. Please try again.";
-          if (errorMessage.includes("No account found")) {
-            addMessage("You don't have an account yet. Creating one...", "bot");
-            // Redirect to signup with email and role params
+          if (errorMessage.includes("No account found") || errorMessage.includes("not verified") || errorMessage.includes("incomplete")) {
+            addMessage("Your account setup isn't complete yet. Redirecting to sign up...", "bot");
             setTimeout(() => {
               router.replace(`/signup?email=${encodeURIComponent(email)}`);
             }, 1500);
           } else if (errorMessage.includes("incorrect")) {
-            addMessage("Password is incorrect. Type 'forgot password' to reset it.", "bot");
-            setState("AWAITING_EMAIL");
+            addMessage("Password is incorrect. Please try again or type 'forgot password' to reset it.", "bot");
+            // Stay in AWAITING_PASSWORD so user can retry without re-entering email
           } else {
-            addMessage(errorMessage, "bot");
-            setState("AWAITING_EMAIL");
+            addMessage(errorMessage + " Please try again.", "bot");
+            // Stay in AWAITING_PASSWORD to allow retry
           }
         }
       }
@@ -306,8 +345,9 @@ function LoginForm() {
             type={state === "AWAITING_PASSWORD" && !showPassword ? "password" : "text"}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Type your message..."
+            placeholder={state === "AWAITING_PASSWORD" ? "Enter your password..." : "Enter your email..."}
             disabled={isLoading || state === "COMPLETED"}
+            autoComplete="off"
             className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary transition-all disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
           />
 

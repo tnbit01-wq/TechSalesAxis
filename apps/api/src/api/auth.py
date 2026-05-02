@@ -105,14 +105,14 @@ async def signup(request: SignupRequest):
     """
     db = SessionLocal()
     try:
-        # Check if user exists and is verified
+        # Check if user exists and is fully set up (verified AND has password)
         existing = db.query(User).filter(User.email == request.email).first()
-        if existing and existing.is_verified:
+        if existing and existing.is_verified and existing.hashed_password:
             raise HTTPException(status_code=400, detail="This email is already registered. Please login instead.")
         
-        # If user exists but NOT verified, allow re-signup (user wants to retry)
-        if existing and not existing.is_verified:
-            # Delete the old unverified record to allow fresh signup
+        # If user exists but setup is incomplete (unverified OR no password), allow re-signup
+        if existing and (not existing.is_verified or not existing.hashed_password):
+            # Delete the incomplete record to allow fresh signup
             db.delete(existing)
             db.commit()
 
@@ -130,7 +130,7 @@ async def signup(request: SignupRequest):
             email=request.email,
             role=request.role,
             full_name=request.full_name,
-            hashed_password=get_password_hash(request.password),
+            hashed_password=None,  # No password until user explicitly sets one after OTP
             is_verified=False,
             otp_code=otp,
             otp_expires_at=datetime.now(timezone.utc) + timedelta(minutes=10)
@@ -217,21 +217,29 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
             headers={"WWW-Authenticate": "Bearer"},
         )
     
+    if not user.is_verified:
+        # User exists but never completed OTP verification.
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Your account is not verified yet. Please sign up again to complete verification.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    if not user.hashed_password:
+        # User verified their email but never set a password (page was refreshed).
+        # Redirect them to signup to complete the flow.
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Your account setup is incomplete. Please sign up again to set your password.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
     if not verify_password(request.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Password is incorrect. Please try again or click 'Forgot Password' to reset it.",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
-    if not user.is_verified:
-        # Resend OTP if not verified
-        otp = generate_otp()
-        user.otp_code = otp
-        user.otp_expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
-        db.commit()
-        send_otp_email(user.email, otp, user.full_name or "User")
-        return {"status": "unverified", "message": "Account not verified yet. We've sent a new verification code to your email. Please verify to continue."}
 
     access_token = create_access_token(
         data={"sub": str(user.id), "email": user.email, "role": user.role}
@@ -268,6 +276,22 @@ def validate_email(request: EmailValidationRequest):
         raise HTTPException(status_code=400, detail="Recruiters must use a professional email address")
     
     return {"status": "valid"}
+
+class CheckEmailRequest(BaseModel):
+    email: EmailStr
+
+@router.post("/check-email")
+async def check_email(request: CheckEmailRequest, db: Session = Depends(get_db)):
+    """
+    Check if an account exists for this email.
+    Used by the sign-in page to redirect non-existent users to signup immediately.
+    """
+    user = db.query(User).filter(User.email == request.email).first()
+    if not user or not user.is_verified or not user.hashed_password:
+        # Treat unverified or incomplete (no password set) users as non-existent
+        # so they go through the signup flow to complete setup
+        return {"exists": False}
+    return {"exists": True}
 
 @router.post("/post-login")
 async def post_login(current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):

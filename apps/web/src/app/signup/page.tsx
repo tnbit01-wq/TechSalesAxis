@@ -40,6 +40,7 @@ function SignupForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [customPassword, setCustomPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [showOtp, setShowOtp] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const initialized = useRef(false);
 
@@ -113,26 +114,42 @@ function SignupForm() {
   };
 
   useEffect(() => {
-    async function checkSession() {
+    async function checkSession(): Promise<boolean> {
       const token = awsAuth.getToken();
       if (token) {
         try {
+          // Check if the user still needs to set a password
+          const user = awsAuth.getUser();
+          if (user?.email) {
+            const checkRes = await apiClient.post("/auth/check-email", { email: user.email });
+            if (!checkRes.exists) {
+              // User is verified but hasn't set a password (incomplete signup).
+              // Clear the stale token so they can start fresh.
+              localStorage.removeItem("tf_token");
+              localStorage.removeItem("tf_user_email");
+              return false; // Let normal init flow run — user will re-signup
+            }
+          }
+
           const handshake = await apiClient.post(
             "/auth/post-login",
             {},
             token,
           );
           router.replace(handshake.next_step);
+          return true; // Handled — redirecting
         } catch (err) {
           console.error("Handshake failed during session check:", err);
-          // Don't auto-logout, allow them to continue signup or refresh
         }
       }
+      return false; // Not handled — run normal init
     }
 
     if (state === "INITIAL" && !initialized.current) {
       initialized.current = true;
-      checkSession().then(() => {
+      checkSession().then((handled) => {
+        if (handled) return; // checkSession already took care of the state
+
         // Check if email was passed from login (account not found)
         const emailParam = searchParams.get("email");
         
@@ -160,9 +177,11 @@ function SignupForm() {
     const workingInput = input.trim();
     if (!workingInput || isLoading) return;
 
-    // Mask password in chat for security - show dots instead of completely hiding
+    // Mask password and OTP in chat for security - show dots instead of actual values
     if (state === "AWAITING_PASSWORD_SET") {
       addMessage("••••••••••", "user");
+    } else if (state === "AWAITING_OTP" && workingInput.toLowerCase() !== "resend") {
+      addMessage("••••••", "user");
     } else {
       addMessage(workingInput, "user");
     }
@@ -421,23 +440,34 @@ function SignupForm() {
           className="max-w-3xl mx-auto flex items-center gap-3 relative"
         >
           <input
-            type={state === "AWAITING_PASSWORD_SET" && !showPassword ? "password" : "text"}
+            type={(state === "AWAITING_PASSWORD_SET" && !showPassword) || (state === "AWAITING_OTP" && !showOtp) ? "password" : "text"}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Type your message..."
+            placeholder={
+              state === "AWAITING_OTP" ? "Enter verification code..." :
+              state === "AWAITING_PASSWORD_SET" ? "Create a password..." :
+              "Enter your email..."
+            }
             disabled={isLoading || state === "COMPLETED"}
+            autoComplete="off"
             className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
           />
 
-          {state === "AWAITING_PASSWORD_SET" && (
+          {(state === "AWAITING_PASSWORD_SET" || state === "AWAITING_OTP") && (
             <button
               type="button"
-              onClick={() => setShowPassword(!showPassword)}
+              onClick={() => {
+                if (state === "AWAITING_OTP") {
+                  setShowOtp(!showOtp);
+                } else {
+                  setShowPassword(!showPassword);
+                }
+              }}
               disabled={isLoading}
               className="p-3 rounded-xl transition-all bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed"
-              title={showPassword ? "Hide password" : "Show password"}
+              title={state === "AWAITING_OTP" ? (showOtp ? "Hide code" : "Show code") : (showPassword ? "Hide password" : "Show password")}
             >
-              {showPassword ? (
+              {(state === "AWAITING_OTP" ? showOtp : showPassword) ? (
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-4.803m5.596-3.856a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0M15 12a3 3 0 11-6 0 3 3 0 016 0zm6 0a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>

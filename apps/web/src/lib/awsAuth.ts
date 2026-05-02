@@ -9,11 +9,11 @@ export const awsAuth = {
   /** /
    * Register a new user (Step 1: Code sent via SES)
    */
-  async signup(email: string, role: string, full_name: string = "User", password = "DefaultPassword123!") {
+  async signup(email: string, role: string, full_name: string = "User") {
     const response = await fetch(`${API_URL}/auth/signup`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, role, full_name, password }),
+      body: JSON.stringify({ email, role, full_name, password: "placeholder" }),
     });
     
     if (!response.ok) {
