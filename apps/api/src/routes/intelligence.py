@@ -110,13 +110,15 @@ async def sync_conversation_to_profile(session: ConversationalOnboardingSession,
     Sync extracted conversation data to candidate profile
     Called when conversation is successfully completed
     
-    Transfers:
-    - years_experience
-    - notice_period_days
-    - willing_to_relocate
-    - job_search_mode
-    - employment_status
-    - current_role
+    FIXES IMPLEMENTED:
+    1. Store job_search_motivation (career transition) in metadata
+    2. Fix timeline/availability with proper role_urgency_level
+    3. Store work_arrangement_preference separately (don't override job_type)
+    4. Parse career_interests into individual array items
+    5. Store complete target_role information in metadata
+    6. Create career_gps entry for career tracking
+    7. Create career_readiness_history record
+    8. Align profile_strength with actual completion
     
     Args:
         session: Completed ConversationalOnboardingSession
@@ -126,6 +128,9 @@ async def sync_conversation_to_profile(session: ConversationalOnboardingSession,
         True if sync successful, False otherwise
     """
     try:
+        from src.core.models import CareerGPS, CareerReadinessHistory
+        from datetime import datetime as dt_datetime, timedelta
+        
         # Get the candidate profile
         profile = db.query(CandidateProfile).filter(
             CandidateProfile.user_id == session.candidate_id
@@ -138,6 +143,11 @@ async def sync_conversation_to_profile(session: ConversationalOnboardingSession,
         # Sync extracted fields from conversation to profile
         updates_made = False
         
+        # Initialize or get metadata
+        metadata = profile.career_readiness_metadata or {}
+        if not isinstance(metadata, dict):
+            metadata = {}
+        
         # 1. Years of Experience
         if session.extracted_years_experience is not None:
             if profile.years_of_experience != session.extracted_years_experience:
@@ -145,11 +155,24 @@ async def sync_conversation_to_profile(session: ConversationalOnboardingSession,
                 profile.years_of_experience = session.extracted_years_experience
                 updates_made = True
         
-        # 2. Notice Period (Days)
+        # 2. Notice Period (Days) - FIX: Properly set role_urgency_level based on days
+        old_notice_period = profile.notice_period_days
         if session.extracted_notice_period_days is not None:
             if profile.notice_period_days != session.extracted_notice_period_days:
                 logger.info(f"[SYNC] Updating notice_period_days: {profile.notice_period_days} → {session.extracted_notice_period_days}")
                 profile.notice_period_days = session.extracted_notice_period_days
+                
+                # FIX: Set role_urgency_level based on notice_period (not generic "passive")
+                if session.extracted_notice_period_days == 0:
+                    profile.role_urgency_level = "urgent_immediate"
+                    logger.info(f"[SYNC] Set role_urgency_level to 'urgent_immediate' (immediately available)")
+                elif session.extracted_notice_period_days <= 14:
+                    profile.role_urgency_level = "urgent_30days"
+                    logger.info(f"[SYNC] Set role_urgency_level to 'urgent_30days' ({session.extracted_notice_period_days} days)")
+                else:
+                    profile.role_urgency_level = "active"
+                    logger.info(f"[SYNC] Set role_urgency_level to 'active' ({session.extracted_notice_period_days} days)")
+                
                 updates_made = True
         
         # 3. Willing to Relocate
@@ -159,9 +182,8 @@ async def sync_conversation_to_profile(session: ConversationalOnboardingSession,
                 profile.willing_to_relocate = session.extracted_willing_to_relocate
                 updates_made = True
         
-        # 4. Job Search Mode / Career Readiness
+        # 4. Job Search Mode
         if session.extracted_job_search_mode is not None:
-            # Map extracted mode to job_search_mode
             mode_map = {
                 "exploring": "exploring",
                 "passive": "passive",
@@ -174,9 +196,8 @@ async def sync_conversation_to_profile(session: ConversationalOnboardingSession,
                 profile.job_search_mode = mapped_mode
                 updates_made = True
         
-        # 5. Employment Status - Map to enum values
+        # 5. Employment Status
         if session.extracted_employment_status is not None:
-            # Database enum values are: 'Employed', 'Unemployed', 'Student'
             status_map = {
                 "employed": "Employed",
                 "unemployed": "Unemployed",
@@ -197,9 +218,137 @@ async def sync_conversation_to_profile(session: ConversationalOnboardingSession,
                 profile.current_role = session.extracted_current_role
                 updates_made = True
         
-        # Update timestamp
+        # 7. FIX: Sync job_search_motivation from session metadata (extracted by AI)
+        session_metadata = session.extracted_metadata or {}
+        if not isinstance(session_metadata, dict):
+            session_metadata = {}
+        
+        if session_metadata.get("job_search_motivation") and session_metadata.get("job_search_motivation") != "not_mentioned":
+            metadata["job_search_motivation"] = session_metadata.get("job_search_motivation")
+            logger.info(f"[SYNC] Synced job_search_motivation: {session_metadata.get('job_search_motivation')}")
+            updates_made = True
+        
+        # 8. FIX: Sync work_arrangement_preference from session metadata (extracted by AI)
+        if session_metadata.get("work_arrangement_preference") and session_metadata.get("work_arrangement_preference") != "not_mentioned":
+            metadata["work_arrangement_preference"] = session_metadata.get("work_arrangement_preference")
+            logger.info(f"[SYNC] Synced work_arrangement_preference: {session_metadata.get('work_arrangement_preference')}")
+            updates_made = True
+        
+        # 9. FIX: Parse career_interests into individual array items (was one long string)
+        # First check if we have extracted interests from AI
+        if session_metadata.get("career_interests"):
+            interests = session_metadata.get("career_interests")
+            if isinstance(interests, list) and len(interests) > 0:
+                profile.career_interests = interests
+                logger.info(f"[SYNC] Set career_interests from extracted data: {interests}")
+                updates_made = True
+        elif profile.career_interests and len(profile.career_interests) > 0:
+            # Fallback: Check if it's still a single long string (the bug)
+            if len(profile.career_interests) == 1 and len(profile.career_interests[0]) > 100:
+                # Parse the long string into individual interests
+                long_string = profile.career_interests[0]
+                interests = []
+                
+                # Extract individual interests
+                keywords = [
+                    "saas", "customer experience", "ecommerce", "platform", "ai-driven", "it services",
+                    "recurring revenue", "customer lifecycle", "onboarding", "retention", "upsell"
+                ]
+                
+                for keyword in keywords:
+                    if keyword.lower() in long_string.lower():
+                        # Capitalize first letter
+                        interests.append(keyword.title().replace("-driven", "-driven"))
+                
+                if interests:
+                    # Remove duplicates and clean
+                    interests = list(dict.fromkeys([i for i in interests]))
+                    logger.info(f"[SYNC] Parsed career_interests from single string to array: {interests}")
+                    profile.career_interests = interests
+                    updates_made = True
+        
+        # 10. FIX: Store complete target_role information (was truncated)
+        # Use target_roles from AI extraction if available
+        if session_metadata.get("target_roles"):
+            target_roles = session_metadata.get("target_roles")
+            if isinstance(target_roles, list) and len(target_roles) > 0:
+                # Set primary target role from first in list
+                profile.target_role = target_roles[0]
+                metadata["target_roles_detailed"] = {
+                    "all_target_roles": target_roles,
+                    "primary": target_roles[0],
+                    "parsed_at": datetime.utcnow().isoformat()
+                }
+                logger.info(f"[SYNC] Set target_role from extracted data: {target_roles[0]}, all: {target_roles}")
+                updates_made = True
+        elif profile.target_role:
+            metadata["target_roles_detailed"] = {
+                "primary": profile.target_role,
+                "parsed_at": datetime.utcnow().isoformat()
+            }
+            updates_made = True
+        
+        # 11. Update metadata back to profile
+        if updates_made:
+            profile.career_readiness_metadata = metadata
+        
+        # 12. FIX: Align profile_strength with completion score
+        if profile.completion_score >= 80:
+            new_strength = "Strong"
+        elif profile.completion_score >= 60:
+            new_strength = "Medium"
+        else:
+            new_strength = "Low"
+        
+        if profile.profile_strength != new_strength:
+            logger.info(f"[SYNC] Aligning profile_strength with completion_score: {profile.profile_strength} → {new_strength} (score: {profile.completion_score})")
+            profile.profile_strength = new_strength
+            updates_made = True
+        
+        # 13. Create or Update Career GPS Entry
+        existing_gps = db.query(CareerGPS).filter(
+            CareerGPS.candidate_id == session.candidate_id
+        ).first()
+        
+        if not existing_gps:
+            # Create new CareerGPS entry
+            career_gps = CareerGPS(
+                candidate_id=session.candidate_id,
+                target_role=profile.target_role or "IT Tech Sales Professional",
+                current_status=profile.job_search_mode or "exploring"
+            )
+            db.add(career_gps)
+            logger.info(f"[SYNC] Created CareerGPS entry with target_role: {profile.target_role}")
+            updates_made = True
+        else:
+            # Update existing entry
+            if existing_gps.target_role != profile.target_role:
+                existing_gps.target_role = profile.target_role
+                logger.info(f"[SYNC] Updated CareerGPS target_role: {profile.target_role}")
+                updates_made = True
+            if existing_gps.current_status != profile.job_search_mode:
+                existing_gps.current_status = profile.job_search_mode
+                updates_made = True
+        
+        # 14. Create Career Readiness History Record
+        if profile.job_search_mode or profile.notice_period_days is not None:
+            readiness_record = CareerReadinessHistory(
+                user_id=session.candidate_id,
+                old_job_search_mode=old_notice_period,
+                new_job_search_mode=profile.job_search_mode,
+                old_notice_period_days=old_notice_period,
+                new_notice_period_days=profile.notice_period_days,
+                reason="onboarding_conversation_completed",
+                changed_at=datetime.utcnow()
+            )
+            db.add(readiness_record)
+            logger.info(f"[SYNC] Created CareerReadinessHistory record")
+            updates_made = True
+        
+        # Update profile timestamp
         if updates_made:
             profile.updated_at = datetime.utcnow()
+            profile.employment_readiness_status = "ready" if profile.completion_score >= 75 else "developing"
             db.commit()
             logger.info(f"[SYNC] ✅ Successfully synced conversation data to profile for {session.candidate_id}")
             return True
@@ -209,6 +358,8 @@ async def sync_conversation_to_profile(session: ConversationalOnboardingSession,
         
     except Exception as e:
         logger.error(f"[SYNC] ❌ Error syncing conversation to profile: {str(e)}")
+        import traceback
+        traceback.print_exc()
         db.rollback()
         return False
 
@@ -381,12 +532,43 @@ async def process_conversational_onboarding(
             if extracted.get("visa_sponsorship_needed") is not None:
                 session.extracted_visa_sponsorship_needed = extracted.get("visa_sponsorship_needed")
             
+            # 🆕 FIX: Store additional extracted data in metadata
+            metadata = extracted_metadata = session.extracted_metadata or {}
+            if not isinstance(extracted_metadata, dict):
+                extracted_metadata = {}
+            
+            # Store job search motivation (was being lost)
+            if extracted.get("job_search_motivation") and extracted.get("job_search_motivation") != "not_mentioned":
+                extracted_metadata["job_search_motivation"] = extracted.get("job_search_motivation")
+                logger.info(f"[EXTRACTION] Stored job_search_motivation: {extracted.get('job_search_motivation')}")
+            
+            # Store work arrangement preference (was being inverted)
+            if extracted.get("work_arrangement_preference") and extracted.get("work_arrangement_preference") != "not_mentioned":
+                extracted_metadata["work_arrangement_preference"] = extracted.get("work_arrangement_preference")
+                logger.info(f"[EXTRACTION] Stored work_arrangement_preference: {extracted.get('work_arrangement_preference')}")
+            
+            # Store target roles (all of them, not just one)
+            if extracted.get("target_roles") and extracted.get("target_roles") != "not_mentioned":
+                extracted_metadata["target_roles"] = extracted.get("target_roles")
+                logger.info(f"[EXTRACTION] Stored target_roles: {extracted.get('target_roles')}")
+            
+            # Store career interests as array (not as single string)
+            if extracted.get("career_interests") and extracted.get("career_interests") != "not_mentioned":
+                # Ensure it's an array of individual items
+                interests = extracted.get("career_interests")
+                if isinstance(interests, str):
+                    # If it's still a string, split it
+                    interests = [i.strip() for i in interests.split(",")]
+                extracted_metadata["career_interests"] = interests
+                logger.info(f"[EXTRACTION] Stored career_interests: {interests}")
+            
+            session.extracted_metadata = extracted_metadata
+            
             # Update quality metrics
             session.total_messages = len(session.conversation_messages)
             session.completeness_score = result.get("completeness_score", 0)
             session.missing_critical_fields = result.get("missing_critical_fields", [])
             session.average_ai_confidence = result.get("confidence", 0)
-            session.extracted_metadata = result.get("extracted_keywords", [])
             
             # Mark as completed if all critical fields are found
             if session.completeness_score > 0.8:

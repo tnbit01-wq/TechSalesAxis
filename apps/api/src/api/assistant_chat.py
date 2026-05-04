@@ -45,13 +45,9 @@ def _get_live_market_demand(limit: int = 5) -> List[Dict[str, Any]]:
         db.close()
 
 
+# ---------------------- AI INTENT ----------------------
+
 async def _resolve_intent(prompt: str, role: str) -> Dict[str, Any]:
-    """
-    AI decides EVERYTHING:
-    - intent
-    - filters
-    - which tool to use
-    """
     intent_prompt = f"""
 User role: {role}
 User query: "{prompt}"
@@ -67,23 +63,29 @@ Return ONLY valid JSON:
   }},
   "requires_data": true
 }}
-
-Rules:
-- Extract filters only if explicitly or implicitly present
-- If query is informational, set intent = "general"
-- If query relates to hiring → candidate_search
-- If query relates to jobs → job_search
-- If query relates to companies → company_search
-- If query relates to trends → market_insights
 """
-    result = await _call_ai_json(intent_prompt, "AI Intent Engine")
-    return result or {}
+    return await _call_ai_json(intent_prompt, "AI Intent Engine") or {}
 
 
-async def _execute_tool(intent: str, filters: Dict[str, Any], user_id: str) -> Any:
-    """
-    Dynamic tool execution layer
-    """
+# ---------------------- LIMIT EXTRACTION ----------------------
+
+async def _extract_limit(prompt: str) -> int:
+    limit_prompt = f"""
+User query: "{prompt}"
+
+Extract number of results requested like "top 1", "top 3".
+Return ONLY JSON:
+{{ "limit": number }}
+
+If not specified, return 10.
+"""
+    result = await _call_ai_json(limit_prompt, "Limit Extractor")
+    return int(result.get("limit", 10)) if result else 10
+
+
+# ---------------------- TOOL EXECUTION ----------------------
+
+async def _execute_tool(intent: str, filters: Dict[str, Any], user_id: str):
     try:
         if intent == "candidate_search":
             return await recruiter_service.get_recommended_candidates(
@@ -120,6 +122,8 @@ async def _execute_tool(intent: str, filters: Dict[str, Any], user_id: str) -> A
     return None
 
 
+# ---------------------- MAIN ENDPOINT ----------------------
+
 @router.post("/chat")
 async def assistant_chat(
     payload: AssistantChatRequest,
@@ -135,60 +139,79 @@ async def assistant_chat(
     if not role or not user_id:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    # 🔹 Step 1: AI decides intent + filters
+    # 🔹 Step 1: AI intent
     intent_data = await _resolve_intent(prompt, role)
 
     intent = intent_data.get("intent", "general")
     filters = intent_data.get("filters", {})
-    requires_data = intent_data.get("requires_data", False)
+    requires_data = intent_data.get("requires_data", True)
 
-    # 🔹 Step 2: Execute DB/service if needed
+    # 🔹 Step 2: Extract limit (top N)
+    limit = await _extract_limit(prompt)
+
+    # 🔹 Step 3: Execute tool
     data = None
     if requires_data:
         data = await _execute_tool(intent, filters, user_id)
 
-    # Normalize data for frontend
+    # Normalize data
     data_results = []
     data_type = "none"
 
     if data:
         if isinstance(data, dict):
             if data.get("data"):
-                data_results = data["data"][:10]
+                data_results = data["data"]
             elif isinstance(data.get("results"), list):
-                data_results = data["results"][:10]
-            else:
-                data_results = []
+                data_results = data["results"]
         elif isinstance(data, list):
-            data_results = data[:10]
+            data_results = data
 
-        data_type = intent
+    # Apply limit strictly
+    data_results = data_results[:limit]
 
-    # 🔹 Step 3: AI generates final response using REAL data
+    data_type = intent if data_results else "none"
+
+    # 🔹 Step 4: AI Response (STRICT MODE)
     response_prompt = f"""
 User role: {role}
 User query: "{prompt}"
 
+User profile: {current_user}
+
 Detected intent: {intent}
 Filters used: {filters}
 
-Data retrieved: {data_results}
+Database results: {data_results}
 
-Instructions:
-- Generate a natural, helpful response
-- Use the data meaningfully if available
-- If no data, still answer helpfully
-- Do NOT mention "based on system" or "based on data retrieval"
-- Be concise but insightful
+STRICT RULES:
+
+1. If database results exist:
+   - DO NOT ask for more information
+   - DO NOT say "I need more details"
+   - ONLY use the provided results
+
+2. If user asked for top N:
+   - Return EXACTLY {limit} results (already filtered)
+
+3. Explain WHY the result fits:
+   - skills match
+   - location match
+   - experience alignment
+
+4. If NO results:
+   - THEN ask a follow-up question to improve matching
+
+5. Be direct, no generic advice, no filler
 """
 
     final_text = await _call_general_ai(
         response_prompt,
-        "You are an intelligent hiring and career assistant generating accurate, data-backed responses.",
+        "You are a precise AI career and hiring assistant. Never ignore provided data.",
     )
 
     return {
-        "text": final_text or "I'm here to help.",
+        "text": final_text,
         "data_type": data_type,
         "data_results": data_results,
     }

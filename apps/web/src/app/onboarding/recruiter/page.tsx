@@ -1078,26 +1078,26 @@ export default function RecruiterOnboarding() {
   }, [isAssessmentActive, timeLeft, handleSend]);
 
   return (
-    <div className={`flex flex-col h-screen ${isAssessmentActive ? "bg-black text-white" : "bg-white text-slate-900"} font-sans transition-colors duration-700`}>
+    <div className={`flex flex-col h-screen ${isAssessmentActive ? "bg-black text-white" : "bg-gradient-to-br from-[#fff9f5] via-[#fff8f0] to-[#ffe8d6] text-slate-900"} font-sans transition-colors duration-700`}>
       {/* Dynamic Header */}
-      <header className={`flex justify-between items-center py-4 px-6 border-b ${isAssessmentActive ? "border-zinc-800 bg-black/80" : "border-slate-100 bg-white/80"} backdrop-blur-md sticky top-0 z-50`}>
+      <header className={`flex justify-between items-center py-4 px-6 border-b ${isAssessmentActive ? "border-zinc-800 bg-black/80" : "border-orange-100/30 bg-white/80 shadow-[0_8px_24px_rgba(255,152,0,0.08)]"} backdrop-blur-md sticky top-0 z-50`}>
         <div className="flex items-center gap-4">
           {!isAssessmentActive && (
             <Link
               href="/"
-              className="p-2 hover:bg-slate-50 rounded-full transition-colors text-slate-400 hover:text-primary"
+              className="p-2 hover:bg-orange-50 rounded-full transition-colors text-orange-600 hover:text-orange-700"
               aria-label="Back to home"
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" />
               </svg>
             </Link>
           )}
           <div className="flex items-center gap-2.5">
-            <div className={`h-9 w-9 rounded-xl ${isAssessmentActive ? "bg-blue-600 shadow-blue-900/20" : "bg-primary shadow-primary-light"} flex items-center justify-center shadow-lg`}>
-              <div className={`h-4 w-4 rounded ${isAssessmentActive ? "bg-black" : "bg-white"} rotate-45`} />
+            <div className={`h-9 w-9 rounded-xl ${isAssessmentActive ? "bg-blue-600 shadow-blue-900/20" : "bg-gradient-to-br from-[#ff9800] to-[#ff6f00] shadow-lg shadow-orange-500/20"} flex items-center justify-center shadow-lg`}>
+              <span className={`font-bold ${isAssessmentActive ? "text-black text-sm" : "text-white text-sm"}`}>T</span>
             </div>
-            <h1 className={`text-xl font-bold tracking-tight ${isAssessmentActive ? "text-white uppercase italic" : "text-slate-800"}`}>
+            <h1 className={`text-xl font-bold tracking-tight ${isAssessmentActive ? "text-white uppercase italic" : "text-slate-900"}`}>
               TechSales Axis {isAssessmentActive ? "" : <span className="font-medium text-slate-400 ml-1">Onboarding</span>}
             </h1>
           </div>
@@ -1222,12 +1222,113 @@ export default function RecruiterOnboarding() {
             </div>
           </div>
         ) : (
-          /* Onboarding View (First Image Style) */
-          <>
-            <div
-              ref={scrollRef}
-              className="flex-1 overflow-y-auto px-6 py-8 space-y-8 scroll-smooth"
-            >
+          /* Onboarding View with 35/65 Layout */
+          <div className="flex-1 grid grid-cols-[35%_65%] gap-6 overflow-hidden p-6">
+            {/* Left Panel - Step Guide (35%) */}
+            <div className="bg-white/60 backdrop-blur-sm rounded-2xl border border-orange-100/50 shadow-sm overflow-y-auto">
+              <div className="p-6 space-y-4">
+                <h3 className="text-sm font-bold text-orange-700 uppercase tracking-widest mb-6">Recruiter Onboarding</h3>
+                
+                {/* Progress Bar */}
+                <div className="mb-6">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-xs font-semibold text-slate-700">Progress</span>
+                    <span className="text-xs font-semibold text-orange-600">
+                      {["INITIAL", "EMAIL_ANALYSIS"].includes(state) ? "16%" :
+                       ["COMPANY_CONFIRMATION", "REVIEW_BIO", "EDITING_BIO", "ASK_WEBSITE", "CONFIRM_LOCATION"].includes(state) ? "33%" :
+                       ["RECRUITER_NAME", "RECRUITER_EXPERIENCE"].includes(state) ? "50%" :
+                       ["REVIEW_DETAILS", "EDITING_DETAIL", "LOCATION", "REGISTRATION", "DETAILS"].includes(state) ? "66%" :
+                       ["ASSESSMENT_PROMPT", "ASSESSMENT_CHAT"].includes(state) ? "83%" :
+                       state === "COMPLETED" ? "100%" : "16%"}
+                    </span>
+                  </div>
+                  <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-[#ff9800] to-[#ff6f00] transition-all duration-500"
+                      style={{width: 
+                        ["INITIAL", "EMAIL_ANALYSIS"].includes(state) ? "16%" :
+                        ["COMPANY_CONFIRMATION", "REVIEW_BIO", "EDITING_BIO", "ASK_WEBSITE", "CONFIRM_LOCATION"].includes(state) ? "33%" :
+                        ["RECRUITER_NAME", "RECRUITER_EXPERIENCE"].includes(state) ? "50%" :
+                        ["REVIEW_DETAILS", "EDITING_DETAIL", "LOCATION", "REGISTRATION", "DETAILS"].includes(state) ? "66%" :
+                        ["ASSESSMENT_PROMPT", "ASSESSMENT_CHAT"].includes(state) ? "83%" :
+                        state === "COMPLETED" ? "100%" : "16%"
+                      }}
+                    ></div>
+                  </div>
+                </div>
+
+                {/* Step Indicators */}
+                <div className="space-y-3">
+                  {/* Step 1: Company Detection */}
+                  <div className="flex items-start gap-3 pb-3 border-b border-slate-100">
+                    <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                      ["INITIAL", "EMAIL_ANALYSIS", "COMPANY_CONFIRMATION"].includes(state)
+                        ? "bg-orange-500 text-white shadow-lg shadow-orange-500/40"
+                        : ["REVIEW_BIO", "EDITING_BIO", "ASK_WEBSITE", "CONFIRM_LOCATION", "RECRUITER_NAME", "RECRUITER_EXPERIENCE", "REVIEW_DETAILS", "EDITING_DETAIL", "LOCATION", "REGISTRATION", "DETAILS", "ASSESSMENT_PROMPT", "ASSESSMENT_CHAT", "COMPLETED"].includes(state) ? "bg-green-500 text-white" : "bg-slate-200 text-slate-600"
+                    }`}>
+                      {["REVIEW_BIO", "EDITING_BIO", "ASK_WEBSITE", "CONFIRM_LOCATION", "RECRUITER_NAME", "RECRUITER_EXPERIENCE", "REVIEW_DETAILS", "EDITING_DETAIL", "LOCATION", "REGISTRATION", "DETAILS", "ASSESSMENT_PROMPT", "ASSESSMENT_CHAT", "COMPLETED"].includes(state) ? "✓" : "1"}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Company Detection</p>
+                      <p className="text-xs text-slate-600 mt-1">Analyze your company from email</p>
+                    </div>
+                  </div>
+
+                  {/* Step 2: Company Information */}
+                  <div className="flex items-start gap-3 pb-3 border-b border-slate-100">
+                    <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                      ["REVIEW_BIO", "EDITING_BIO", "ASK_WEBSITE", "CONFIRM_LOCATION"].includes(state)
+                        ? "bg-orange-500 text-white shadow-lg shadow-orange-500/40"
+                        : ["RECRUITER_NAME", "RECRUITER_EXPERIENCE", "REVIEW_DETAILS", "EDITING_DETAIL", "LOCATION", "REGISTRATION", "DETAILS", "ASSESSMENT_PROMPT", "ASSESSMENT_CHAT", "COMPLETED"].includes(state) ? "bg-green-500 text-white" : "bg-slate-200 text-slate-600"
+                    }`}>
+                      {["RECRUITER_NAME", "RECRUITER_EXPERIENCE", "REVIEW_DETAILS", "EDITING_DETAIL", "LOCATION", "REGISTRATION", "DETAILS", "ASSESSMENT_PROMPT", "ASSESSMENT_CHAT", "COMPLETED"].includes(state) ? "✓" : "2"}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Company Details</p>
+                      <p className="text-xs text-slate-600 mt-1">Website, location, description</p>
+                    </div>
+                  </div>
+
+                  {/* Step 3: Recruiter Information */}
+                  <div className="flex items-start gap-3 pb-3 border-b border-slate-100">
+                    <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                      ["RECRUITER_NAME", "RECRUITER_EXPERIENCE"].includes(state)
+                        ? "bg-orange-500 text-white shadow-lg shadow-orange-500/40"
+                        : ["REVIEW_DETAILS", "EDITING_DETAIL", "LOCATION", "REGISTRATION", "DETAILS", "ASSESSMENT_PROMPT", "ASSESSMENT_CHAT", "COMPLETED"].includes(state) ? "bg-green-500 text-white" : "bg-slate-200 text-slate-600"
+                    }`}>
+                      {["REVIEW_DETAILS", "EDITING_DETAIL", "LOCATION", "REGISTRATION", "DETAILS", "ASSESSMENT_PROMPT", "ASSESSMENT_CHAT", "COMPLETED"].includes(state) ? "✓" : "3"}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Your Profile</p>
+                      <p className="text-xs text-slate-600 mt-1">Name and experience</p>
+                    </div>
+                  </div>
+
+                  {/* Step 4: Assessment */}
+                  <div className="flex items-start gap-3">
+                    <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                      ["ASSESSMENT_PROMPT", "ASSESSMENT_CHAT"].includes(state)
+                        ? "bg-orange-500 text-white shadow-lg shadow-orange-500/40"
+                        : state === "COMPLETED" ? "bg-green-500 text-white" : "bg-slate-200 text-slate-600"
+                    }`}>
+                      {state === "COMPLETED" ? "✓" : "4"}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Assessment</p>
+                      <p className="text-xs text-slate-600 mt-1">Answer 5 strategic questions</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Panel - Chat Interface (65%) */}
+            <div className="flex flex-col bg-white/60 backdrop-blur-sm rounded-2xl border border-orange-100/50 shadow-sm overflow-hidden">
+              {/* Messages Area */}
+              <div
+                ref={scrollRef}
+                className="flex-1 overflow-y-auto px-6 py-8 space-y-8 scroll-smooth"
+              >
               {messages.map((m) => (
                 <div
                   key={m.id}
@@ -1237,8 +1338,8 @@ export default function RecruiterOnboarding() {
                     <div
                       className={`px-5 py-4 rounded-2xl shadow-sm text-sm leading-relaxed ${
                         m.sender === "bot" 
-                          ? "bg-slate-50 border border-slate-100 text-slate-700 rounded-tl-none" 
-                          : "bg-primary text-slate-900 border border-primary-dark rounded-tr-none shadow-primary-light font-semibold"
+                          ? "bg-white border border-orange-100/50 text-slate-700 rounded-tl-none" 
+                          : "bg-gradient-to-r from-[#ff9800] to-[#ff6f00] text-white border border-orange-400 rounded-tr-none shadow-orange-500/20 font-semibold"
                       }`}
                     >
                       <p className="whitespace-pre-wrap font-medium">
@@ -1253,7 +1354,7 @@ export default function RecruiterOnboarding() {
                             key={opt}
                             onClick={() => handleSend(opt)}
                             disabled={isLoading}
-                          className="px-5 py-2.5 bg-white hover:bg-primary-light border border-slate-200 hover:border-primary-light rounded-full text-sm font-semibold text-slate-800 hover:text-primary transition-all shadow-sm active:scale-95 disabled:opacity-50"
+                          className="px-5 py-2.5 bg-white hover:bg-orange-50 border border-orange-200 hover:border-orange-400 rounded-full text-sm font-semibold text-slate-700 hover:text-orange-700 transition-all shadow-sm active:scale-95 disabled:opacity-50"
                           >
                             {opt}
                           </button>
@@ -1266,11 +1367,11 @@ export default function RecruiterOnboarding() {
               
               {isLoading && (
                 <div className="flex justify-start">
-                  <div className="bg-slate-50 px-5 py-4 rounded-2xl border border-slate-100 rounded-tl-none shadow-sm">
+                  <div className="bg-white px-5 py-4 rounded-2xl border border-orange-100 rounded-tl-none shadow-sm">
                     <div className="flex space-x-1.5 items-center h-4">
-                      <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce"></div>
-                      <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce delay-100"></div>
-                      <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce delay-200"></div>
+                      <div className="w-1.5 h-1.5 bg-orange-500 rounded-full animate-bounce"></div>
+                      <div className="w-1.5 h-1.5 bg-orange-500 rounded-full animate-bounce delay-100"></div>
+                      <div className="w-1.5 h-1.5 bg-orange-500 rounded-full animate-bounce delay-200"></div>
                     </div>
                   </div>
                 </div>
@@ -1278,9 +1379,9 @@ export default function RecruiterOnboarding() {
             </div>
 
             {/* Action Bar */}
-            <div className="px-6 py-6 bg-white border-t border-slate-100">
+            <div className="px-6 py-6 bg-white/80 backdrop-blur-sm border-t border-orange-100/30 shadow-[0_-4px_16px_rgba(255,152,0,0.08)]">
               <div className="max-w-4xl mx-auto relative">
-                <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 focus-within:border-primary focus-within:ring-4 focus-within:ring-primary-light transition-all px-2 py-2 rounded-2xl">
+                <div className="flex items-center gap-3 bg-white border-2 border-orange-200 focus-within:border-orange-400 focus-within:ring-4 focus-within:ring-orange-100 transition-all px-2 py-2 rounded-2xl shadow-sm">
                   <input
                     type="text"
                     value={input}
@@ -1311,7 +1412,7 @@ export default function RecruiterOnboarding() {
                       className={`p-2.5 rounded-xl transition-all ${
                         isListening 
                           ? "bg-red-500 text-white animate-pulse" 
-                          : "text-slate-400 hover:text-primary hover:bg-white border border-transparent hover:border-slate-100"
+                          : "text-orange-600 hover:text-orange-700 hover:bg-orange-50 border border-transparent hover:border-orange-100"
                       }`}
                     >
                       <MicIcon />
@@ -1319,15 +1420,16 @@ export default function RecruiterOnboarding() {
                     <button
                       onClick={() => handleSend()}
                       disabled={isLoading || !input.trim()}
-                      className="bg-primary hover:bg-primary-dark text-white p-2.5 rounded-xl transition-all shadow-md shadow-primary-light disabled:opacity-40 active:scale-95"
+                      className="bg-gradient-to-r from-[#ff9800] to-[#ff6f00] hover:from-[#ff8c00] hover:to-[#ff5c00] text-white p-2.5 rounded-xl transition-all shadow-md shadow-orange-500/20 disabled:opacity-40 active:scale-95"
                     >
                       <SendIcon />
                     </button>
                   </div>
                 </div>
               </div>
+              </div>
             </div>
-          </>
+          </div>
         )}
       </main>
     </div>

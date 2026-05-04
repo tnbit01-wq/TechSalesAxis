@@ -339,7 +339,7 @@ function OnboardingContent() {
             addMessage(
               "Almost done! Please review and accept our Terms and Conditions to complete your onboarding.",
               "bot",
-              ["Read Terms & Policy", "Accept Terms & Conditions"],
+              ["Read Terms & Policy"],
             );
           }
 
@@ -2216,7 +2216,7 @@ function OnboardingContent() {
               tcMsg = "Almost there! Let's finish by reviewing and accepting our Terms and Conditions.";
             }
             
-            addMessage(tcMsg, "bot", ["Read Terms & Conditions", "Accept & Finish"]);
+            addMessage(tcMsg, "bot", ["Read Terms & Conditions"]);
           }, 1000);
         } else {
           // Add a message if someone tries to type during ID upload step
@@ -2469,7 +2469,7 @@ function OnboardingContent() {
           addMessage(
             "Last step: Please accept our Terms and Conditions to finalize your profile.",
             "bot",
-            ["Read Terms & Policy", "Accept Terms & Conditions"],
+            ["Read Terms & Policy"],
           );
           const nextState = "AWAITING_TC";
           await saveStep(nextState);
@@ -2484,41 +2484,133 @@ function OnboardingContent() {
     }
   };
 
+  const handleAcceptTC = async () => {
+    try {
+      setIsLoading(true);
+      const token = awsAuth.getToken() || undefined;
+
+      // Call backend to mark TC accepted
+      await apiClient.post("/candidate/accept-tc", {}, token);
+
+      let completeMsg = "Terms accepted! Your onboarding is now complete.";
+      let roadmapMsg = "🚀 Generating your personalized roadmap...";
+      
+      if (onboardingMode === "conversational") {
+        completeMsg = "Perfect! You're all set! Let me create your personalized career roadmap.";
+        roadmapMsg = "Building your personalized career strategy...";
+      }
+
+      addMessage(completeMsg, "bot");
+
+      // Get Personalized Recommendations
+      try {
+        if (token) {
+          addMessage(roadmapMsg, "bot");
+          
+          const aiClient = getAIIntelligenceClient();
+          
+          // Map experience band to career stage
+          const experienceStageMap: Record<string, string> = {
+            fresher: "fresher",
+            mid: "mid_level",
+            senior: "senior",
+            leadership: "leadership"
+          };
+          
+          const careerStageForRecs = experienceStageMap[experienceBand] || "mid_level";
+          
+          const recommendationsResponse = await aiClient.getPersonalizedRecommendations(
+            careerStageForRecs,
+            true,
+            token
+          );
+          
+          if (recommendationsResponse.status === "success") {
+            const recs = recommendationsResponse.data;
+            
+            const targetRoleContext = careerReadinessData?.target_role ? ` for ${careerReadinessData.target_role}` : "";
+            const experienceLevelLabel = experienceStageMap[experienceBand] || "your career stage";
+            const skillsContext = selectedSkills.length > 0 ? ` with your skills in ${selectedSkills.slice(0, 2).join(", ")}` : "";
+            
+            let recsMessage: string;
+            if (onboardingMode === "conversational") {
+              recsMessage = 
+                `\n🎯 **Here's your game plan**${targetRoleContext}` +
+                `\n\nBased on your **${experienceLevelLabel}** experience${skillsContext}:` +
+                `\n\n**This week's actions:**` +
+                `\n${recs.immediate_actions.slice(0, 3).map((a: string) => `✓ ${a}`).join("\n")}` +
+                `\n\n📚 **Focus on these skills:**` +
+                `\n${Object.keys(recs.skill_development).slice(0, 2).map((skill: string) => `• ${skill}`).join("\n")}` +
+                `\n\n💬 **Pro interview tips:**` +
+                `\n${recs.interview_prep_suggestions.slice(0, 2).map((tip: string) => `• ${tip}`).join("\n")}` +
+                `\n\nLet's get started! 🚀`;
+            } else {
+              recsMessage = 
+                `\n🎯 **Your Next Steps**${targetRoleContext}` +
+                `\n\nPersonalized for **${experienceLevelLabel}** career stage:` +
+                `\n\n${recs.immediate_actions.slice(0, 3).map((a: string) => `  ✓ ${a}`).join("\n")}` +
+                `\n\n📚 **Skills to Focus On:**` +
+                `\n${Object.keys(recs.skill_development).slice(0, 2).map((skill: string) => `  • ${skill}`).join("\n")}` +
+                `\n\n💡 **Interview Tips:**` +
+                `\n${recs.interview_prep_suggestions.slice(0, 2).map((tip: string) => `  • ${tip}`).join("\n")}` +
+                `\n\n📅 **Timeline:** ${recs.timeline_milestones ? recs.timeline_milestones[0] : "Start immediately"}`;
+            }
+            
+            addMessage(recsMessage, "bot");
+          }
+        }
+      } catch (recsError) {
+        console.error("[RECOMMENDATIONS ERROR]", recsError);
+      }
+
+      const nextState = "COMPLETED";
+      await saveStep(nextState);
+      setState(nextState);
+
+      setTimeout(() => {
+        addMessage(
+          "Welcome aboard! You are now eligible to apply for jobs. However, to get a 'Verified' badge and attract premium recruiters, you should take the assessment. Ready?",
+          "bot",
+          ["Start Assessment", "I'll do it later"],
+        );
+      }, 1500);
+    } catch (error) {
+      console.error("Error accepting TC:", error);
+      addMessage("Error accepting terms. Please try again.", "bot");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
-    <div className="flex flex-col h-screen bg-slate-50">
-      <header className="bg-white border-b px-6 py-4 flex items-center justify-between shadow-sm">
+    <div className="flex flex-col h-screen bg-gradient-to-br from-[#fff9f5] via-[#fff8f0] to-[#ffe8d6]">
+      <header className="bg-white/80 backdrop-blur-sm border-b border-orange-100/30 px-6 py-4 flex items-center justify-between shadow-[0_8px_24px_rgba(255,152,0,0.08)]">
         <div className="flex items-center gap-4">
           <Link
             href="/"
-            className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500 hover:text-primary"
+            className="p-2 hover:bg-orange-50 rounded-full transition-all text-orange-600 hover:text-orange-700"
             aria-label="Back to home"
           >
             <svg
               className="w-5 h-5"
-              fill="none"
+              fill="currentColor"
               viewBox="0 0 24 24"
-              stroke="currentColor"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M10 19l-7-7m0 0l7-7m-7 7h18"
-              />
+              <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" />
             </svg>
           </Link>
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-              <div className="h-4 w-4 rounded-sm bg-white rotate-45" />
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-[#ff9800] to-[#ff6f00] flex items-center justify-center shadow-lg shadow-orange-500/20">
+              <span className="text-white font-bold text-sm">T</span>
             </div>
-            <span className="font-bold text-slate-900">
-              TechSales Axis Onboarding
+            <span className="font-bold text-slate-900 tracking-tight text-base">
+              TechSales Axis
             </span>
           </div>
         </div>
         <button
           onClick={handleLogout}
-          className="text-sm font-medium text-slate-500 hover:text-red-600 transition-colors flex items-center gap-2"
+          className="text-sm font-medium text-orange-600 hover:text-orange-700 transition-colors flex items-center gap-2"
         >
           <svg
             className="w-4 h-4"
@@ -2537,11 +2629,161 @@ function OnboardingContent() {
         </button>
       </header>
 
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-y-auto px-6 py-8 space-y-4 scroll-smooth max-w-5xl mx-auto w-full"
-      >
-        {/* Mode Selection Screen - Appears first */}
+      {/* 35/65 Layout Grid */}
+      <div className="flex-1 grid grid-cols-[35%_65%] gap-6 overflow-hidden p-6">
+        {/* Left Panel - Step Guide (35%) */}
+        <div className="bg-white/60 backdrop-blur-sm rounded-2xl border border-orange-100/50 shadow-sm overflow-hidden">
+          <div className="p-6 space-y-3 h-full flex flex-col">
+            <h3 className="text-sm font-bold text-orange-700 uppercase tracking-widest mb-6">Career Onboarding</h3>
+            
+            {/* Progress Bar */}
+            <div className="mb-4">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-xs font-semibold text-slate-700">Progress</span>
+                <span className="text-xs font-semibold text-orange-600">
+                  {state === "INITIAL" || state === "AWAITING_EMPLOYMENT_STATUS" ? "14%" :
+                   state === "AWAITING_JOB_SEARCH_MODE" || state === "AWAITING_TIMELINE" ? "28%" :
+                   state === "AWAITING_PREFERENCES" ? "42%" :
+                   state === "AWAITING_EXPERIENCE" ? "56%" :
+                   ["AWAITING_RESUME", "AWAITING_RESUME_CHOICE", "AWAITING_MANUAL_BIO", "AWAITING_MANUAL_EDUCATION", "AWAITING_MANUAL_EXPERIENCE", "AWAITING_MANUAL_SKILLS", "AWAITING_MANUAL_CONTACT"].includes(state) ? "70%" :
+                   ["AWAITING_SKILLS", "AWAITING_GPS_VISION", "AWAITING_GPS_INTERESTS", "AWAITING_GPS_GOAL"].includes(state) ? "84%" :
+                   state === "AWAITING_ID" ? "92%" :
+                   state === "AWAITING_TC" ? "96%" :
+                   state === "COMPLETED" ? "100%" : "14%"}
+                </span>
+              </div>
+              <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-[#ff9800] to-[#ff6f00] transition-all duration-500"
+                  style={{width: 
+                    state === "INITIAL" || state === "AWAITING_EMPLOYMENT_STATUS" ? "14%" :
+                    state === "AWAITING_JOB_SEARCH_MODE" || state === "AWAITING_TIMELINE" ? "28%" :
+                    state === "AWAITING_PREFERENCES" ? "42%" :
+                    state === "AWAITING_EXPERIENCE" ? "56%" :
+                    ["AWAITING_RESUME", "AWAITING_RESUME_CHOICE", "AWAITING_MANUAL_BIO", "AWAITING_MANUAL_EDUCATION", "AWAITING_MANUAL_EXPERIENCE", "AWAITING_MANUAL_SKILLS", "AWAITING_MANUAL_CONTACT"].includes(state) ? "70%" :
+                    ["AWAITING_SKILLS", "AWAITING_GPS_VISION", "AWAITING_GPS_INTERESTS", "AWAITING_GPS_GOAL"].includes(state) ? "84%" :
+                    state === "AWAITING_ID" ? "92%" :
+                    state === "AWAITING_TC" ? "96%" :
+                    state === "COMPLETED" ? "100%" : "14%"
+                  }}
+                ></div>
+              </div>
+            </div>
+
+            {/* Step Indicators */}
+            <div className="space-y-2 flex-1 overflow-hidden flex flex-col">
+              {/* Step 1: Career Info */}
+              <div className="flex items-start gap-3 pb-2 border-b border-slate-100">
+                <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                  ["INITIAL", "AWAITING_EMPLOYMENT_STATUS", "AWAITING_JOB_SEARCH_MODE", "AWAITING_TIMELINE", "AWAITING_PREFERENCES"].includes(state)
+                    ? "bg-orange-500 text-white shadow-lg shadow-orange-500/40"
+                    : ["AWAITING_EXPERIENCE", "AWAITING_RESUME", "AWAITING_RESUME_CHOICE", "AWAITING_MANUAL_BIO", "AWAITING_MANUAL_EDUCATION", "AWAITING_MANUAL_EXPERIENCE", "AWAITING_MANUAL_SKILLS", "AWAITING_MANUAL_CONTACT", "AWAITING_SKILLS", "AWAITING_GPS_VISION", "AWAITING_GPS_INTERESTS", "AWAITING_GPS_GOAL", "AWAITING_ID", "AWAITING_TC", "COMPLETED"].includes(state) ? "bg-green-500 text-white" : "bg-slate-200 text-slate-600"
+                }`}>
+                  {["INITIAL", "AWAITING_EMPLOYMENT_STATUS", "AWAITING_JOB_SEARCH_MODE", "AWAITING_TIMELINE", "AWAITING_PREFERENCES"].includes(state) ? "1" : "✓"}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">Career Information</p>
+                  <p className="text-xs text-slate-600 mt-1">Employment & preferences</p>
+                </div>
+              </div>
+
+              {/* Step 2: Experience Band */}
+              <div className="flex items-start gap-3 pb-2 border-b border-slate-100">
+                <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                  state === "AWAITING_EXPERIENCE"
+                    ? "bg-orange-500 text-white shadow-lg shadow-orange-500/40"
+                    : ["AWAITING_RESUME", "AWAITING_RESUME_CHOICE", "AWAITING_MANUAL_BIO", "AWAITING_MANUAL_EDUCATION", "AWAITING_MANUAL_EXPERIENCE", "AWAITING_MANUAL_SKILLS", "AWAITING_MANUAL_CONTACT", "AWAITING_SKILLS", "AWAITING_GPS_VISION", "AWAITING_GPS_INTERESTS", "AWAITING_GPS_GOAL", "AWAITING_ID", "AWAITING_TC", "COMPLETED"].includes(state) ? "bg-green-500 text-white" : "bg-slate-200 text-slate-600"
+                }`}>
+                  {state === "AWAITING_EXPERIENCE" ? "2" : ["AWAITING_RESUME", "AWAITING_RESUME_CHOICE", "AWAITING_MANUAL_BIO", "AWAITING_MANUAL_EDUCATION", "AWAITING_MANUAL_EXPERIENCE", "AWAITING_MANUAL_SKILLS", "AWAITING_MANUAL_CONTACT", "AWAITING_SKILLS", "AWAITING_GPS_VISION", "AWAITING_GPS_INTERESTS", "AWAITING_GPS_GOAL", "AWAITING_ID", "AWAITING_TC", "COMPLETED"].includes(state) ? "✓" : "2"}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">Experience</p>
+                  <p className="text-xs text-slate-600 mt-1">Years in your field</p>
+                </div>
+              </div>
+
+              {/* Step 3: Resume */}
+              <div className="flex items-start gap-3 pb-2 border-b border-slate-100">
+                <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                  ["AWAITING_RESUME", "AWAITING_RESUME_CHOICE", "AWAITING_MANUAL_BIO", "AWAITING_MANUAL_EDUCATION", "AWAITING_MANUAL_EXPERIENCE", "AWAITING_MANUAL_SKILLS", "AWAITING_MANUAL_CONTACT"].includes(state)
+                    ? "bg-orange-500 text-white shadow-lg shadow-orange-500/40"
+                    : ["AWAITING_SKILLS", "AWAITING_GPS_VISION", "AWAITING_GPS_INTERESTS", "AWAITING_GPS_GOAL", "AWAITING_ID", "AWAITING_TC", "COMPLETED"].includes(state) ? "bg-green-500 text-white" : "bg-slate-200 text-slate-600"
+                }`}>
+                  {["AWAITING_RESUME", "AWAITING_RESUME_CHOICE", "AWAITING_MANUAL_BIO", "AWAITING_MANUAL_EDUCATION", "AWAITING_MANUAL_EXPERIENCE", "AWAITING_MANUAL_SKILLS", "AWAITING_MANUAL_CONTACT"].includes(state) ? "3" : ["AWAITING_SKILLS", "AWAITING_GPS_VISION", "AWAITING_GPS_INTERESTS", "AWAITING_GPS_GOAL", "AWAITING_ID", "AWAITING_TC", "COMPLETED"].includes(state) ? "✓" : "3"}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">Resume</p>
+                  <p className="text-xs text-slate-600 mt-1">Upload or build manually</p>
+                </div>
+              </div>
+
+              {/* Step 4: Skills & Vision */}
+              <div className="flex items-start gap-3 pb-2 border-b border-slate-100">
+                <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                  ["AWAITING_SKILLS", "AWAITING_GPS_VISION", "AWAITING_GPS_INTERESTS", "AWAITING_GPS_GOAL"].includes(state)
+                    ? "bg-orange-500 text-white shadow-lg shadow-orange-500/40"
+                    : ["AWAITING_ID", "AWAITING_TC", "COMPLETED"].includes(state) ? "bg-green-500 text-white" : "bg-slate-200 text-slate-600"
+                }`}>
+                  {["AWAITING_SKILLS", "AWAITING_GPS_VISION", "AWAITING_GPS_INTERESTS", "AWAITING_GPS_GOAL"].includes(state) ? "4" : ["AWAITING_ID", "AWAITING_TC", "COMPLETED"].includes(state) ? "✓" : "4"}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">Skills & Vision</p>
+                  <p className="text-xs text-slate-600 mt-1">Confirm skills & career goals</p>
+                </div>
+              </div>
+
+              {/* Step 5: ID Verification */}
+              <div className="flex items-start gap-3 pb-2 border-b border-slate-100">
+                <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                  state === "AWAITING_ID"
+                    ? "bg-orange-500 text-white shadow-lg shadow-orange-500/40"
+                    : ["AWAITING_TC", "COMPLETED"].includes(state) ? "bg-green-500 text-white" : "bg-slate-200 text-slate-600"
+                }`}>
+                  {state === "AWAITING_ID" ? "5" : ["AWAITING_TC", "COMPLETED"].includes(state) ? "✓" : "5"}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">Verification</p>
+                  <p className="text-xs text-slate-600 mt-1">Verify your identity</p>
+                </div>
+              </div>
+
+              {/* Step 6: Terms */}
+              <div className="flex items-start gap-3 pb-2 border-b border-slate-100">
+                <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                  state === "AWAITING_TC"
+                    ? "bg-orange-500 text-white shadow-lg shadow-orange-500/40"
+                    : state === "COMPLETED" ? "bg-green-500 text-white" : "bg-slate-200 text-slate-600"
+                }`}>
+                  {state === "AWAITING_TC" ? "6" : state === "COMPLETED" ? "✓" : "6"}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">Terms & Conditions</p>
+                  <p className="text-xs text-slate-600 mt-1">Accept platform terms</p>
+                </div>
+              </div>
+
+              {/* Step 7: Assessment */}
+              <div className="flex items-start gap-3 pb-2">
+                <div className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all bg-slate-200 text-slate-600">
+                  7
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">Assessment</p>
+                  <p className="text-xs text-slate-600 mt-1">Take skill assessment to unlock job applications</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Panel - Chat Interface (65%) */}
+        <div className="flex flex-col bg-white/60 backdrop-blur-sm rounded-2xl border border-orange-100/50 shadow-sm overflow-hidden">
+          {/* Messages Area */}
+          <div
+            ref={scrollRef}
+            className="flex-1 overflow-y-auto p-6 space-y-5 scroll-smooth"
+          >
+            {/* Original Content Moved Here */}
         {state === "INITIAL" && !onboardingMode && (
           <div className="flex flex-col gap-6 justify-center items-center h-full">
             <div className="text-center max-w-2xl">
@@ -2573,7 +2815,7 @@ function OnboardingContent() {
                     setState("AWAITING_EMPLOYMENT_STATUS");
                   }, 500);
                 }}
-                className="p-8 border-2 border-slate-200 rounded-2xl hover:border-primary hover:bg-primary-light transition-all text-left hover:shadow-lg"
+                className="p-8 border-2 border-orange-200 rounded-2xl hover:border-orange-400 hover:bg-orange-50 transition-all text-left hover:shadow-lg shadow-sm hover:shadow-orange-500/20"
               >
                 <div className="text-4xl mb-4">📋</div>
                 <h3 className="text-xl font-bold text-slate-900 mb-2">
@@ -2597,7 +2839,7 @@ function OnboardingContent() {
                     setState("AWAITING_EMPLOYMENT_STATUS");
                   }, 500);
                 }}
-                className="p-8 border-2 border-slate-200 rounded-2xl hover:border-primary hover:bg-primary-light transition-all text-left hover:shadow-lg"
+                className="p-8 border-2 border-orange-200 rounded-2xl hover:border-orange-400 hover:bg-orange-50 transition-all text-left hover:shadow-lg shadow-sm hover:shadow-orange-500/20"
               >
                 <div className="text-4xl mb-4">🧠</div>
                 <h3 className="text-xl font-bold text-slate-900 mb-2">
@@ -2629,8 +2871,8 @@ function OnboardingContent() {
               <div
                 className={`px-5 py-4 rounded-2xl shadow-sm text-sm leading-relaxed whitespace-pre-wrap ${
                   msg.sender === "user"
-                    ? "bg-primary text-white rounded-tr-none shadow-primary-light font-semibold"
-                    : "bg-slate-50 border border-slate-100 text-slate-700 rounded-tl-none font-medium"
+                    ? "bg-gradient-to-r from-[#ff9800] to-[#ff6f00] text-white rounded-tr-none shadow-orange-500/20 font-semibold"
+                    : "bg-white border border-orange-100/50 text-slate-700 rounded-tl-none font-medium"
                 }`}
                 style={msg.sender === "bot" ? {
                   color: "#374151",  // Explicit dark gray fallback
@@ -2648,11 +2890,11 @@ function OnboardingContent() {
                       key={opt}
                       onClick={() => handleSend(opt)}
                       disabled={isLoading}
-                      className="px-5 py-2.5 bg-white hover:bg-primary-light border border-slate-200 hover:border-primary-light rounded-full text-sm font-semibold text-slate-800 hover:text-primary transition-all shadow-sm active:scale-95 disabled:opacity-50"
+                      className="px-5 py-2.5 bg-white hover:bg-orange-50 border border-orange-200 hover:border-orange-400 rounded-full text-sm font-semibold text-slate-700 hover:text-orange-700 transition-all shadow-sm active:scale-95 disabled:opacity-50"
                       style={{
-                        color: "#1f2937",  // Explicit dark gray text
-                        backgroundColor: "#ffffff",  // Explicit white background
-                        borderColor: "#e2e8f0"  // Explicit light border
+                        color: "#1f2937",
+                        backgroundColor: "#ffffff",
+                        borderColor: "#fed7aa"
                       }}
                     >
                       {opt}
@@ -2677,10 +2919,10 @@ function OnboardingContent() {
       </div>
 
       {/* Input Area */}
-      <div className="px-6 py-6 bg-white border-t border-slate-100">
+      <div className="px-6 py-6 bg-white/80 backdrop-blur-sm border-t border-orange-100/30 shadow-[0_-4px_16px_rgba(255,152,0,0.08)]">
         <div className="max-w-5xl mx-auto relative flex flex-col gap-3">
           {state === "AWAITING_SKILLS" && (
-            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-lg z-10 max-h-[40vh] overflow-y-auto">
+            <div className="bg-white border border-orange-100 rounded-2xl p-4 shadow-lg z-10 max-h-[40vh] overflow-y-auto">
               <div className="flex justify-between items-center mb-4 sticky top-0 bg-white pb-2 border-b border-slate-50">
                 <div className="flex flex-col">
                   <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
@@ -2693,7 +2935,7 @@ function OnboardingContent() {
                 <button
                   onClick={() => handleSend()}
                   disabled={isLoading || selectedSkills.length === 0}
-                  className="bg-primary hover:bg-primary-dark text-white text-[10px] font-bold px-4 py-2.5 rounded-full transition-all shadow-sm active:scale-95 disabled:opacity-50"
+                  className="bg-gradient-to-r from-[#ff9800] to-[#ff6f00] hover:from-[#ff8c00] hover:to-[#ff5c00] text-white text-[10px] font-bold px-4 py-2.5 rounded-full transition-all shadow-md shadow-orange-500/20 active:scale-95 disabled:opacity-50"
                 >
                   {isLoading ? "Saving..." : "CONFIRM SKILLS"}
                 </button>
@@ -2706,8 +2948,8 @@ function OnboardingContent() {
                     onClick={() => toggleSkill(skill)}
                     className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
                       selectedSkills.includes(skill)
-                        ? "bg-primary text-white shadow-md shadow-primary-light"
-                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                        ? "bg-gradient-to-r from-[#ff9800] to-[#ff6f00] text-white shadow-md shadow-orange-500/20"
+                        : "bg-orange-50 text-orange-700 hover:bg-orange-100"
                     }`}
                   >
                     {skill}
@@ -2772,7 +3014,7 @@ function OnboardingContent() {
           )}
 
           {(state === "AWAITING_RESUME" || state === "AWAITING_ID") && (
-            <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer relative">
+            <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-orange-200 rounded-2xl bg-orange-50/50 hover:bg-orange-100/50 transition-colors cursor-pointer relative">
               <input
                 type="file"
                 accept={state === "AWAITING_RESUME" ? ".pdf" : "image/*,.pdf"}
@@ -2780,7 +3022,7 @@ function OnboardingContent() {
                 disabled={isLoading}
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
               />
-              <div className="flex flex-col items-center gap-2 text-slate-500">
+              <div className="flex flex-col items-center gap-2 text-orange-600">
                 <svg
                   className="w-8 h-8"
                   fill="none"
@@ -2803,7 +3045,7 @@ function OnboardingContent() {
             </div>
           )}
 
-          <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 focus-within:border-primary focus-within:ring-4 focus-within:ring-primary-light transition-all px-2 py-2 rounded-2xl">
+          <div className="flex items-center gap-3 bg-white border-2 border-orange-200 focus-within:border-orange-400 focus-within:ring-4 focus-within:ring-orange-100 transition-all px-2 py-2 rounded-2xl shadow-sm">
             <input
               type="text"
               value={input}
@@ -2831,7 +3073,7 @@ function OnboardingContent() {
               className={`p-2.5 rounded-xl transition-all ${
                 isListening
                   ? "bg-red-500 text-white animate-pulse"
-                  : "text-slate-400 hover:text-primary hover:bg-white border border-transparent hover:border-slate-100"
+                  : "text-orange-600 hover:text-orange-700 hover:bg-orange-50 border border-transparent hover:border-orange-100"
               } disabled:opacity-50`}
             >
               <svg
@@ -2858,7 +3100,7 @@ function OnboardingContent() {
                   !input.trim() &&
                   selectedSkills.length === 0)
               }
-              className="bg-primary hover:bg-primary-dark text-white p-2.5 rounded-xl transition-all shadow-md shadow-primary-light disabled:opacity-40 active:scale-95"
+              className="bg-gradient-to-r from-[#ff9800] to-[#ff6f00] hover:from-[#ff8c00] hover:to-[#ff5c00] text-white p-2.5 rounded-xl transition-all shadow-md shadow-orange-500/20 disabled:opacity-40 active:scale-95"
             >
               <svg
                 className="w-5 h-5"
@@ -2878,9 +3120,13 @@ function OnboardingContent() {
         </div>
       </div>
 
+          </div>
+        </div>
+
       <TermsModal
         isOpen={isTermsModalOpen}
         onClose={() => setIsTermsModalOpen(false)}
+        onAccept={handleAcceptTC}
       />
     </div>
   );

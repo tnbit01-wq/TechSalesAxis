@@ -356,85 +356,143 @@ function SignupForm() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-slate-50">
+    <div className="flex flex-col h-screen bg-gradient-to-br from-[#fff9f5] via-[#fff8f0] to-[#ffe8d6]">
       {/* Header */}
-      <header className="bg-white border-b px-6 py-4 flex items-center justify-between shadow-sm">
+      <header className="bg-white/80 backdrop-blur-sm border-b border-orange-100/30 px-6 py-4 flex items-center justify-between shadow-[0_8px_24px_rgba(255,152,0,0.08)]">
         <div className="flex items-center gap-4">
           <Link
             href="/"
-            className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500 hover:text-primary"
+            className="p-2 hover:bg-orange-50 rounded-full transition-all text-orange-600 hover:text-orange-700"
             aria-label="Back to home"
           >
             <svg
               className="w-5 h-5"
-              fill="none"
+              fill="currentColor"
               viewBox="0 0 24 24"
-              stroke="currentColor"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M10 19l-7-7m0 0l7-7m-7 7h18"
-              />
+              <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" />
             </svg>
           </Link>
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-              <div className="h-4 w-4 rounded-sm bg-white rotate-45" />
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-[#ff9800] to-[#ff6f00] flex items-center justify-center shadow-lg shadow-orange-500/20">
+              <span className="text-white font-bold text-sm">T</span>
             </div>
-            <span className="font-bold text-slate-900 tracking-tight">
-              TechSales Axis Onboarding
+            <span className="font-bold text-slate-900 tracking-tight text-base">
+              TechSales Axis
             </span>
           </div>
         </div>
-        <div className="text-xs font-medium text-slate-400 uppercase tracking-widest bg-slate-100 px-2 py-1 rounded">
+        <div className="text-xs font-semibold text-orange-700 uppercase tracking-widest bg-orange-100/60 px-3 py-1.5 rounded-lg">
           {role} signup
         </div>
       </header>
 
-      {/* Chat Area */}
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-y-auto p-4 space-y-4 max-w-3xl mx-auto w-full scroll-smooth"
-      >
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"}`}
-          >
-            <div
-              className={`max-w-[80%] rounded-2xl px-4 py-3 shadow-sm ${
-                msg.sender === "user"
-                  ? "bg-blue-600 text-white rounded-tr-none"
-                  : "bg-white text-slate-800 border border-slate-200 rounded-tl-none"
-              }`}
-            >
-              <p className="text-sm leading-relaxed">{msg.text}</p>
-              <span className="text-[10px] opacity-50 mt-1 block text-right">
-                {msg.timestamp.toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </span>
+      {/* 35/65 Split Layout */}
+      <div className="flex-1 grid grid-cols-[35%_65%] gap-6 overflow-hidden p-6">
+        {/* Left Panel - Step Guide */}
+        <div className="bg-white/60 backdrop-blur-sm rounded-2xl border border-orange-100/50 shadow-sm overflow-y-auto">
+          <div className="p-6 space-y-6">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900 mb-1">Signup</h2>
+              <p className="text-sm text-slate-600">Create Your {role === "candidate" ? "Candidate" : "Recruiter"} Account</p>
             </div>
-          </div>
-        ))}
-        {isLoading && (
-          <div className="flex justify-start">
-            <div className="bg-white border border-slate-100 rounded-2xl rounded-tl-none px-4 py-3 shadow-sm">
-              <div className="flex gap-1">
-                <div className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce" />
-                <div className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce [animation-delay:0.2s]" />
-                <div className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce [animation-delay:0.4s]" />
+            
+            {/* Step 1 - Email */}
+            <div className={`p-4 rounded-xl transition-all ${state === "AWAITING_EMAIL" || state === "AWAITING_OTP_TRIGGER" ? "bg-orange-50 border-2 border-orange-400" : state !== "INITIAL" ? "bg-green-50 border-2 border-green-400" : "bg-slate-50 border-2 border-slate-200"}`}>
+              <div className="flex items-start gap-3">
+                <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${state === "AWAITING_EMAIL" || state === "AWAITING_OTP_TRIGGER" ? "bg-orange-400 text-white" : state !== "INITIAL" ? "bg-green-400 text-white" : "bg-slate-300 text-slate-700"}`}>
+                  {state !== "INITIAL" && state !== "AWAITING_EMAIL" && state !== "AWAITING_OTP_TRIGGER" ? "✓" : "1"}
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-slate-900 text-sm">Email Registration</h3>
+                  <p className="text-xs text-slate-600 mt-1">Provide your email address</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Step 2 - OTP */}
+            <div className={`p-4 rounded-xl transition-all ${state === "AWAITING_OTP" ? "bg-orange-50 border-2 border-orange-400" : state === "AWAITING_PASSWORD_SET" || state === "COMPLETED" ? "bg-green-50 border-2 border-green-400" : "bg-slate-50 border-2 border-slate-200"}`}>
+              <div className="flex items-start gap-3">
+                <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${state === "AWAITING_OTP" ? "bg-orange-400 text-white" : state === "AWAITING_PASSWORD_SET" || state === "COMPLETED" ? "bg-green-400 text-white" : "bg-slate-300 text-slate-700"}`}>
+                  {state === "AWAITING_PASSWORD_SET" || state === "COMPLETED" ? "✓" : "2"}
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-slate-900 text-sm\">Verify OTP</h3>
+                  <p className="text-xs text-slate-600 mt-1">Enter verification code</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Step 3 - Password */}
+            <div className={`p-4 rounded-xl transition-all ${state === "AWAITING_PASSWORD_SET" ? "bg-orange-50 border-2 border-orange-400" : state === "COMPLETED" ? "bg-green-50 border-2 border-green-400" : "bg-slate-50 border-2 border-slate-200"}`}>
+              <div className="flex items-start gap-3">
+                <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${state === "AWAITING_PASSWORD_SET" ? "bg-orange-400 text-white" : state === "COMPLETED" ? "bg-green-400 text-white" : "bg-slate-300 text-slate-700"}`}>
+                  {state === "COMPLETED" ? "✓" : "3"}
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-slate-900 text-sm">Set Password</h3>
+                  <p className="text-xs text-slate-600 mt-1">Create a secure password</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="mt-6 pt-6 border-t border-orange-100">
+              <div className="text-xs font-semibold text-slate-600 mb-2">Progress</div>
+              <div className="w-full bg-slate-200 rounded-full h-2">
+                <div 
+                  className="bg-gradient-to-r from-[#ff9800] to-[#ff6f00] h-2 rounded-full transition-all duration-300"
+                  style={{width: state === "COMPLETED" ? "100%" : state === "AWAITING_PASSWORD_SET" ? "66%" : state === "AWAITING_OTP" ? "33%" : "16%"}}
+                ></div>
               </div>
             </div>
           </div>
-        )}
-      </div>
+        </div>
 
-      {/* Input Area */}
-      <div className="p-4 bg-white border-t sm:p-6 shadow-[0_-4px_10px_-1px_rgba(0,0,0,0.05)]">
+        {/* Right Panel - Chat Interface */}
+        <div className="flex flex-col bg-white/60 backdrop-blur-sm rounded-2xl border border-orange-100/50 shadow-sm overflow-hidden">
+          {/* Messages Area */}
+          <div
+            ref={scrollRef}
+            className="flex-1 overflow-y-auto p-6 space-y-5 scroll-smooth"
+          >
+          {messages.map((msg) => (
+            <div
+              key={msg.id}
+              className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"}`}
+            >
+              <div
+                className={`max-w-[80%] rounded-2xl px-5 py-4 shadow-sm ${
+                  msg.sender === "user"
+                    ? "bg-gradient-to-r from-[#ff9800] to-[#ff6f00] text-white rounded-tr-none shadow-orange-500/20 font-medium"
+                    : "bg-white text-slate-800 border border-orange-100/50 rounded-tl-none"
+                }`}
+              >
+                <p className="text-sm leading-relaxed">{msg.text}</p>
+                <span className="text-[10px] opacity-50 mt-1 block text-right">
+                  {msg.timestamp.toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </span>
+              </div>
+            </div>
+          ))}
+          {isLoading && (
+            <div className="flex justify-start">
+              <div className="bg-white border border-slate-100 rounded-2xl rounded-tl-none px-4 py-3 shadow-sm">
+                <div className="flex gap-1">
+                  <div className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce" />
+                  <div className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce [animation-delay:0.2s]" />
+                  <div className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce [animation-delay:0.4s]" />
+                </div>
+              </div>
+            </div>
+          )}
+          </div>
+
+          {/* Input Area */}
+          <div className="p-6 bg-white/80 border-t border-orange-100/30">
         <form
           onSubmit={handleSend}
           className="max-w-3xl mx-auto flex items-center gap-3 relative"
@@ -450,7 +508,7 @@ function SignupForm() {
             }
             disabled={isLoading || state === "COMPLETED"}
             autoComplete="off"
-            className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
+            className="flex-1 bg-white border-2 border-orange-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-orange-400 transition-all disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed disabled:border-slate-200"
           />
 
           {(state === "AWAITING_PASSWORD_SET" || state === "AWAITING_OTP") && (
@@ -486,9 +544,9 @@ function SignupForm() {
             disabled={isLoading || state === "COMPLETED" || !hasSupport}
             className={`p-3 rounded-xl transition-all ${
               isListening
-                ? "bg-red-500 text-white animate-pulse"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-            } disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed`}
+                ? "bg-red-500 text-white animate-pulse shadow-lg shadow-red-500/40"
+                : "bg-orange-50 text-orange-600 hover:bg-orange-100"
+            } disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed`}
             title={isListening ? "Stop listening" : "Start voice input"}
           >
             <svg
@@ -509,7 +567,7 @@ function SignupForm() {
           <button
             type="submit"
             disabled={!input.trim() || isLoading || state === "COMPLETED"}
-            className="p-3 bg-primary text-white rounded-xl hover:bg-primary-dark transition-all disabled:bg-slate-300 disabled:text-slate-600 disabled:cursor-not-allowed shadow-md shadow-primary-light"
+            className="p-3 bg-gradient-to-r from-[#ff9800] to-[#ff6f00] text-white rounded-xl hover:shadow-lg hover:shadow-orange-500/40 transition-all disabled:bg-slate-300 disabled:text-slate-600 disabled:cursor-not-allowed disabled:shadow-none shadow-md shadow-orange-500/30 font-semibold active:scale-95"
           >
             <svg
               className="w-5 h-5"
@@ -525,10 +583,9 @@ function SignupForm() {
               />
             </svg>
           </button>
-        </form>
-        <p className="max-w-3xl mx-auto mt-2 text-[10px] text-center text-slate-400 uppercase tracking-widest font-medium">
-          Powered by TechSales Axis Trust Layer
-        </p>
+            </form>
+          </div>
+        </div>
       </div>
     </div>
   );

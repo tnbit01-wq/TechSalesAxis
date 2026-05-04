@@ -1260,20 +1260,33 @@ EXTRACT AND ANALYZE:
    - "exploring" (just browsing, no rush)
    - "passive" (open to great opportunity)
    - "active" (actively searching, urgent)
+
+3. Job Search Motivation (WHY they're looking):
+   - "career_transition" / "active_search" / "exploring" / "learning_growth" / "not_mentioned"
    
-3. Notice Period: How soon can they join? (days)
+4. Notice Period: How soon can they join? (days)
    - 0 (immediate), 7, 14, 30, 60, 90, 180
    - Or extract from context like "2 weeks notice" → 14 days
    
-4. Current Role: What is their current/most recent role?
+5. Current Role: What is their current/most recent role?
 
-5. Years of Experience: How many years in tech/sales?
+6. Years of Experience: How many years in tech/sales?
 
-6. Relocation: Are they willing to relocate?
+7. Relocation: Are they willing to relocate?
 
-7. Visa Sponsorship: Do they need visa sponsorship?
+8. Visa Sponsorship: Do they need visa sponsorship?
 
-8. Context Clues: What broader career intent can you infer?
+9. Work Arrangement Preference (WHERE they want to work):
+   - ["remote"], ["onsite"], ["hybrid"], ["remote", "onsite", "hybrid"], or "not_mentioned"
+   - IMPORTANT: If they say "open to all", it means ["remote", "onsite", "hybrid"]
+
+10. Target Role(s): What specific roles interest them? (List all mentioned, not just one)
+   - Examples: "Customer Success Manager", "Account Manager", "Account Executive"
+   - List ALL roles mentioned, not just the primary one
+
+11. Career Interests/Industries: What types of companies/products interest them?
+   - Examples: "SaaS", "eCommerce", "AI-driven", "IT services", "Cloud solutions"
+   - List as individual items, not one long sentence
 
 CRITICAL RULES:
 - Extract ONLY what's clearly stated or strongly implied
@@ -1288,13 +1301,16 @@ Return ONLY valid JSON:
     "extracted_info": {{
         "employment_status": "employed|unemployed|student|between_roles|not_mentioned",
         "job_search_mode": "exploring|passive|active|not_mentioned",
+        "job_search_motivation": "career_transition|active_search|exploring|learning_growth|not_mentioned",
         "notice_period_days": "number or null if not_mentioned",
         "current_role": "string or null",
         "years_experience": "number or null",
         "willing_to_relocate": "true|false|not_mentioned",
         "visa_sponsorship_needed": "true|false|not_mentioned",
         "salary_expectations": "number or null (in LPA if India context)",
-        "target_role": "string or null"
+        "work_arrangement_preference": ["remote", "onsite", "hybrid"] or ["remote"] or ["onsite"] or ["hybrid"] or "not_mentioned",
+        "target_roles": ["Customer Success Manager", "Account Manager"] or null,
+        "career_interests": ["SaaS", "eCommerce", "AI-driven"] or null
     }},
     "completeness_score": 0.0-1.0,
     "extracted_keywords": ["keyword1", "keyword2"],
