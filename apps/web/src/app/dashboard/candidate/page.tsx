@@ -1,522 +1,257 @@
 "use client";
-
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import { useRouter } from "next/navigation";
-import { RecommendedJobsCard } from "./components/RecommendedJobsCard";
-import { RecommendedCompaniesCard } from "./components/RecommendedCompaniesCard";
-import {
-  BadgeCheck,
-  Briefcase,
-  TrendingUp,
-  Award,
-  ShieldCheck,
-  Zap,
-  FileText,
-  Compass,
-  Target,
-  User,
-  Users,
-  Map as MapIcon,
-  Eye,
-} from "lucide-react";
-
-interface ComponentScores {
-  skill?: number;
-  behavioral?: number;
-  resume?: number;
-  psychometric?: number;
-  reference?: number;
-  [key: string]: number | undefined;
-}
-
-interface AssessmentResults {
-  overall_score: number;
-  component_scores: ComponentScores;
-  status: string;
-  completed_at?: string;
-}
+import { CheckCircle2, Circle, Briefcase, Zap, Target, Eye, Sparkles, ArrowRight, Bookmark, Building2, FileText, ChevronRight, Inbox, TrendingUp, Award } from "lucide-react";
 
 interface CandidateStats {
-  applications_count: number;
-  shortlisted_count: number;
-  invites_received: number;
-  posts_count: number;
-  saved_jobs_count: number;
-  profile_score: number | null;
-  profile_strength: string;
-  completion_score: number;
-  assessment_status: string;
-  terms_accepted: boolean;
-  account_status: string;
-  onboarding_step: string;
-  identity_verified: boolean;
-  profile_views_count?: number;
+  applications_count: number; shortlisted_count: number; invites_received: number;
+  saved_jobs_count: number; profile_score: number | null; completion_score: number;
+  assessment_status: string; identity_verified: boolean; profile_views_count?: number;
 }
 
 export default function CandidateDashboard() {
   const router = useRouter();
-  const [results, setResults] = useState<AssessmentResults | null>(null);
   const [stats, setStats] = useState<CandidateStats | null>(null);
+  const [jobs, setJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleLogout = async () => {
-    awsAuth.logout();
-    router.replace("/login");
-  };
+  const [userName, setUserName] = useState("there");
 
   const loadData = useCallback(async () => {
     try {
       const token = awsAuth.getToken();
-      if (!token) {
-        router.replace("/login");
-        return;
-      }
-
-      const [resultsData, statsData, profileViewsData] = await Promise.all([
-        apiClient.get("/assessment/results", token),
+      if (!token) { router.replace("/login"); return; }
+      const [s, p, j] = await Promise.all([
         apiClient.get("/candidate/stats", token),
-        apiClient.get("/candidate/profile", token).then(() => ({ unique_recruiters: 0 })).catch(() => ({ unique_recruiters: 0 })),
+        apiClient.get("/candidate/profile", token).catch(() => null),
+        apiClient.get("/candidate/recommended-jobs?limit=4", token).catch(() => null),
       ]);
-
-      setResults(resultsData);
-      setStats({
-        ...statsData,
-        profile_views_count: profileViewsData.unique_recruiters || 0,
-      });
-      setError(null);
-    } catch (err) {
-      console.error("Failed to load candidate dashboard data:", err);
-      setError("Failed to update dashboard");
-    } finally {
-      setLoading(false);
-    }
+      setStats(s);
+      if (p?.full_name) setUserName(p.full_name.split(" ")[0]);
+      setJobs((j?.data || j?.recommended_jobs || j?.recommendations || []).slice(0, 4));
+    } catch {}
+    finally { setLoading(false); }
   }, [router]);
 
-  useEffect(() => {
-    loadData();
-    
-    // Real-time updates replaced by periodic sync or manual refresh
-    // REDUCED FREQUENCY: Sync every 60 seconds to improve performance
-    const interval = setInterval(loadData, 60000); 
+  useEffect(() => { loadData(); const iv = setInterval(loadData, 60000); return () => clearInterval(iv); }, [loadData]);
 
-    return () => {
-      clearInterval(interval);
-    };
-  }, [loadData]);
+  if (loading) return <div className="h-[calc(100vh-64px)] flex items-center justify-center bg-[#F8F9FC]"><div className="flex flex-col items-center gap-3"><div className="h-9 w-9 rounded-full border-[2.5px] border-slate-200 border-t-[#FF8A00] animate-spin" /><p className="text-[11px] text-slate-400 font-medium tracking-widest uppercase">Loading…</p></div></div>;
+  if (!stats) return <div className="h-[calc(100vh-64px)] flex items-center justify-center bg-[#F8F9FC]"><div className="text-center"><p className="text-sm text-slate-600 mb-4">Could not load dashboard</p><button onClick={() => window.location.reload()} className="px-5 py-2.5 bg-[#FF8A00] text-white rounded-xl text-[13px] font-semibold">Retry</button></div></div>;
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="flex flex-col items-center gap-4">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
-          <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">
-            Loading Dashboard...
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error || !stats) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
-        <div className="bg-white p-8 rounded-3xl border border-red-100 shadow-xl max-w-sm text-center">
-          <div className="h-16 w-16 bg-red-50 rounded-2xl flex items-center justify-center mx-auto mb-6">
-            <ShieldCheck className="h-8 w-8 text-red-500" />
-          </div>
-          <h2 className="text-lg font-bold text-slate-900 mb-2 uppercase tracking-tight">
-            Connection Error
-          </h2>
-          <p className="text-slate-500 text-sm mb-6 leading-relaxed">
-            {error || "Unable to connect to server"}
-          </p>
-          <button
-            onClick={() => window.location.reload()}
-            className="w-full py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition"
-          >
-            Try Again
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  const isAssessmentCompleted = stats.assessment_status === "completed";
+  const score = stats.profile_score ?? 0;
+  const isVerified = stats.assessment_status === "completed";
+  const tasks = [
+    { label: "Complete your profile", done: stats.completion_score > 70, href: "/dashboard/candidate/profile" },
+    { label: "Verify your identity", done: stats.identity_verified, href: "/dashboard/candidate/settings" },
+    { label: "Take the skill assessment", done: isVerified, href: "/assessment/candidate" },
+    { label: "Apply to your first job", done: stats.applications_count > 0, href: "/dashboard/candidate/jobs" },
+  ];
+  const doneCount = tasks.filter(t => t.done).length;
+  const hasApps = stats.applications_count > 0 || stats.saved_jobs_count > 0 || stats.shortlisted_count > 0 || stats.invites_received > 0;
+  const expPct = Math.min(100, stats.completion_score);
+  const skillPct = isVerified ? 100 : 0;
+  const idPct = stats.identity_verified ? 100 : 0;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 animate-in fade-in duration-700">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-        {!isAssessmentCompleted && (
-          <div className="bg-gradient-to-r from-amber-500/10 to-amber-500/5 border border-amber-500/30 rounded-2xl p-6 flex items-center justify-between backdrop-blur-sm shadow-sm hover:shadow-md transition-shadow">
-            <div className="flex items-center gap-4">
-              <div className="h-12 w-12 bg-amber-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-amber-500/30 flex-shrink-0">
-                <ShieldCheck className="h-6 w-6" />
-              </div>
-              <div>
-                <h3 className="text-amber-900 font-bold text-base tracking-tight">
-                  Assessment Verification
-                </h3>
-                <p className="text-amber-800/70 text-xs font-medium mt-0.5">
-                  Complete your assessment to unlock verified status and access premium placements.
-                </p>
-              </div>
+    <div className="h-[calc(100vh-64px)] bg-[#F8F9FC] overflow-hidden">
+      <div className="h-full p-5 flex flex-col gap-4">
+        {/* ── TOP ROW: Welcome (narrow) + 4 KPIs ── */}
+        <div className="flex gap-4 flex-shrink-0">
+          {/* Welcome — compact horizontal strip */}
+          <div className="relative overflow-hidden bg-gradient-to-r from-[#0F172A] via-[#1a2744] to-[#1E293B] rounded-2xl px-6 py-4 flex items-center gap-6 min-w-[340px] shadow-[0_4px_20px_rgba(15,23,42,0.2)]">
+            <div className="absolute -top-10 -right-10 h-32 w-32 rounded-full bg-white/[0.03]" />
+            <div className="absolute bottom-0 right-12 h-20 w-20 rounded-full bg-[#FF8A00]/10" />
+            <div className="relative z-10 flex-1">
+              <p className="text-[10px] font-semibold text-white/30 uppercase tracking-[0.15em] mb-0.5">Welcome back</p>
+              <h1 className="text-lg font-bold text-white tracking-tight">{userName} 👋</h1>
+              <p className="text-[11px] text-white/40 mt-0.5">Profile <span className="text-white/70 font-semibold">{stats.completion_score}%</span> complete</p>
             </div>
-            <button
-              onClick={() => router.push("/assessment/candidate")}
-              className="px-5 py-2 bg-amber-600 text-white rounded-lg font-bold text-sm hover:bg-amber-700 hover:shadow-lg hover:shadow-amber-600/20 transition active:scale-95 flex-shrink-0"
-            >
-              Start Now
-            </button>
+            <div className="flex gap-2 relative z-10">
+              <Link href="/dashboard/candidate/jobs"><button className="px-4 py-2 bg-[#FF8A00] hover:bg-[#e67a00] text-white rounded-xl text-[11px] font-bold transition-all active:scale-95 shadow-lg shadow-orange-900/25">Find Jobs</button></Link>
+              <Link href="/dashboard/candidate/profile"><button className="px-4 py-2 bg-white/[0.08] hover:bg-white/[0.14] text-white/90 rounded-xl text-[11px] font-bold transition-all border border-white/[0.08]">Edit Profile</button></Link>
+            </div>
           </div>
-        )}
-
-        <header className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-4 border-b border-slate-100">
-          <div className="space-y-2">
-            <h1 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight">Welcome Back</h1>
-            <p className="text-slate-500 text-sm font-medium">Track your career progress, applications, and opportunities in real-time.</p>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="px-4 py-2 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg text-sm font-bold transition-all border border-slate-200 hover:border-red-200"
-          >
-            Logout
-          </button>
-        </header>
-
-        {/* Candidate Profile Score Card */}
-        <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800 rounded-3xl p-8 md:p-12 mb-6 relative overflow-hidden shadow-2xl shadow-indigo-900/20 border border-white/5">
-          <div className="absolute top-0 right-0 w-96 h-96 bg-[#1a56db]/10 rounded-full blur-[100px] -mr-48 -mt-48 opacity-40" />
-          <div className="absolute bottom-0 left-0 w-72 h-72 bg-purple-600/5 rounded-full blur-[80px] -ml-36 -mb-36" />
-
-          <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-8 md:gap-12 items-center">
-            <div className="space-y-6">
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <div className="px-2.5 py-1 bg-white/10 backdrop-blur-md rounded-full border border-white/10 flex items-center gap-2">
-                    <ShieldCheck className="h-3 w-3 text-[#1a56db]" />
-                    <span className="text-[8px] font-black uppercase tracking-[0.15em] text-[#1a56db]">
-                      Verified
-                    </span>
-                  </div>
-                </div>
-                <h2 className="text-3xl md:text-4xl font-black text-white tracking-tight leading-tight">
-                  Profile<br />
-                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-purple-400">
-                    Strength Score
-                  </span>
-                </h2>
-                <p className="text-slate-300 text-sm font-medium leading-relaxed max-w-md opacity-90">
-                  Comprehensive ranking of your professional profile based on data quality, skills, and assessment results.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md hover:bg-white/10 transition-all group cursor-default">
-                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
-                    Tier
-                  </div>
-                  <div className="text-2xl font-black text-white leading-none mb-1">
-                    {(stats.profile_score ?? 0) >= 85
-                      ? "⭐ Top"
-                      : (stats.profile_score ?? 0) >= 70
-                        ? "✓ Strong"
-                        : "→ Growing"}
-                  </div>
-                  <div className="text-[7px] font-bold text-slate-500 uppercase tracking-widest leading-normal">
-                    Your position
-                  </div>
-                </div>
-                <div className="p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md hover:bg-white/10 transition-all group cursor-default">
-                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
-                    Complete
-                  </div>
-                  <div className="text-2xl font-black text-white leading-none mb-1">
-                    {stats.completion_score}%
-                  </div>
-                  <div className="text-[7px] font-bold text-slate-500 uppercase tracking-widest leading-normal">
-                    Profile filled
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-center lg:justify-end">
-              <div className="relative h-80 w-80 group/shield">
-                <div className="absolute inset-x-0 bottom-0 top-0 m-auto h-56 w-56 bg-[#1a56db]/20 rounded-full blur-3xl group-hover/shield:bg-[#1a56db]/40 transition-all duration-700" />
-
-                <div className="absolute inset-0 rounded-full flex flex-col items-center justify-center z-10 text-center">
-                  <div className="bg-slate-800/80 p-12 rounded-full border border-white/10 shadow-2xl backdrop-blur-2xl group-hover/shield:scale-105 transition-transform duration-500">
-                    <div className="text-6xl font-black text-white tracking-tighter leading-none mb-2">
-                      {stats.profile_score ?? 0}
-                    </div>
-                    <div className="text-[11px] font-black uppercase tracking-[0.3em] text-[#1a56db]">
-                      Score
-                    </div>
-                  </div>
-                </div>
-
-                <svg
-                  className="absolute inset-0 h-full w-full -rotate-90 drop-shadow-[0_0_30px_rgba(99,102,241,0.3)] z-20"
-                  viewBox="0 0 100 100"
-                >
-                  <circle cx="50" cy="50" r="46" fill="transparent" stroke="rgba(255,255,255,0.08)" strokeWidth="2" />
-                  <circle
-                    cx="50" cy="50" r="46" fill="transparent" stroke="url(#candidateGradient)" strokeWidth="6"
-                    strokeDasharray="289"
-                    strokeDashoffset={289 - (289 * (stats.profile_score ?? 0)) / 100}
-                    strokeLinecap="round"
-                    className="transition-all duration-2000 ease-out"
-                  />
-                  <defs>
-                    <linearGradient id="candidateGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                      <stop offset="0%" stopColor="#6366f1" />
-                      <stop offset="100%" stopColor="#c084fc" />
-                    </linearGradient>
-                  </defs>
-                </svg>
-              </div>
-            </div>
+          {/* 4 KPI cards */}
+          <div className="flex-1 grid grid-cols-4 gap-3">
+            <KpiCard icon={Eye} value={stats.profile_views_count ?? 0} label="Profile Views" trend="up" accent="violet" />
+            <KpiCard icon={Target} value={stats.applications_count} label="Applications" trend={stats.applications_count > 0 ? "up" : "neutral"} accent="blue" />
+            <KpiCard icon={Sparkles} value={jobs.length} label="Job Matches" trend="up" accent="amber" />
+            <KpiCard icon={Zap} value={stats.invites_received} label="Interviews" trend={stats.invites_received > 0 ? "up" : "neutral"} accent="emerald" />
           </div>
         </div>
 
-        {/* Metric Bar */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          <StatCard
-            label="Profile Views"
-            value={stats.profile_views_count?.toString() || "0"}
-            sub="Recruiters this month"
-            icon={Eye}
-            color="indigo"
-          />
-          <StatCard
-            label="Applications"
-            value={stats.applications_count.toString()}
-            sub="Jobs pursued"
-            icon={Target}
-            color="emerald"
-          />
-          <StatCard
-            label="Shortlists"
-            value={stats.shortlisted_count.toString()}
-            sub="Recruiter interest"
-            icon={Award}
-            color="amber"
-          />
-          <StatCard
-            label="Invites"
-            value={stats.invites_received.toString()}
-            sub="Interview calls"
-            icon={Zap}
-            color="purple"
-          />
-          <StatCard
-            label="Saved Jobs"
-            value={stats.saved_jobs_count?.toString() || "0"}
-            sub="Bookmarked roles"
-            icon={Briefcase}
-            color="indigo"
-          />
-        </div>
-
-        {/* Optimization & Insights Section */}
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          <div className="xl:col-span-2 space-y-6">
-            <div className="bg-white rounded-2xl border border-slate-100 p-8 shadow-sm relative overflow-hidden group">
-              <div className="absolute top-0 right-0 w-64 h-64 bg-blue-100 rounded-full blur-3xl -mr-32 -mt-32 opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
-
-              <div className="flex items-center justify-between mb-8 relative z-10">
-                <div>
-                  <h3 className="text-xl font-black text-slate-900 tracking-tight">
-                    Action Items
-                  </h3>
-                  <p className="text-xs text-slate-500 font-medium">
-                    Complete these tasks to improve your profile.
-                  </p>
-                </div>
+        {/* ── MAIN CONTENT ROW ── */}
+        <div className="flex gap-4 flex-1 min-h-0">
+          {/* Left — 60% — stacked: Recommended Roles + Onboarding */}
+          <div className="flex-[3] flex flex-col gap-4 min-h-0">
+            {/* Recommended Roles */}
+            <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_3px_rgba(0,0,0,0.04),0_6px_24px_rgba(0,0,0,0.04)] flex flex-col flex-1 min-h-0 overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100/80 flex-shrink-0">
+                <h2 className="text-[14px] font-bold text-[#0F172A] tracking-tight">Recommended Roles</h2>
+                <Link href="/dashboard/candidate/jobs" className="text-[12px] font-semibold text-[#FF8A00] hover:text-[#E67A00] flex items-center gap-1 transition-colors">View all <ArrowRight className="h-3.5 w-3.5" /></Link>
               </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-10">
-                <CompletionItem
-                  label="Profile Identity"
-                  done={stats.completion_score > 70}
-                  href="/dashboard/candidate/profile"
-                  icon={<FileText className="h-3.5 w-3.5" />}
-                />
-                <CompletionItem
-                  label="Identity Verification"
-                  done={stats.identity_verified ?? false}
-                  href="/dashboard/candidate/settings"
-                  icon={<ShieldCheck className="h-3.5 w-3.5" />}
-                />
-                <CompletionItem
-                  label="Skill Assessment"
-                  done={isAssessmentCompleted}
-                  href="/assessment/candidate"
-                  icon={<Zap className="h-3.5 w-3.5" />}
-                />
-                <CompletionItem
-                  label="Job Applications"
-                  done={stats.applications_count > 0}
-                  href="/dashboard/candidate/jobs"
-                  icon={<Briefcase className="h-3.5 w-3.5" />}
-                />
-              </div>
-            </div>
-
-            {/* Recommended Jobs Card */}
-            <RecommendedJobsCard />
-
-            {/* Recommended Companies Card */}
-            <RecommendedCompaniesCard />
-          </div>
-
-          <div className="space-y-6">
-            {/* Career Trajectory Analysis */}
-            <div className="bg-slate-900 rounded-2xl p-6 text-white shadow-xl shadow-indigo-900/10 flex flex-col items-center text-center justify-between min-h-[300px] relative overflow-hidden group border border-white/5">
-              <div className="absolute top-0 right-0 w-40 h-40 bg-blue-600/10 rounded-full blur-3xl -mr-20 -mt-20 transition-all duration-700 pointer-events-none" />
-
-              <div className="space-y-4 relative z-10 w-full">
-                <div className="p-3 bg-white/5 border border-white/10 rounded-xl w-fit mx-auto backdrop-blur-xl">
-                  <MapIcon className="h-5 w-5 text-blue-600" />
-                </div>
-                <div className="space-y-2">
-                  <div className="text-[9px] font-black uppercase tracking-[0.2em] text-blue-600">
-                    Path Insights
+              <div className="flex-1 overflow-hidden">
+                {jobs.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center">
+                    <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center mb-3 border border-slate-200/50"><Briefcase className="h-6 w-6 text-slate-300" strokeWidth={1.5} /></div>
+                    <p className="text-[14px] font-bold text-[#0F172A]">No matches yet</p>
+                    <p className="text-[12px] text-slate-400 mt-1 max-w-[280px] text-center leading-relaxed">Complete your profile and assessment to get AI-powered job recommendations.</p>
+                    <Link href="/dashboard/candidate/profile"><button className="mt-4 px-5 py-2 bg-[#FF8A00] text-white rounded-xl text-[12px] font-semibold hover:bg-[#E67A00] transition-all shadow-sm">Enhance Profile</button></Link>
                   </div>
-                  <h3 className="text-xl font-black tracking-tighter leading-tight">
-                    Career Path
-                  </h3>
-                  <p className="text-slate-400 text-[11px] leading-relaxed font-medium opacity-80 px-4">
-                    Your profile is trending higher than <span className="text-white font-bold">{stats.profile_score}%</span> of other candidates.
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-3 pt-4 mt-4 border-t border-white/5 relative z-10 w-full">
-                <div className="flex items-center justify-between px-2">
-                  <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest leading-none">
-                    Status
-                  </span>
-                  <span className="text-[10px] font-black text-white italic tracking-widest leading-none">
-                    {stats.account_status?.toUpperCase() || "ACTIVE"}
-                  </span>
-                </div>
-                <button
-                  onClick={() => router.push("/dashboard/candidate/gps")}
-                  className="w-full py-2 bg-white/5 border border-white/10 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-white/10 transition-all hover:scale-[1.02] active:scale-95"
-                >
-                  View Path
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Visual Assessment Breakdown Section */}
-        {results && (
-          <div className="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <div className="flex items-center justify-between">
-              <div className="space-y-1">
-                <h3 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
-                  <Target className="h-5 w-5 text-blue-600" />
-                  Assessment Results
-                </h3>
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest opacity-80">
-                  Your scores across key areas
-                </p>
-              </div>
-              <div className="flex items-center gap-2 px-3 py-1 bg-blue-100 text-blue-600 rounded-lg">
-                <Zap className="h-3 w-3" />
-                <span className="text-[8px] font-black uppercase tracking-widest">
-                  Live Results
-                </span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
-              {[
-                { label: "Work Style", score: results.component_scores.behavioral, icon: <Users className="h-4 w-4" /> },
-                { label: "Skills & Expertise", score: results.component_scores.skill, icon: <Zap className="h-4 w-4" /> },
-                { label: "Personality & Fit", score: results.component_scores.psychometric, icon: <ShieldCheck className="h-4 w-4" /> },
-                { label: "Resume Quality", score: results.component_scores.resume, icon: <FileText className="h-4 w-4" /> },
-                { label: "Verification & References", score: results.component_scores.reference, icon: <BadgeCheck className="h-4 w-4" /> },
-              ].map((item) => (
-                <div key={item.label} className="space-y-3 p-4 rounded-3xl bg-slate-50 border border-slate-100 group hover:bg-white hover:border-blue-100 hover:shadow-xl transition-all duration-300">
-                  <div className="flex items-center justify-between">
-                    <div className="h-8 w-8 rounded-xl bg-white flex items-center justify-center text-slate-400 group-hover:text-blue-600 shadow-sm border border-slate-100">
-                      {item.icon}
+                ) : jobs.map((job: any, i: number) => (
+                  <Link key={job.job_id} href="/dashboard/candidate/jobs">
+                    <div className={`flex items-center gap-4 px-5 py-3.5 hover:bg-[#FAFBFC] transition-all cursor-pointer group ${i < jobs.length - 1 ? "border-b border-slate-100/70" : ""}`}>
+                      <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200/50 flex-shrink-0 flex items-center justify-center overflow-hidden">
+                        {job.company_logo_url ? <img src={job.company_logo_url} className="h-7 w-7 object-contain" alt="" /> : <Building2 className="h-4 w-4 text-slate-300" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-[13px] font-semibold text-[#0F172A] truncate group-hover:text-[#FF8A00] transition-colors">{job.title}</h3>
+                        <p className="text-[11px] text-slate-400 truncate mt-0.5">{job.company_name} · {job.location}</p>
+                      </div>
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        {job.salary_range && <span className="text-[11.5px] font-semibold text-slate-600 hidden lg:block">{job.salary_range}</span>}
+                        <span className={`text-[11px] font-bold ${(job.match_score || 0) >= 80 ? "text-emerald-600" : "text-[#FF8A00]"}`}>
+                          {(job.match_score || 0) >= 80 && <span className="mr-0.5">✓</span>}{Math.round(job.match_score || 0)}% Match
+                        </span>
+                        <button onClick={e => e.preventDefault()} className="h-8 w-8 flex items-center justify-center rounded-lg text-slate-300 hover:text-[#FF8A00] hover:bg-orange-50 transition-all"><Bookmark className="h-3.5 w-3.5" strokeWidth={1.8} /></button>
+                      </div>
                     </div>
-                    <span className="text-lg font-black text-slate-900">{item.score || 0}</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+            {/* Onboarding checklist — compact horizontal strip */}
+            <div className="flex-shrink-0 bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_3px_rgba(0,0,0,0.04),0_6px_24px_rgba(0,0,0,0.04)] px-5 py-3">
+              <div className="flex items-center gap-6">
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <h2 className="text-[13px] font-bold text-[#0F172A]">Setup</h2>
+                  <div className="flex items-center gap-0.5">
+                    {tasks.map((t, i) => <div key={i} className={`h-1.5 w-6 rounded-full ${t.done ? "bg-emerald-400" : "bg-slate-200"}`} />)}
                   </div>
+                  <span className="text-[10px] font-bold text-slate-400 ml-1">{doneCount}/{tasks.length}</span>
+                </div>
+                <div className="flex items-center gap-4 flex-1 overflow-hidden">
+                  {tasks.map(task => (
+                    <div key={task.label} className="flex items-center gap-1.5 cursor-pointer group flex-shrink-0" onClick={() => !task.done && router.push(task.href)}>
+                      {task.done ? <CheckCircle2 className="h-4 w-4 text-emerald-500" strokeWidth={2} /> : <Circle className="h-4 w-4 text-slate-300 group-hover:text-slate-400" strokeWidth={1.8} />}
+                      <span className={`text-[11px] font-medium whitespace-nowrap ${task.done ? "text-emerald-600" : "text-slate-500 group-hover:text-[#0F172A]"}`}>{task.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Right — 40% — Profile Score + Application Status */}
+          <div className="flex-[2] flex flex-col gap-4 min-h-0">
+            {/* Profile Score */}
+            <div className="flex-shrink-0 bg-[#0F172A] rounded-2xl shadow-[0_4px_20px_rgba(15,23,42,0.2)] overflow-hidden">
+              <div className="p-5 pb-4">
+                <div className="flex items-start justify-between mb-3">
                   <div>
-                    <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{item.label}</div>
-                    <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-blue-600 rounded-full transition-all duration-1000" 
-                        style={{ width: `${item.score || 0}%` }}
-                      ></div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <Award className="h-4 w-4 text-[#FF8A00]" strokeWidth={2} />
+                      <p className="text-[10px] font-bold text-white/60 uppercase tracking-[0.12em]">Profile Score</p>
                     </div>
+                    <p className="text-[11px] text-white/35 leading-relaxed">Complete your profile to boost visibility</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[36px] font-black text-white leading-none tracking-tight">{score}</span>
+                    <span className="text-[14px] font-bold text-white/30 ml-0.5">/100</span>
                   </div>
                 </div>
-              ))}
+                <div className="h-2 w-full bg-white/[0.06] rounded-full overflow-hidden mb-3">
+                  <div className="h-full rounded-full bg-gradient-to-r from-[#FF8A00] to-[#FFB800] transition-all duration-700 ease-out" style={{ width: `${score}%` }} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <p className="text-[10.5px] text-white/35">{score >= 80 ? "Excellent — top visibility!" : score >= 50 ? "Keep going — you're making progress" : "Get started to stand out"}</p>
+                  <Link href="/assessment/candidate">
+                    <button className="px-3.5 py-1.5 bg-white/[0.08] hover:bg-white/[0.14] border border-white/[0.06] text-white/80 rounded-lg text-[10px] font-bold transition-all">Retake Assessment →</button>
+                  </Link>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 border-t border-white/[0.06]">
+                <ScoreTile label="Experience" pct={expPct} />
+                <ScoreTile label="Skills" pct={skillPct} border />
+                <ScoreTile label="Identity" pct={idPct} />
+              </div>
+            </div>
+
+            {/* Application Status */}
+            <div className="flex-1 min-h-0 bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_3px_rgba(0,0,0,0.04),0_6px_24px_rgba(0,0,0,0.04)] flex flex-col overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100/80 flex-shrink-0">
+                <h2 className="text-[14px] font-bold text-[#0F172A] tracking-tight">Application Status</h2>
+                <Link href="/dashboard/candidate/applications" className="text-[12px] font-semibold text-[#FF8A00] hover:text-[#E67A00] flex items-center gap-1 transition-colors">View all <ArrowRight className="h-3.5 w-3.5" /></Link>
+              </div>
+              <div className="flex-1 flex flex-col justify-center px-5 py-4">
+                {!hasApps ? (
+                  <div className="text-center">
+                    <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200/50 flex items-center justify-center mx-auto mb-3"><Inbox className="h-5 w-5 text-slate-300" strokeWidth={1.5} /></div>
+                    <p className="text-[13px] font-bold text-[#0F172A]">No applications yet</p>
+                    <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">Start applying to track your progress</p>
+                    <Link href="/dashboard/candidate/jobs"><button className="mt-3 px-5 py-2 bg-[#FF8A00] hover:bg-[#E67A00] text-white rounded-xl text-[11px] font-semibold transition-all shadow-sm">Browse Jobs</button></Link>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <Link href="/dashboard/candidate/jobs"><StatusRow label="Saved Jobs" value={stats.saved_jobs_count} icon={Bookmark} accent="slate" /></Link>
+                    <Link href="/dashboard/candidate/applications"><StatusRow label="Applied" value={stats.applications_count} icon={FileText} accent="blue" /></Link>
+                    <Link href="/dashboard/candidate/applications"><StatusRow label="Shortlisted" value={stats.shortlisted_count} icon={Target} accent="amber" /></Link>
+                    <Link href="/dashboard/candidate/applications"><StatusRow label="Interviews" value={stats.invites_received} icon={Zap} accent="orange" /></Link>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
 }
 
-function CompletionItem({ label, done, href, icon }: { label: string; done: boolean; href?: string; icon: React.ReactNode }) {
-  return (
-    <div className={`flex items-center justify-between p-5 rounded-2xl border transition-all duration-500 group ${done ? "bg-slate-50 border-slate-100 shadow-sm" : "bg-white border-slate-200 hover:border-blue-100 hover:shadow-2xl hover:shadow-blue-600/10"}`}>
-      <div className="flex items-center gap-4">
-        <div className={`h-9 w-9 rounded-xl flex items-center justify-center transition-all duration-500 ${done ? "bg-emerald-100 text-emerald-600 scale-90" : "bg-slate-100 text-slate-400 group-hover:bg-blue-100 group-hover:text-blue-600 group-hover:rotate-6"}`}>
-          {icon}
-        </div>
-        <span className={`text-xs font-bold tracking-tight transition-colors ${done ? "text-slate-400" : "text-slate-700 group-hover:text-slate-900"}`}>
-          {label}
-        </span>
-      </div>
-      {done ? (
-        <div className="h-7 w-7 bg-emerald-50 rounded-full flex items-center justify-center">
-          <BadgeCheck className="h-4 w-4 text-emerald-500" />
-        </div>
-      ) : (
-        href && (
-          <Link href={href} className="px-4 py-1.5 bg-blue-100 text-[9px] font-black uppercase tracking-widest text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all transform active:scale-90">
-            Complete
-          </Link>
-        )
-      )}
-    </div>
-  );
-}
-
-function StatCard({ label, value, sub, icon: Icon, trend, color = "slate" }: { label: string; value: string; sub: string; icon?: React.ElementType; trend?: string; color?: "slate" | "indigo" | "emerald" | "amber" | "purple"; }) {
-  const colorMap = {
-    slate: "text-slate-500 bg-slate-50",
-    indigo: "text-blue-600 bg-blue-100",
-    emerald: "text-emerald-600 bg-emerald-50",
-    amber: "text-amber-600 bg-amber-50",
-    purple: "text-purple-600 bg-purple-50",
+/* ── Sub-components ── */
+function KpiCard({ icon: Icon, value, label, trend, accent }: { icon: React.ElementType; value: number; label: string; trend: string; accent: string }) {
+  const colors: Record<string, { bg: string; icon: string; ring: string }> = {
+    violet: { bg: "bg-violet-50", icon: "text-violet-500", ring: "ring-violet-100" },
+    blue: { bg: "bg-blue-50", icon: "text-blue-500", ring: "ring-blue-100" },
+    amber: { bg: "bg-amber-50", icon: "text-amber-500", ring: "ring-amber-100" },
+    emerald: { bg: "bg-emerald-50", icon: "text-emerald-500", ring: "ring-emerald-100" },
   };
-
+  const c = colors[accent] || colors.blue;
   return (
-    <div className="bg-white px-5 py-4 rounded-2xl border border-slate-100 shadow-sm hover:shadow-lg hover:border-slate-200 transition-all duration-300 group flex items-start gap-3">
-      <div className={`p-3 rounded-lg transition-all duration-500 ${colorMap[color]} group-hover:scale-110 shadow-sm shrink-0`}>
-        {Icon && <Icon className="h-5 w-5" />}
+    <div className="bg-white rounded-2xl border border-slate-200/60 px-4 py-3.5 shadow-[0_1px_3px_rgba(0,0,0,0.04),0_6px_24px_rgba(0,0,0,0.04)] hover:shadow-[0_4px_24px_rgba(0,0,0,0.08)] hover:-translate-y-px transition-all duration-200 flex flex-col justify-between">
+      <div className="flex items-center justify-between mb-2">
+        <div className={`h-9 w-9 rounded-xl ${c.bg} ${c.icon} ring-1 ${c.ring} flex items-center justify-center`}><Icon className="h-4 w-4" strokeWidth={1.8} /></div>
+        {trend === "up" && value > 0 && <TrendingUp className="h-3.5 w-3.5 text-emerald-400" strokeWidth={2} />}
       </div>
-      <div className="flex-1 min-w-0">
-        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">{label}</div>
-        <div className="text-xl font-black text-slate-900 tracking-tight">{value}</div>
-        <div className="text-[9px] font-medium text-slate-400 mt-1 opacity-70 group-hover:opacity-100 transition-opacity">{sub}</div>
-      </div>
+      <p className="text-[24px] font-extrabold text-[#0F172A] leading-none tracking-tight">{value}</p>
+      <p className="text-[11px] font-medium text-slate-400 mt-1">{label}</p>
     </div>
   );
 }
 
+function ScoreTile({ label, pct, border }: { label: string; pct: number; border?: boolean }) {
+  return (
+    <div className={`px-4 py-3 text-center ${border ? "border-x border-white/[0.06]" : ""}`}>
+      <p className="text-[8px] font-semibold text-white/30 uppercase tracking-[0.1em] mb-1.5">{label}</p>
+      <div className="h-1 w-full bg-white/[0.06] rounded-full overflow-hidden mb-1.5 mx-auto max-w-[60px]">
+        <div className="h-full bg-gradient-to-r from-[#FF8A00] to-[#FFB800] rounded-full" style={{ width: `${pct}%` }} />
+      </div>
+      <p className="text-[15px] font-bold text-white/90">{pct}%</p>
+    </div>
+  );
+}
+
+function StatusRow({ label, value, icon: Icon, accent }: { label: string; value: number; icon: React.ElementType; accent: string }) {
+  const cls: Record<string, string> = { slate: "bg-slate-50 text-slate-400", blue: "bg-blue-50 text-blue-500", amber: "bg-amber-50 text-amber-500", orange: "bg-orange-50 text-[#FF8A00]" };
+  return (
+    <div className="flex items-center justify-between py-2 px-2 rounded-xl hover:bg-slate-50/70 transition-colors">
+      <div className="flex items-center gap-2.5">
+        <div className={`h-7 w-7 rounded-lg flex items-center justify-center ${cls[accent]}`}><Icon className="h-3.5 w-3.5" strokeWidth={1.8} /></div>
+        <span className="text-[12px] font-medium text-slate-600">{label}</span>
+      </div>
+      <span className="text-[14px] font-bold text-[#0F172A]">{value}</span>
+    </div>
+  );
+}

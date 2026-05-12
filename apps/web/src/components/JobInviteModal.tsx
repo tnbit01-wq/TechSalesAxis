@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { X, Send, Loader2, Briefcase } from "lucide-react";
 
 interface JobInviteModalProps {
@@ -78,23 +78,24 @@ export default function JobInviteModal({
     }
   };
 
-  useState(() => {
+  useEffect(() => {
     if (jobs.length > 0) {
       handleJobChange(jobs[0].id);
     } else {
       handleJobChange("unlisted");
     }
-  });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobs.length]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-[2.5rem] w-full max-w-lg shadow-2xl border border-white/20 overflow-hidden animate-in fade-in zoom-in duration-300">
-        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white">
+      <div className="bg-[#FFFDF9] rounded-[2.5rem] w-full max-w-lg shadow-2xl border border-orange-100/80 overflow-hidden animate-in fade-in zoom-in duration-300">
+        <div className="p-6 border-b border-orange-100/70 flex justify-between items-center bg-gradient-to-r from-[#FFF6ED] to-white">
           <div>
             <h2 className="text-xl font-black text-slate-900 uppercase italic tracking-tight">
               Personalize Invite
             </h2>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+            <p className="text-[10px] font-bold text-[#FF8A00] uppercase tracking-widest mt-1">
               Building bridge for {candidateName}
             </p>
           </div>
@@ -115,7 +116,7 @@ export default function JobInviteModal({
               <select
                 value={isUnlisted ? "unlisted" : selectedJobId}
                 onChange={(e) => handleJobChange(e.target.value)}
-                className="w-full p-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-900 focus:ring-2 focus:ring-primary focus:outline-none appearance-none cursor-pointer"
+                className="w-full appearance-none cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF8A00]/20"
               >
                 {jobs
                   .filter((j) => j.status === "active")
@@ -128,7 +129,7 @@ export default function JobInviteModal({
                   + Other / Unlisted Role
                 </option>
               </select>
-              <Briefcase className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 pointer-events-none" />
+              <Briefcase className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-300" />
             </div>
 
             {isUnlisted && (
@@ -138,7 +139,7 @@ export default function JobInviteModal({
                   placeholder="Enter Unlisted Role Title (e.g. Lead Developer)"
                   value={customTitle}
                   onChange={(e) => handleCustomTitleChange(e.target.value)}
-                  className="w-full p-4 bg-blue-100/30 border border-blue-100 rounded-2xl text-sm font-bold text-blue-900 placeholder:text-blue-300 focus:ring-2 focus:ring-blue-600 focus:outline-none mt-2"
+                  className="mt-2 w-full rounded-2xl border border-orange-100 bg-[#FFF6ED]/60 p-4 text-sm font-bold text-slate-900 placeholder:text-orange-300 focus:outline-none focus:ring-2 focus:ring-[#FF8A00]/20"
                 />
               </div>
             )}
@@ -151,21 +152,21 @@ export default function JobInviteModal({
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              className="w-full h-32 p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-600 focus:ring-2 focus:ring-primary focus:outline-none resize-none leading-relaxed"
+              className="h-32 w-full resize-none rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm font-bold leading-relaxed text-slate-600 focus:outline-none focus:ring-2 focus:ring-[#FF8A00]/20"
               placeholder="Write a personalized message..."
             />
           </div>
 
           {!isUnlisted && selectedJobId && (
-            <div className="p-4 bg-primary-light/50 rounded-2xl border border-primary-light/50 flex items-center gap-4">
-              <div className="h-10 w-10 rounded-xl bg-white border border-primary-light flex items-center justify-center shadow-sm">
-                <Briefcase className="w-5 h-5 text-primary" />
+            <div className="flex items-center gap-4 rounded-2xl border border-orange-100 bg-[#FFF6ED] p-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-orange-100 bg-white shadow-sm">
+                <Briefcase className="h-5 w-5 text-[#FF8A00]" />
               </div>
               <div className="flex flex-col">
-                <span className="text-[10px] font-black text-primary uppercase tracking-widest">
+                <span className="text-[10px] font-black uppercase tracking-widest text-[#FF8A00]">
                   {jobs.find((j) => j.id === selectedJobId)?.title}
                 </span>
-                <span className="text-[8px] font-bold text-indigo-300 uppercase tracking-widest">
+                <span className="text-[8px] font-bold uppercase tracking-widest text-slate-400">
                   Full description attached
                 </span>
               </div>
@@ -176,14 +177,14 @@ export default function JobInviteModal({
         <div className="p-6 pt-0 flex gap-3">
           <button
             onClick={onClose}
-            className="flex-1 py-4 bg-white border border-slate-200 rounded-2xl text-[11px] font-black uppercase tracking-widest text-slate-400 hover:bg-slate-50 transition-all active:scale-95"
+            className="flex-1 rounded-2xl border border-slate-200 bg-white py-4 text-[11px] font-black uppercase tracking-widest text-slate-400 transition-all hover:bg-slate-50 active:scale-95"
           >
             Cancel
           </button>
           <button
             onClick={handleSendInvite}
             disabled={loading || (isUnlisted && !customTitle)}
-            className="flex-2 py-4 bg-slate-900 text-white rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] flex items-center justify-center gap-3 hover:bg-blue-600 transition-all shadow-xl shadow-blue-200 disabled:bg-slate-200 disabled:shadow-none active:scale-95"
+            className="flex-2 flex items-center justify-center gap-3 rounded-2xl bg-[#FF8A00] py-4 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-xl shadow-orange-200 transition-all hover:bg-[#E67A00] disabled:bg-slate-200 disabled:shadow-none active:scale-95"
           >
             {loading ? (
               <Loader2 className="w-4 h-4 animate-spin" />

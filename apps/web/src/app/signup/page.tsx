@@ -388,7 +388,7 @@ function SignupForm() {
       </header>
 
       {/* 35/65 Split Layout */}
-      <div className="flex-1 grid grid-cols-[35%_65%] gap-6 overflow-hidden p-6">
+      <div className="flex-1 flex flex-col md:grid md:grid-cols-[35%_65%] gap-6 overflow-hidden p-4 md:p-6">
         {/* Left Panel - Step Guide */}
         <div className="bg-white/60 backdrop-blur-sm rounded-2xl border border-orange-100/50 shadow-sm overflow-y-auto">
           <div className="p-6 space-y-6">

@@ -2,51 +2,46 @@
 
 import { useEffect, useState } from "react";
 import { awsAuth } from "@/lib/awsAuth";
+import { useRouter } from "next/navigation";
 import ChatCenter from "@/components/ChatCenter";
-import { User } from "lucide-react";
+import { MessageSquare } from "lucide-react";
 
 export default function CandidateMessagesPage() {
+  const router = useRouter();
   const [user, setUser] = useState<{ email: string; id: string } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const getInitialData = async () => {
-      const user = awsAuth.getUser();
-      if (user) {
-        setUser(user);
-      }
-      setLoading(false);
-    };
-    getInitialData();
-  }, []);
+    const userData = awsAuth.getUser();
+    if (!userData) { router.replace("/login"); return; }
+    setUser(userData);
+    setLoading(false);
+  }, [router]);
 
-  if (loading) return null;
+  if (loading) return (
+    <div className="h-[calc(100vh-64px)] flex items-center justify-center bg-[#F8F9FC]">
+      <div className="flex flex-col items-center gap-3">
+        <div className="h-9 w-9 rounded-full border-[2.5px] border-slate-200 border-t-[#FF8A00] animate-spin" />
+        <p className="text-[11px] text-slate-400 font-medium tracking-widest uppercase">Loading…</p>
+      </div>
+    </div>
+  );
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8 space-y-10 pb-20">
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Messages</h1>
-          <p className="text-slate-500 text-sm mt-1">Communicate with recruiters and stay updated with encrypted messaging.</p>
-        </div>
-      </header>
-
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden min-h-[70vh]">
-        {user?.id ? (
-          <ChatCenter userId={user.id} role="candidate" />
-        ) : (
-          !loading && (
-            <div className="p-20 text-center flex flex-col items-center justify-center">
-              <div className="h-16 w-16 bg-slate-50 flex items-center justify-center rounded-4xl mb-6">
-                <User className="h-8 w-8 text-slate-200" />
-              </div>
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                Authentication Required
-              </p>
+    <div className="h-[calc(100vh-64px)] bg-[#F8F9FC] overflow-hidden p-5">
+      {user?.id ? (
+        <ChatCenter userId={user.id} role="candidate" />
+      ) : (
+        <div className="h-full flex items-center justify-center">
+          <div className="text-center">
+            <div className="h-16 w-16 rounded-2xl bg-slate-50 border border-slate-200/60 flex items-center justify-center mx-auto mb-4">
+              <MessageSquare className="h-7 w-7 text-slate-300" strokeWidth={1.5} />
             </div>
-          )
-        )}
-      </div>
+            <p className="text-[14px] font-bold text-[#0F172A]">Authentication Required</p>
+            <p className="text-[12px] text-slate-400 mt-1">Sign in to access your messages</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

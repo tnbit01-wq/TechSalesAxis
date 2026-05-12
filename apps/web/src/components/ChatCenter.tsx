@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { apiClient } from "@/lib/apiClient";
 import CandidateProfileModal from "./CandidateProfileModal";
-import { Archive, MessageCircle, MoreVertical, Trash2, User, Paperclip, ClipboardList, RotateCcw, Flag } from "lucide-react";
+import { Archive, MessageCircle, Trash2, User, Paperclip, ClipboardList, RotateCcw, Flag, Send, Search, Hash, MoreVertical } from "lucide-react";
 import ReportMessageModal from "./ReportMessageModal";
 
 interface Message {
@@ -41,17 +41,13 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [showArchived, setShowArchived] = useState(false);
-  const [profileModal, setProfileModal] = useState<{
-    isOpen: boolean;
-    candidate: any;
-  }>({ isOpen: false, candidate: null });
-  const [reportModal, setReportModal] = useState<{
-    isOpen: boolean;
-    messageId: string;
-    senderName: string;
-  }>({ isOpen: false, messageId: "", senderName: "" });
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showActions, setShowActions] = useState(false);
+  const [profileModal, setProfileModal] = useState<{ isOpen: boolean; candidate: any }>({ isOpen: false, candidate: null });
+  const [reportModal, setReportModal] = useState<{ isOpen: boolean; messageId: string; senderName: string }>({ isOpen: false, messageId: "", senderName: "" });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const actionsRef = useRef<HTMLDivElement>(null);
 
   const RECRUITER_TEMPLATES = [
     { label: "Invite", text: "Hi, I've reviewed your DNA Insights and would love to discuss the next steps." },
@@ -66,23 +62,17 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
     { label: "Confirm", text: "My availability for the interview is scheduled on the portal. Looking forward to it!" },
   ];
 
-  const applyTemplate = (text: string) => {
-    setNewMessage(text);
-  };
+  const applyTemplate = (text: string) => setNewMessage(text);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     toast.info(`Uploading ${file.name}...`);
     try {
       const token = awsAuth.getToken();
       if (!token) return;
-      
       const formData = new FormData();
       formData.append("file", file);
-      
-      // Assume a storage upload endpoint exists
       const result = await apiClient.post("/posts/upload", formData, token);
       if (result.url) {
         setNewMessage(prev => prev + ` [File: ${result.url}] `);
@@ -94,27 +84,21 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
     }
   };
 
-  // Scroll to bottom
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
 
   const handleDeleteChat = async () => {
     if (!activeThreadId) return;
-    if (!confirm("CRITICAL: This will permanently delete this conversation and all its messages. This action cannot be undone. Proceed?")) return;
-    
+    if (!confirm("This will permanently delete this conversation. Proceed?")) return;
     try {
       const token = awsAuth.getToken();
       if (!token) return;
-
       await apiClient.post(`/chat/delete/${activeThreadId}`, {}, token);
-      
       setThreads(prev => prev.filter(t => t.id !== activeThreadId));
       setActiveThreadId(null);
-      toast.success("Intelligence Wipe Complete: Conversation Deleted.");
+      toast.success("Conversation deleted.");
     } catch (err) {
       console.error("Delete chat error:", err);
-      toast.error("Wipe failed.");
+      toast.error("Delete failed.");
     }
   };
 
@@ -123,9 +107,7 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
     try {
       const token = awsAuth.getToken();
       if (!token) return;
-
       await apiClient.post(`/chat/archive/${activeThreadId}`, {}, token);
-      
       setThreads(prev => prev.filter(t => t.id !== activeThreadId));
       setActiveThreadId(null);
       toast.success("Conversation archived.");
@@ -138,44 +120,14 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
   const handleViewProfile = async () => {
     const active = threads.find(t => t.id === activeThreadId);
     if (!active) return;
-
-    if (role === "candidate") {
-      router.push("/dashboard/candidate/profile");
-      return;
-    }
-
-    // Role is Recruiter - Open Modal
+    if (role === "candidate") { router.push("/dashboard/candidate/profile"); return; }
     if (active.candidate_id) {
-      // Track profile view
-      try {
-        const token = awsAuth.getToken();
-        if (token) {
-          console.log("[TRACKING] Starting profile view tracking for:", active.candidate_id);
-          await apiClient.post(
-            `/analytics/profile/${active.candidate_id}/view`,
-            {},
-            token,
-          );
-          console.log("[TRACKING] ✓ Profile view tracked:", active.candidate_id);
-        }
-      } catch (err) {
-        console.error("[TRACKING] Failed to track profile view:", err);
-      }
-
-      // Fetch and display profile
       try {
         const token = awsAuth.getToken();
         if (!token) return;
-
-        const fullCandidate = await apiClient.get(
-          `/recruiter/candidate/${active.candidate_id}`,
-          token,
-        );
-
-        setProfileModal({
-          isOpen: true,
-          candidate: fullCandidate,
-        });
+        await apiClient.post(`/analytics/profile/${active.candidate_id}/view`, {}, token).catch(() => {});
+        const fullCandidate = await apiClient.get(`/recruiter/candidate/${active.candidate_id}`, token);
+        setProfileModal({ isOpen: true, candidate: fullCandidate });
       } catch (err) {
         console.error("Fetch profile error:", err);
         toast.error("Could not load candidate profile.");
@@ -183,17 +135,22 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
     }
   };
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+  useEffect(() => { scrollToBottom(); }, [messages]);
 
-  // Fetch Threads
+  // Close actions menu on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (actionsRef.current && !actionsRef.current.contains(e.target as Node)) setShowActions(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
   useEffect(() => {
     const fetchThreads = async () => {
       try {
         const token = awsAuth.getToken();
         if (!token) return;
-
         const data = await apiClient.get(`/chat/threads?show_archived=${showArchived}`, token);
         if (data) setThreads(data as Thread[]);
       } catch (err) {
@@ -202,31 +159,28 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
         setLoading(false);
       }
     };
-
     fetchThreads();
   }, [userId, role, showArchived]);
 
-  const filteredThreads = threads;
+  const filteredThreads = threads.filter(t => {
+    if (!searchQuery) return true;
+    const name = (role === "recruiter" ? t.candidate_profiles?.full_name : t.recruiter_profiles?.full_name) || "";
+    return name.toLowerCase().includes(searchQuery.toLowerCase());
+  });
 
-  // Fetch Messages when active thread changes
   useEffect(() => {
     if (!activeThreadId) return;
-
     const fetchMessages = async () => {
       try {
         const token = awsAuth.getToken();
         if (!token) return;
-
         const data = await apiClient.get(`/chat/messages/${activeThreadId}`, token);
         if (data) setMessages(data as Message[]);
       } catch (err) {
         console.error("Fetch messages error:", err);
       }
     };
-
     fetchMessages();
-    
-    // Polling as a fallback for Realtime until WebSocket is ready
     const interval = setInterval(fetchMessages, 5000);
     return () => clearInterval(interval);
   }, [activeThreadId]);
@@ -234,30 +188,15 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !activeThreadId) return;
-
     try {
       const token = awsAuth.getToken();
       if (!token) return;
-
-      const result = await apiClient.post("/chat/send", {
-        thread_id: activeThreadId,
-        content: newMessage.trim(),
-      }, token);
-
+      const result = await apiClient.post("/chat/send", { thread_id: activeThreadId, content: newMessage.trim() }, token);
       if (result) {
         setNewMessage("");
-        // Refresh messages
         const data = await apiClient.get(`/chat/messages/${activeThreadId}`, token);
         if (data) setMessages(data as Message[]);
-        
-        // Update local thread last_message_at
-        setThreads((prev) =>
-          prev.map((t) =>
-            t.id === activeThreadId
-              ? { ...t, last_message_at: new Date().toISOString() }
-              : t,
-          ),
-        );
+        setThreads((prev) => prev.map((t) => t.id === activeThreadId ? { ...t, last_message_at: new Date().toISOString() } : t));
       }
     } catch (err) {
       console.error("Send message error:", err);
@@ -265,217 +204,153 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
     }
   };
 
-  if (loading)
-    return (
-      <div className="p-12 flex flex-col items-center justify-center h-96">
-        <div className="h-12 w-12 border-4 border-blue-600/10 border-t-blue-600 rounded-full animate-spin mb-4" />
-        <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">
-          Loading Messages
-        </p>
+  const activeThread = threads.find(t => t.id === activeThreadId);
+  const activeName = role === "recruiter" 
+    ? activeThread?.candidate_profiles?.full_name || "Candidate" 
+    : activeThread?.recruiter_profiles?.full_name || "Recruiter";
+
+  if (loading) return (
+    <div className="h-full flex items-center justify-center">
+      <div className="flex flex-col items-center gap-3">
+        <div className="h-9 w-9 rounded-full border-[2.5px] border-slate-200 border-t-[#FF8A00] animate-spin" />
+        <p className="text-[11px] text-slate-400 font-medium tracking-widest uppercase">Loading messages…</p>
       </div>
-    );
+    </div>
+  );
 
   return (
-    <div className="flex bg-white rounded-4xl border border-slate-200 overflow-hidden shadow-2xl shadow-slate-200/50 min-h-150 h-[calc(100vh-280px)]">
-      {/* Threads Sidebar */}
-      <div className="w-80 border-r border-slate-100 flex flex-col">
-        <div className="p-6 border-b border-slate-50 bg-slate-50/30">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-black text-slate-900 tracking-tight">
-              Messages
-            </h2>
-          </div>
-          <div className="flex gap-2 p-1 bg-slate-100 rounded-xl">
-            <button
-              onClick={() => { setShowArchived(false); setActiveThreadId(null); }}
-              className={`flex-1 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${!showArchived ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-            >
+    <div className="flex h-full bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_3px_rgba(0,0,0,0.04),0_6px_24px_rgba(0,0,0,0.04)] overflow-hidden">
+      {/* ── LEFT: Thread List ── */}
+      <div className="w-[300px] border-r border-slate-100 flex flex-col flex-shrink-0">
+        {/* Header */}
+        <div className="px-4 pt-4 pb-3 flex-shrink-0">
+          <div className="flex items-center gap-2 mb-3">
+            <button onClick={() => { setShowArchived(false); setActiveThreadId(null); }}
+              className={`flex-1 py-2 rounded-lg text-[11px] font-semibold transition-all ${!showArchived ? "bg-[#0F172A] text-white shadow-sm" : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"}`}>
               Active
             </button>
-            <button
-              onClick={() => { setShowArchived(true); setActiveThreadId(null); }}
-              className={`flex-1 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${showArchived ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-            >
+            <button onClick={() => { setShowArchived(true); setActiveThreadId(null); }}
+              className={`flex-1 py-2 rounded-lg text-[11px] font-semibold transition-all ${showArchived ? "bg-[#0F172A] text-white shadow-sm" : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"}`}>
               Archived
             </button>
           </div>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+            <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search conversations…"
+              className="w-full pl-9 pr-3 py-2 bg-[#F8F9FC] border border-slate-200/60 rounded-lg text-[12px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#FF8A00]/20 focus:border-[#FF8A00]/50 transition-all" />
+          </div>
         </div>
-        <div className="flex-1 overflow-y-auto custom-scrollbar">
+        {/* Thread List */}
+        <div className="flex-1 overflow-y-auto dashboard-scroll">
           {filteredThreads.length === 0 ? (
-            <div className="p-12 text-center flex flex-col items-center gap-4">
-              <div className="h-12 w-12 rounded-2xl bg-slate-50 flex items-center justify-center border border-slate-100">
-                {showArchived ? <Archive className="h-6 w-6 text-slate-300" /> : <MessageCircle className="h-6 w-6 text-slate-300" />}
+            <div className="flex flex-col items-center justify-center h-full px-6 text-center">
+              <div className="h-12 w-12 rounded-xl bg-slate-50 border border-slate-200/60 flex items-center justify-center mb-3">
+                {showArchived ? <Archive className="h-5 w-5 text-slate-300" /> : <MessageCircle className="h-5 w-5 text-slate-300" />}
               </div>
-              <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">
-                No {showArchived ? 'archived' : 'active'} messages
+              <p className="text-[13px] font-semibold text-[#0F172A]">No {showArchived ? "archived" : "active"} conversations</p>
+              <p className="text-[11px] text-slate-400 mt-1">
+                {showArchived ? "Archived conversations will appear here" : "Start a conversation from a candidate profile"}
               </p>
             </div>
           ) : (
-            filteredThreads.map((thread) => (
-              <button
-                key={thread.id}
-                onClick={() => setActiveThreadId(thread.id)}
-                className={`w-full p-6 flex items-center gap-4 transition-all relative group border-b border-slate-50 ${
-                  activeThreadId === thread.id
-                    ? "bg-blue-100/50"
-                    : "hover:bg-slate-50/80"
-                }`}
-              >
-                {activeThreadId === thread.id && (
-                  <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-blue-600 rounded-r-full shadow-[2px_0_10px_rgba(30,144,255,0.2)]" />
-                )}
-
-                <div className="h-12 w-12 rounded-full overflow-hidden shrink-0 border-2 border-slate-100 shadow-sm transition-transform group-hover:scale-105">
-                  {role === "recruiter" &&
-                  thread.candidate_profiles?.profile_photo_url ? (
-                    <img
-                      src={thread.candidate_profiles.profile_photo_url}
-                      alt=""
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <div className="h-full w-full flex items-center justify-center bg-blue-100 text-blue-600 font-black text-xs">
-                      {(role === "recruiter"
-                        ? thread.candidate_profiles?.full_name
-                        : thread.recruiter_profiles?.full_name)?.[0] || "?"}
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex-1 text-left min-w-0">
-                  <div className="flex justify-between items-start">
-                    <p
-                      className={`font-black text-sm tracking-tight truncate ${activeThreadId === thread.id ? "text-blue-600" : "text-slate-900"}`}
-                    >
-                      {role === "recruiter"
-                        ? thread.candidate_profiles?.full_name ||
-                          "New Candidate"
-                        : thread.recruiter_profiles?.full_name ||
-                          "Elite Recruiter"}
+            filteredThreads.map((thread) => {
+              const name = role === "recruiter" ? thread.candidate_profiles?.full_name || "New Candidate" : thread.recruiter_profiles?.full_name || "Recruiter";
+              const photo = role === "recruiter" ? thread.candidate_profiles?.profile_photo_url : null;
+              const isActive = activeThreadId === thread.id;
+              return (
+                <button key={thread.id} onClick={() => setActiveThreadId(thread.id)}
+                  className={`w-full px-4 py-3.5 flex items-center gap-3 transition-all relative ${isActive ? "bg-[#FFF6ED]" : "hover:bg-slate-50/80"}`}>
+                  {isActive && <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#FF8A00] rounded-r-full" />}
+                  <div className="h-10 w-10 rounded-xl overflow-hidden shrink-0 ring-1 ring-slate-100">
+                    {photo ? (
+                      <img src={photo} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-[#FF8A00]/10 to-[#FF8A00]/5 text-[#FF8A00] font-bold text-[13px]">
+                        {name[0]}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 text-left min-w-0">
+                    <p className={`text-[13px] font-semibold truncate ${isActive ? "text-[#FF8A00]" : "text-[#0F172A]"}`}>{name}</p>
+                    <p className="text-[10.5px] text-slate-400 mt-0.5">
+                      {thread.last_message_at ? format(new Date(thread.last_message_at), "MMM d, h:mm a") : "New conversation"}
                     </p>
                   </div>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">
-                    {thread.last_message_at
-                      ? format(
-                          new Date(thread.last_message_at),
-                          "MMM d, h:mm a",
-                        )
-                      : "New Message"}
-                  </p>
-                </div>
-              </button>
-            ))
+                </button>
+              );
+            })
           )}
         </div>
       </div>
 
-      {/* Main Chat Window */}
-      <div className="flex-1 flex flex-col bg-slate-50/20 min-w-0">
+      {/* ── RIGHT: Chat Window ── */}
+      <div className="flex-1 flex flex-col min-w-0 bg-[#FAFBFC]">
         {activeThreadId ? (
           <>
-            <div className="px-6 py-6 border-b border-slate-100 bg-white/80 backdrop-blur-md flex justify-between items-center shrink-0">
-              <div className="flex items-center gap-4 flex-1 min-w-0">
-                <div className="h-3 w-3 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.3)] animate-pulse shrink-0" />
+            {/* Chat Header */}
+            <div className="px-5 py-3.5 border-b border-slate-100 bg-white flex items-center justify-between flex-shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.4)] flex-shrink-0" />
                 <div className="min-w-0">
-                  <h3 className="font-black text-slate-900 text-base uppercase tracking-wider truncate">
-                    {role === "recruiter"
-                      ? threads.find((t) => t.id === activeThreadId)
-                          ?.candidate_profiles?.full_name || "Candidate"
-                      : "Recruitment Lead"}
-                  </h3>
-                  <p className="text-[10px] text-blue-600 font-bold uppercase tracking-[0.2em] mt-0.5">
-                    Online
-                  </p>
+                  <h3 className="text-[14px] font-bold text-[#0F172A] truncate">{activeName}</h3>
+                  <p className="text-[10.5px] text-emerald-500 font-medium">Online</p>
                 </div>
               </div>
-              <div className="flex items-center gap-3 shrink-0 ml-4">
-                <button 
-                  onClick={handleViewProfile}
-                  className="p-2.5 bg-slate-50 text-slate-400 rounded-xl hover:text-blue-600 hover:bg-blue-100 transition-all border border-slate-100"
-                  title={role === "recruiter" ? "View Profile" : "My Profile"}
-                >
-                  <User className="w-4 h-4" />
+              <div className="flex items-center gap-1.5 flex-shrink-0" ref={actionsRef}>
+                <button onClick={handleViewProfile} className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-slate-100 transition-colors" title={role === "recruiter" ? "View Profile" : "My Profile"}>
+                  <User className="h-4 w-4 text-slate-400" />
                 </button>
-                
-                <div className="h-6 w-px bg-slate-100 mx-1" />
-                
-                {showArchived ? (
-                   <button 
-                    onClick={async () => {
-                      if (!activeThreadId) return;
-                      const token = awsAuth.getToken();
-                      if (!token) return;
-                      await apiClient.post(`/chat/restore/${activeThreadId}`, {}, token);
-                      setThreads(prev => prev.map(t => t.id === activeThreadId ? { ...t, is_active: true } : t));
-                      setActiveThreadId(null);
-                      toast.success("Intelligence Link Restored.");
-                    }}
-                    className="p-2.5 bg-blue-100 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all border border-blue-100"
-                    title="Restore Chat"
-                  >
-                    <RotateCcw className="w-4 h-4" />
-                  </button>
-                ) : (
-                  <button 
-                    onClick={handleCloseChat}
-                    className="p-2.5 bg-slate-50 text-slate-400 rounded-xl hover:text-amber-600 hover:bg-amber-50 transition-all border border-slate-100"
-                    title="Archive Chat"
-                  >
-                    <Archive className="w-4 h-4" />
-                  </button>
+                <div className="h-5 w-px bg-slate-100 mx-0.5" />
+                <button onClick={() => setShowActions(!showActions)} className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-slate-100 transition-colors">
+                  <MoreVertical className="h-4 w-4 text-slate-400" />
+                </button>
+                {showActions && (
+                  <div className="absolute right-5 top-14 w-48 bg-white rounded-xl border border-slate-200 shadow-[0_8px_30px_rgba(0,0,0,0.12)] overflow-hidden z-50">
+                    {showArchived ? (
+                      <button onClick={async () => {
+                        const token = awsAuth.getToken(); if (!token) return;
+                        await apiClient.post(`/chat/restore/${activeThreadId}`, {}, token);
+                        setThreads(prev => prev.filter(t => t.id !== activeThreadId));
+                        setActiveThreadId(null); setShowActions(false);
+                        toast.success("Conversation restored.");
+                      }} className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[12px] font-medium text-slate-600 hover:bg-slate-50">
+                        <RotateCcw className="h-3.5 w-3.5 text-slate-400" />Restore Conversation
+                      </button>
+                    ) : (
+                      <button onClick={() => { handleCloseChat(); setShowActions(false); }} className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[12px] font-medium text-slate-600 hover:bg-slate-50">
+                        <Archive className="h-3.5 w-3.5 text-slate-400" />Archive Conversation
+                      </button>
+                    )}
+                    <div className="mx-3 border-t border-slate-100" />
+                    <button onClick={() => { handleDeleteChat(); setShowActions(false); }} className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[12px] font-medium text-red-500 hover:bg-red-50">
+                      <Trash2 className="h-3.5 w-3.5" />Delete Conversation
+                    </button>
+                  </div>
                 )}
-                
-                <button 
-                  onClick={handleDeleteChat}
-                  className="p-2.5 bg-slate-50 text-slate-400 rounded-xl hover:text-red-600 hover:bg-red-50 transition-all border border-slate-100"
-                  title="Permanent Delete"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-6 py-10 space-y-8 custom-scrollbar">
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto px-5 py-6 space-y-4 dashboard-scroll">
               {messages.map((msg) => {
-                const otherPartyName = role === "recruiter" 
-                  ? threads.find(t => t.id === activeThreadId)?.candidate_profiles?.full_name || "Candidate"
-                  : "Recruiter";
-                
+                const isMine = msg.sender_id === userId;
                 return (
-                  <div
-                    key={msg.id}
-                    className={`flex ${msg.sender_id === userId ? "justify-end" : "justify-start"} group`}
-                  >
-                    <div
-                      className={`flex flex-col ${msg.sender_id === userId ? "items-end" : "items-start"} max-w-[85%]`}
-                    >
-                      <div
-                        className={`rounded-3xl px-6 py-4 shadow-sm transition-all hover:shadow-md relative ${
-                          msg.sender_id === userId
-                            ? "bg-slate-900 text-white rounded-tr-none shadow-slate-900/10"
-                            : "bg-white text-slate-800 border border-slate-100 rounded-tl-none"
-                        }`}
-                      >
-                        <p className="text-[13px] leading-relaxed font-medium">
-                          {msg.text}
-                        </p>
-                        
-                        {/* Report button - only show for other person's messages */}
-                        {msg.sender_id !== userId && (
-                          <button
-                            onClick={() => setReportModal({
-                              isOpen: true,
-                              messageId: msg.id,
-                              senderName: otherPartyName
-                            })}
-                            className="absolute -right-12 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity p-2 hover:bg-red-50 rounded-lg"
-                            title="Report this message"
-                          >
-                            <Flag className="w-4 h-4 text-red-500 hover:text-red-600" />
+                  <div key={msg.id} className={`flex ${isMine ? "justify-end" : "justify-start"} group`}>
+                    <div className={`flex flex-col ${isMine ? "items-end" : "items-start"} max-w-[70%]`}>
+                      <div className={`rounded-2xl px-4 py-3 relative ${
+                        isMine
+                          ? "bg-[#FF8A00] text-white rounded-br-md"
+                          : "bg-white text-[#0F172A] border border-slate-200/60 rounded-bl-md shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
+                      }`}>
+                        <p className="text-[13px] leading-relaxed">{msg.text}</p>
+                        {!isMine && (
+                          <button onClick={() => setReportModal({ isOpen: true, messageId: msg.id, senderName: activeName })}
+                            className="absolute -right-9 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 hover:bg-red-50 rounded-lg">
+                            <Flag className="w-3 h-3 text-red-400" />
                           </button>
                         )}
                       </div>
-                      <p className="text-[9px] font-black text-slate-300 uppercase tracking-tighter mt-2 px-1">
+                      <p className={`text-[10px] mt-1.5 px-1 ${isMine ? "text-slate-300" : "text-slate-400"}`}>
                         {format(new Date(msg.created_at), "h:mm a")}
                       </p>
                     </div>
@@ -485,90 +360,43 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
               <div ref={messagesEndRef} />
             </div>
 
-            <div className="p-4 bg-white border-t border-slate-100">
-              <form onSubmit={sendMessage} className="relative group mb-4">
-                <input
-                  type="text"
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  placeholder="Type a message..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 pr-28 text-sm text-slate-900 focus:outline-none focus:ring-4 focus:ring-blue-600/5 focus:border-blue-600/50 transition-all placeholder:text-slate-400 font-medium"
-                />
-                <div className="absolute right-2 top-2 bottom-2">
-                  <button
-                    type="submit"
-                    disabled={!newMessage.trim()}
-                    className="h-full bg-slate-900 text-white px-6 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-black active:scale-95 disabled:opacity-20 disabled:grayscale transition-all shadow-xl shadow-slate-900/20"
-                  >
-                    Send
-                  </button>
-                </div>
+            {/* Compose */}
+            <div className="px-5 py-3.5 bg-white border-t border-slate-100 flex-shrink-0">
+              <form onSubmit={sendMessage} className="flex items-center gap-2 mb-2.5">
+                <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
+                <button type="button" onClick={() => fileInputRef.current?.click()} className="h-9 w-9 flex items-center justify-center rounded-lg hover:bg-slate-100 transition-colors flex-shrink-0">
+                  <Paperclip className="h-4 w-4 text-slate-400" />
+                </button>
+                <input type="text" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Type a message…"
+                  className="flex-1 bg-[#F8F9FC] border border-slate-200/60 rounded-xl px-4 py-2.5 text-[13px] text-[#0F172A] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#FF8A00]/20 focus:border-[#FF8A00]/50 transition-all" />
+                <button type="submit" disabled={!newMessage.trim()}
+                  className="h-9 w-9 flex items-center justify-center rounded-xl bg-[#FF8A00] hover:bg-[#E67A00] text-white disabled:opacity-30 transition-all active:scale-95 flex-shrink-0 shadow-sm">
+                  <Send className="h-4 w-4" />
+                </button>
               </form>
-              
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 shrink-0">
-                  <p className="hidden sm:block text-[8px] font-black text-slate-300 uppercase tracking-[0.2em] leading-none">
-                    Security: E2EE
-                  </p>
-                  <div className="hidden sm:block h-4 w-px bg-slate-100" />
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileUpload}
-                    className="hidden"
-                  />
-                  <button 
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center gap-1.5 text-[9px] font-black text-slate-500 uppercase tracking-widest hover:text-blue-600 transition-all"
-                  >
-                    <Paperclip className="w-3.5 h-3.5" />
-                    Attach
+              <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
+                {(role === "recruiter" ? RECRUITER_TEMPLATES : CANDIDATE_TEMPLATES).map((tmpl, idx) => (
+                  <button key={idx} onClick={() => applyTemplate(tmpl.text)}
+                    className="whitespace-nowrap px-3 py-1.5 bg-[#FFF6ED] border border-orange-100/80 rounded-lg text-[10px] font-semibold text-[#FF8A00] hover:bg-[#FF8A00] hover:text-white transition-all flex items-center gap-1.5 shrink-0">
+                    <ClipboardList className="w-3 h-3 opacity-60" />
+                    {tmpl.label}
                   </button>
-                </div>
-
-                <div className="flex-1 flex gap-2 overflow-x-auto no-scrollbar pb-1 mask-fade-right">
-                  {(role === "recruiter" ? RECRUITER_TEMPLATES : CANDIDATE_TEMPLATES).map((tmpl, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => applyTemplate(tmpl.text)}
-                      className="whitespace-nowrap px-3 py-1.5 bg-blue-100/30 border border-blue-100/50 rounded-xl text-[8px] font-black text-blue-600 uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all flex items-center gap-1.5 shrink-0 shadow-xs"
-                    >
-                      <ClipboardList className="w-3 h-3 opacity-50" />
-                      {tmpl.label}
-                    </button>
-                  ))}
-                </div>
+                ))}
               </div>
             </div>
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center p-20 text-center animate-in fade-in zoom-in duration-700">
-            <div className="relative mb-10 group cursor-default">
-              <div className="absolute inset-0 bg-blue-600/10 blur-[80px] rounded-full scale-150 group-hover:bg-blue-600/20 transition-all duration-700" />
-              <div className="relative h-32 w-32 rounded-[3.5rem] bg-white border border-slate-100 flex items-center justify-center shadow-xl transition-all duration-700 hover:rotate-12">
-                <svg
-                  className="h-14 w-14 text-blue-600/50"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1}
-                    d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                  />
-                </svg>
+          <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
+            <div className="relative mb-8">
+              <div className="absolute inset-0 bg-[#FF8A00]/5 blur-[60px] rounded-full scale-150" />
+              <div className="relative h-24 w-24 rounded-2xl bg-white border border-slate-200/60 flex items-center justify-center shadow-[0_6px_24px_rgba(0,0,0,0.06)]">
+                <MessageCircle className="h-10 w-10 text-[#FF8A00]/40" strokeWidth={1.5} />
               </div>
             </div>
-            <h3 className="text-4xl font-black text-slate-900 tracking-[-0.04em] mb-4 uppercase">
-              Messaging Center
-            </h3>
-            <p className="text-slate-400 max-w-sm text-[10px] font-bold uppercase tracking-[0.25em] leading-relaxed opacity-70">
-              Select a conversation to start chatting. Your messages are private
-              and secure.
+            <h3 className="text-[18px] font-bold text-[#0F172A] tracking-tight mb-2">Select a Conversation</h3>
+            <p className="text-[13px] text-slate-400 max-w-[280px] leading-relaxed">
+              Choose a conversation from the left to start messaging. Your messages are private and encrypted.
             </p>
-            <div className="mt-12 h-1.5 w-12 bg-blue-100 rounded-full" />
           </div>
         )}
       </div>
@@ -590,11 +418,8 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
         onClose={() => setReportModal({ ...reportModal, isOpen: false })}
         messageId={reportModal.messageId}
         senderName={reportModal.senderName}
-        onReportSuccess={() => {
-          toast.success("Thank you for reporting. Our team will review this.");
-        }}
+        onReportSuccess={() => toast.success("Thank you for reporting. Our team will review this.")}
       />
     </div>
   );
 }
-

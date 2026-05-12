@@ -128,6 +128,8 @@ export default function CandidateProfileModal({
 
   if (!isOpen) return null;
 
+  const accent = "#FF8A00";
+
   const tabs = [
     {
       id: "application",
@@ -201,9 +203,19 @@ export default function CandidateProfileModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="bg-slate-50 rounded-[28px] shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200 border border-slate-200/50">
+      <style>{`
+        .candidate-modal-scroll {
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+        }
+        .candidate-modal-scroll::-webkit-scrollbar {
+          width: 0;
+          height: 0;
+        }
+      `}</style>
+      <div className="bg-[#FFFDF9] rounded-[28px] shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200 border border-orange-100/80">
         {/* Compact Header */}
-        <div className="bg-white px-5 py-3 flex items-center justify-between border-b border-slate-100">
+        <div className="bg-gradient-to-r from-[#FFF6ED] via-white to-white px-5 py-3 flex items-center justify-between border-b border-orange-100/70">
           <div className="flex items-center gap-3.5">
             <div className="relative shrink-0">
               {candidate.profile_photo_url ? (
@@ -259,7 +271,7 @@ export default function CandidateProfileModal({
               disabled={status === "rejected" || !status}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all shadow-md active:scale-95 ${
                 status && status !== "rejected"
-                  ? "bg-slate-900 hover:bg-slate-800 text-white"
+                  ? "bg-[#FF8A00] hover:bg-[#E67A00] text-white"
                   : "bg-slate-200 text-slate-400 cursor-not-allowed"
               }`}
               title={!status || status === "rejected" ? "Not available for this candidate" : "Send email to candidate"}
@@ -288,12 +300,12 @@ export default function CandidateProfileModal({
                   onClick={() => setActiveTab(tab.id)}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
                     activeTab === tab.id
-                      ? "bg-white text-blue-600 shadow-sm"
+                      ? "bg-white text-[#FF8A00] shadow-sm"
                       : "text-slate-500 hover:bg-slate-300/50"
                   }`}
                 >
                   <tab.icon
-                    className={`w-3 h-3 ${activeTab === tab.id ? "text-blue-600" : "text-slate-400"}`}
+                    className={`w-3 h-3 ${activeTab === tab.id ? "text-[#FF8A00]" : "text-slate-400"}`}
                   />
                   {tab.label}
                 </button>
@@ -301,16 +313,16 @@ export default function CandidateProfileModal({
             </div>
 
             {/* Display Layer */}
-            <div className="flex-1 bg-white rounded-[20px] border border-slate-100 shadow-sm overflow-hidden flex flex-col min-h-0">
+            <div className="flex-1 bg-white rounded-[20px] border border-orange-100/70 shadow-sm overflow-hidden flex flex-col min-h-0">
               {activeTab === "resume" && (
-                <div className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-slate-50">
+                <div className="candidate-modal-scroll flex-1 overflow-y-auto p-6 bg-slate-50">
                   <div className="max-w-4xl mx-auto space-y-6">
                     {/* Info Lock Status Banner */}
                     {(!status || status === "rejected") && (
-                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
-                        <div className="text-lg flex-shrink-0 text-amber-600">◆</div>
+                      <div className="bg-[#FFF6ED] border border-orange-100 rounded-xl p-4 flex items-start gap-3">
+                        <div className="text-lg flex-shrink-0 text-[#FF8A00]">◆</div>
                         <div>
-                          <p className="text-sm font-bold text-amber-900">Personal info unlocks when candidate applies, is shortlisted, or replies to an invite</p>
+                          <p className="text-sm font-bold text-slate-900">Personal info unlocks when candidate applies, is shortlisted, or replies to an invite</p>
                         </div>
                       </div>
                     )}
@@ -345,36 +357,36 @@ export default function CandidateProfileModal({
                       return (
                         <div className="grid grid-cols-2 gap-4">
                           {/* Years of Experience */}
-                          <div className="bg-blue-50 rounded-xl p-5 border border-blue-100">
-                            <p className="text-xs font-bold text-blue-600 uppercase tracking-wide mb-2">Years of Experience</p>
-                            <p className="text-4xl font-black text-blue-900 mb-1">{yearsOfExp}</p>
-                            <p className="text-xs text-blue-600 font-semibold">years</p>
+                          <div className="bg-[#FFF6ED] rounded-xl p-5 border border-orange-100">
+                            <p className="text-xs font-black text-[#FF8A00] uppercase tracking-wide mb-2">Years of Experience</p>
+                            <p className="text-4xl font-black text-slate-900 mb-1">{yearsOfExp}</p>
+                            <p className="text-xs text-slate-500 font-semibold">years</p>
                           </div>
 
                           {/* Location */}
-                          <div className="bg-teal-50 rounded-xl p-5 border border-teal-100">
-                            <p className="text-xs font-bold text-teal-600 uppercase tracking-wide mb-2">Location</p>
-                            <p className="text-lg font-black text-teal-900 mb-1">{displayLocation}</p>
+                          <div className="bg-white rounded-xl p-5 border border-slate-200/70">
+                            <p className="text-xs font-black text-slate-400 uppercase tracking-wide mb-2">Location</p>
+                            <p className="text-lg font-black text-slate-900 mb-1">{displayLocation}</p>
                           </div>
 
                           {/* Expected Compensation */}
-                          <div className="bg-purple-50 rounded-xl p-5 border border-purple-100">
-                            <p className="text-xs font-bold text-purple-600 uppercase tracking-wide mb-2">Expected Compensation</p>
-                            <p className="text-2xl font-black text-purple-900">Not Provided</p>
+                          <div className="bg-white rounded-xl p-5 border border-slate-200/70">
+                            <p className="text-xs font-black text-slate-400 uppercase tracking-wide mb-2">Expected Compensation</p>
+                            <p className="text-2xl font-black text-slate-900">Not Provided</p>
                           </div>
 
                           {/* Experience Level */}
-                          <div className="bg-cyan-50 rounded-xl p-5 border border-cyan-100">
-                            <p className="text-xs font-bold text-cyan-600 uppercase tracking-wide mb-2">Experience Level</p>
-                            <p className="text-lg font-black text-cyan-900">{getExperienceLevel(yearsOfExp)}</p>
+                          <div className="bg-white rounded-xl p-5 border border-slate-200/70">
+                            <p className="text-xs font-black text-slate-400 uppercase tracking-wide mb-2">Experience Level</p>
+                            <p className="text-lg font-black text-[#FF8A00]">{getExperienceLevel(yearsOfExp)}</p>
                           </div>
                         </div>
                       );
                     })()}
 
                     {/* Expertise Areas - Skills */}
-                    <div className="bg-white rounded-xl border border-slate-100 p-6 shadow-sm">
-                      <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wide mb-4">
+                    <div className="bg-white rounded-xl border border-orange-100/70 p-6 shadow-sm">
+                      <h3 className="text-xs font-black text-[#FF8A00] uppercase tracking-[0.18em] mb-4">
                         Expertise Areas
                       </h3>
                       {(candidate.skills?.length > 0 || (parsedDetails?.skills?.length ?? 0) > 0) ? (
@@ -384,7 +396,7 @@ export default function CandidateProfileModal({
                           ).map((skill: string, i: number) => (
                             <span
                               key={i}
-                              className="px-3 py-2 bg-cyan-100 text-cyan-700 text-xs font-bold rounded-lg border border-cyan-200"
+                              className="px-3 py-2 bg-[#FFF6ED] text-[#FF8A00] text-xs font-bold rounded-full border border-orange-100"
                             >
                               {skill}
                             </span>
@@ -398,7 +410,7 @@ export default function CandidateProfileModal({
                     {/* Personal Information - with Privacy */}
                     <div className={`rounded-xl p-6 shadow-sm border ${
                       status && status !== "rejected"
-                        ? "bg-white border-slate-100"
+                        ? "bg-white border-orange-100/70"
                         : "bg-slate-100 border-slate-200"
                     }`}>
                       <div className="flex items-center gap-2 mb-4">
@@ -442,7 +454,7 @@ export default function CandidateProfileModal({
                         href={candidate.resume_path || "#"}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest flex items-center gap-2 shadow-lg transition-all active:scale-95"
+                        className="bg-[#FF8A00] hover:bg-[#E67A00] text-white px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest flex items-center gap-2 shadow-lg transition-all active:scale-95"
                       >
                         <Download className="w-3 h-3" />
                         Download Original
@@ -697,7 +709,7 @@ export default function CandidateProfileModal({
                       </p>
                       <button
                         onClick={() => setShowScheduler(true)}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] shadow-lg shadow-blue-600/20 transition-all active:scale-95"
+                        className="bg-[#FF8A00] hover:bg-[#E67A00] text-white px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] shadow-lg shadow-orange-600/20 transition-all active:scale-95"
                       >
                         Schedule New Session
                       </button>

@@ -1,522 +1,224 @@
 "use client";
-
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import { useRouter } from "next/navigation";
-import {
-  BadgeCheck,
-  Users,
-  Briefcase,
-  TrendingUp,
-  Award,
-  Building2,
-  ShieldCheck,
-  Zap,
-  FileText,
-  Compass,
-} from "lucide-react";
-import HiringFunnel from "@/components/dashboard/HiringFunnel";
+import { Briefcase, Users, Building2, Zap, Target, UserCheck, MessageSquare, ArrowRight, Plus, MapPin, CheckCircle, Eye, TrendingUp, ChevronRight, Sparkles, Award } from "lucide-react";
 
-interface Company {
-  id: string;
-  name: string;
-  website: string;
-  location: string;
-  description: string;
-  profile_score: number;
-  logo_url?: string;
-}
-
+interface Company { id: string; name: string; profile_score: number; logo_url?: string; }
 interface RecruiterProfile {
-  user_id: string;
-  company_id: string;
-  onboarding_step: string;
-  assessment_status: string;
-  is_admin: boolean;
-  completion_score: number;
-  companies: Company;
+  user_id: string; company_id: string; assessment_status: string; is_admin: boolean;
+  completion_score: number; team_role?: string; full_name?: string; companies: Company;
 }
 
 export default function RecruiterDashboard() {
   const router = useRouter();
   const [profile, setProfile] = useState<RecruiterProfile | null>(null);
   const [stats, setStats] = useState<{
-    active_jobs_count?: number;
-    total_views?: number;
-    total_applications?: number;
-    conversion_rate?: number;
-    shortlist_rate?: number;
-    visibility_tier?: string;
-    funnel_data?: {
-      applied: number;
-      shortlisted: number;
-      interviewed: number;
-      offered: number;
-      hired: number;
-    };
+    active_jobs_count?: number; total_views?: number; pending_applications_count?: number;
+    total_hires_count?: number;
+    funnel_data?: { applied: number; shortlisted: number; interviewed: number; offered: number; hired: number };
   } | null>(null);
+  const [jobs, setJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleLogout = async () => {
-    await awsAuth.logout();
-    router.replace("/login");
-  };
+  const [userName, setUserName] = useState("there");
+  const [jobAppCounts, setJobAppCounts] = useState<Record<string, number>>({});
 
   const loadData = useCallback(async () => {
     try {
       const token = awsAuth.getToken();
-      if (!token) {
-        router.replace("/login");
-        return;
-      }
-
-      const [profileData, statsData] = await Promise.all([
+      if (!token) { router.replace("/login"); return; }
+      const [p, s, j, pipeline] = await Promise.all([
         apiClient.get("/recruiter/profile", token),
-        apiClient.get("/recruiter/stats", token),
+        apiClient.get("/recruiter/stats", token).catch(() => null),
+        apiClient.get("/recruiter/jobs", token).catch(() => null),
+        apiClient.get("/recruiter/applications/pipeline", token).catch(() => null),
       ]);
+      setProfile(p);
+      if (p?.full_name) setUserName(p.full_name.split(" ")[0]);
+      if (s) setStats(s);
 
-      setProfile(profileData);
-      setStats(statsData);
-      setError(null);
-    } catch (err) {
-      console.error("Failed to load recruiter dashboard data:", err);
-      setError("Failed to sync dashboard signals");
-    } finally {
-      setLoading(false);
-    }
+      const jobsList = Array.isArray(j) ? j : [];
+      setJobs(jobsList.slice(0, 4));
+
+      // Build per-job application counts from pipeline data
+      if (Array.isArray(pipeline)) {
+        const counts: Record<string, number> = {};
+        // Also build funnel data from pipeline
+        let applied = 0, shortlisted = 0, interviewed = 0, hired = 0;
+        pipeline.forEach((app: any) => {
+          const jid = app.job_id;
+          if (jid) counts[jid] = (counts[jid] || 0) + 1;
+          // Funnel
+          const st = (app.status || "").toLowerCase();
+          if (st === "applied") applied++;
+          else if (st === "shortlisted") shortlisted++;
+          else if (st === "interviewing" || st === "interviewed") interviewed++;
+          else if (st === "hired" || st === "closed" || st === "offered") hired++;
+          else applied++; // default bucket
+        });
+        setJobAppCounts(counts);
+        // If stats doesn't have funnel_data, create it from pipeline
+        if (s && !s.funnel_data) {
+          setStats(prev => ({
+            ...prev,
+            funnel_data: { applied, shortlisted, interviewed, offered: 0, hired },
+            pending_applications_count: pipeline.length,
+          }));
+        }
+      }
+    } catch {}
+    finally { setLoading(false); }
   }, [router]);
 
-  useEffect(() => {
-    loadData();
+  useEffect(() => { loadData(); const iv = setInterval(loadData, 30000); return () => clearInterval(iv); }, [loadData]);
 
-    // Replaced real-time with polling every 30 seconds
-    const interval = setInterval(() => {
-      loadData();
-    }, 30000);
+  if (loading) return <div className="h-[calc(100vh-64px)] flex items-center justify-center bg-[#F8F9FC]"><div className="flex flex-col items-center gap-3"><div className="h-9 w-9 rounded-full border-[2.5px] border-slate-200 border-t-[#FF8A00] animate-spin" /><p className="text-[11px] text-slate-400 font-medium tracking-widest uppercase">Loading…</p></div></div>;
+  if (!profile) return <div className="h-[calc(100vh-64px)] flex items-center justify-center bg-[#F8F9FC]"><div className="text-center"><p className="text-sm text-slate-600 mb-4">Could not load dashboard</p><button onClick={() => window.location.reload()} className="px-5 py-2.5 bg-[#FF8A00] text-white rounded-xl text-[13px] font-semibold">Retry</button></div></div>;
 
-    return () => {
-      clearInterval(interval);
-    };
-  }, [loadData]);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-black">
-        <div className="flex flex-col items-center gap-6">
-          <div className="relative h-16 w-16">
-            <div className="absolute inset-0 rounded-full border-2 border-white/5"></div>
-            <div className="absolute inset-0 rounded-full border-t-2 border-blue-600 animate-spin shadow-[0_0_15px_rgba(30,144,255,0.3)]"></div>
-          </div>
-          <div className="space-y-1 text-center">
-            <p className="text-white font-black text-xs uppercase tracking-[0.3em] animate-pulse">
-              Initializing
-            </p>
-            <p className="text-white/40 font-bold text-[10px] uppercase tracking-widest">
-              TechSales Axis Intelligence
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (error || !profile) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-black p-6">
-        <div className="glass-card p-10 rounded-[2.5rem] border-red-500/20 max-w-sm text-center">
-          <div className="h-20 w-20 bg-red-500/10 rounded-3xl flex items-center justify-center mx-auto mb-8 border border-red-500/20">
-            <svg
-              className="h-10 w-10 text-red-500"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-              />
-            </svg>
-          </div>
-          <h2 className="text-2xl font-black text-white mb-3 uppercase tracking-tighter">
-            Sync <span className="text-red-500">Offline</span>
-          </h2>
-          <p className="text-white/60 text-sm mb-8 leading-relaxed font-medium">
-            {error || "Cloud synchronization interrupted"}
-          </p>
-          <button
-            onClick={() => window.location.reload()}
-            className="btn-primary w-full py-4 text-xs tracking-[0.2em]"
-          >
-            RETRY CONNECTION
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  const isAssessmentCompleted =
-    profile?.assessment_status === "completed" ||
-    (profile?.companies?.profile_score ?? 0) > 0;
+  const companyScore = profile.companies?.profile_score ?? 0;
+  const totalApps = stats?.pending_applications_count ?? 0;
+  const funnel = stats?.funnel_data || { applied: totalApps, shortlisted: 0, interviewed: 0, offered: 0, hired: 0 };
+  const conversionRate = totalApps > 0 ? (((funnel.hired || stats?.total_hires_count || 0) / totalApps) * 100).toFixed(1) : "0.0";
+  const culturePct = Math.min(100, Math.round(companyScore * 0.7));
+  const brandPct = Math.min(100, Math.round(companyScore * 1.2));
+  const benefitsPct = Math.min(100, Math.round(companyScore * 1.1));
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 animate-in fade-in duration-700">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-        {!isAssessmentCompleted && (
-          <div className="bg-gradient-to-r from-amber-500/10 to-orange-500/5 border border-amber-500/30 rounded-2xl p-6 flex items-center justify-between backdrop-blur-sm shadow-sm hover:shadow-md transition-shadow">
-            <div className="flex items-center gap-4">
-              <div className="h-12 w-12 bg-amber-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-amber-500/30 flex-shrink-0">
-                <ShieldCheck className="h-6 w-6" />
-              </div>
-              <div>
-                <h3 className="text-amber-900 font-bold text-base tracking-tight">
-                  Complete Your Profile
-                </h3>
-                <p className="text-amber-800/70 text-xs font-medium mt-0.5">
-                  Finish your company profile to access verified candidates and premium features.
-                </p>
-              </div>
+    <div className="h-[calc(100vh-64px)] bg-[#F8F9FC] overflow-hidden">
+      <div className="h-full p-5 flex flex-col gap-4">
+        {/* ── TOP ROW: Welcome + 4 KPIs ── */}
+        <div className="flex gap-4 flex-shrink-0">
+          <div className="relative overflow-hidden bg-gradient-to-r from-[#0F172A] via-[#1a2744] to-[#1E293B] rounded-2xl px-6 py-4 flex items-center gap-6 min-w-[340px] shadow-[0_4px_20px_rgba(15,23,42,0.2)]">
+            <div className="absolute -top-10 -right-10 h-32 w-32 rounded-full bg-white/[0.03]" />
+            <div className="absolute bottom-0 right-12 h-20 w-20 rounded-full bg-[#FF8A00]/10" />
+            <div className="relative z-10 flex-1">
+              <p className="text-[10px] font-semibold text-white/30 uppercase tracking-[0.15em] mb-0.5">Welcome back</p>
+              <h1 className="text-lg font-bold text-white tracking-tight">{userName} 👋</h1>
+              <div className="flex items-center gap-1.5 mt-0.5"><Building2 className="h-3 w-3 text-white/30" strokeWidth={1.8} /><p className="text-[11px] text-white/40 truncate">{profile.companies?.name}</p></div>
             </div>
-            <button
-              onClick={() => router.push("/onboarding/recruiter")}
-              className="px-5 py-2 bg-amber-600 text-white rounded-lg font-bold text-sm hover:bg-amber-700 hover:shadow-lg hover:shadow-amber-600/20 transition active:scale-95 flex-shrink-0"
-            >
-              Complete Profile
-            </button>
+            <div className="relative z-10">
+              <Link href="/dashboard/recruiter/hiring/jobs/new"><button className="flex items-center gap-1.5 px-4 py-2 bg-[#FF8A00] hover:bg-[#e67a00] text-white rounded-xl text-[11px] font-bold transition-all active:scale-95 shadow-lg shadow-orange-900/25"><Plus className="h-3.5 w-3.5" strokeWidth={2.5} />Post Job</button></Link>
+            </div>
           </div>
-        )}
-
-        <header className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-4 border-b border-slate-100">
-          <div className="space-y-2">
-            <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight">
-                Recruiter <span className="text-blue-600">Command Center</span>
-              </h1>
-              {profile?.is_admin && (
-                <div className="px-3 py-1 bg-blue-100 text-blue-600 text-[11px] font-black uppercase tracking-widest rounded-lg border border-blue-600/20">
-                  Admin Access
-                </div>
-              )}
-            </div>
-            <p className="text-slate-500 text-sm font-medium flex items-center gap-2 flex-wrap">
-              <Building2 className="h-4 w-4 text-slate-400 flex-shrink-0" />
-              {profile?.companies?.name || "Company"} • {stats?.active_jobs_count || 0} active positions
-            </p>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="px-4 py-2 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg text-sm font-bold transition-all border border-slate-200 hover:border-red-200 flex-shrink-0"
-          >
-            Logout
-          </button>
-        </header>
-
-        {/* Company Profile Score Card - Premium Version */}
-        <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800 rounded-3xl p-8 md:p-12 mb-6 relative overflow-hidden shadow-2xl shadow-indigo-900/20 border border-white/5">
-          <div className="absolute top-0 right-0 w-96 h-96 bg-blue-600/10 rounded-full blur-[100px] -mr-48 -mt-48 opacity-40" />
-          <div className="absolute bottom-0 left-0 w-72 h-72 bg-purple-600/5 rounded-full blur-[80px] -ml-36 -mb-36" />
-
-          <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-8 md:gap-12 items-center">
-            <div className="space-y-6">
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <div className="px-2.5 py-1 bg-white/10 backdrop-blur-md rounded-full border border-white/10 flex items-center gap-2">
-                    <ShieldCheck className="h-3 w-3 text-blue-600" />
-                    <span className="text-[8px] font-black uppercase tracking-[0.15em] text-blue-600">
-                      Verified Company
-                    </span>
-                  </div>
-                </div>
-                <h2 className="text-3xl md:text-4xl font-black text-white tracking-tight leading-tight">
-                  Company<br />
-                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-purple-400">
-                    Trust Score
-                  </span>
-                </h2>
-                <p className="text-slate-300 text-sm font-medium leading-relaxed max-w-md opacity-90">
-                  Ranked on profile completeness, company culture, job quality, and recruiter engagement.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md hover:bg-white/10 transition-all group cursor-default">
-                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
-                    Tier
-                  </div>
-                  <div className="text-2xl font-black text-white leading-none mb-1">
-                    {(profile?.companies?.profile_score ?? 0) >= 85
-                      ? "⭐ Elite"
-                      : (profile?.companies?.profile_score ?? 0) >= 70
-                        ? "✓ Prime"
-                        : "→ Growth"}
-                  </div>
-                  <div className="text-[7px] font-bold text-slate-500 uppercase tracking-widest leading-normal">
-                    Based on profile quality
-                  </div>
-                </div>
-                <div className="p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md hover:bg-white/10 transition-all group cursor-default">
-                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
-                    Visibility
-                  </div>
-                  <div className="text-2xl font-black text-white leading-none mb-1">
-                    {profile?.completion_score}%
-                  </div>
-                  <div className="text-[7px] font-bold text-slate-500 uppercase tracking-widest leading-normal">
-                    Search ranking
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-center lg:justify-end">
-              <div className="relative h-80 w-80 group/shield">
-                <div className="absolute inset-x-0 bottom-0 top-0 m-auto h-56 w-56 bg-blue-600/20 rounded-full blur-3xl group-hover/shield:bg-blue-600/40 transition-all duration-700" />
-
-                <div className="absolute inset-0 rounded-full flex flex-col items-center justify-center z-10 text-center">
-                  <div className="bg-slate-800/80 p-12 rounded-full border border-white/10 shadow-2xl backdrop-blur-2xl group-hover/shield:scale-105 transition-transform duration-500">
-                    <div className="text-6xl font-black text-white tracking-tighter leading-none mb-2">
-                      {profile?.companies?.profile_score ?? 0}
-                    </div>
-                    <div className="text-[11px] font-black uppercase tracking-[0.3em] text-blue-600">
-                      Trust Index
-                    </div>
-                    <div className="mt-3 flex items-center justify-center gap-1.5 px-3 py-1 bg-white/5 rounded-full border border-white/10">
-                      <div className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                      <span className="text-[8px] font-black text-white/70 uppercase tracking-widest">
-                        Active
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <svg
-                  className="absolute inset-0 h-full w-full -rotate-90 drop-shadow-[0_0_30px_rgba(99,102,241,0.3)] z-20"
-                  viewBox="0 0 100 100"
-                >
-                  <circle cx="50" cy="50" r="46" fill="transparent" stroke="rgba(255,255,255,0.08)" strokeWidth="2" />
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="46"
-                    fill="transparent"
-                    stroke="url(#shieldGradient)"
-                    strokeWidth="6"
-                    strokeDasharray="289"
-                    strokeDashoffset={
-                      289 -
-                      (289 * (profile?.companies?.profile_score ?? 0)) / 100
-                    }
-                    strokeLinecap="round"
-                    className="transition-all duration-2000 ease-out"
-                  />
-                  <defs>
-                    <linearGradient
-                      id="shieldGradient"
-                      x1="0%"
-                      y1="0%"
-                      x2="100%"
-                      y2="0%"
-                    >
-                      <stop offset="0%" stopColor="#6366f1" />
-                      <stop offset="100%" stopColor="#c084fc" />
-                    </linearGradient>
-                  </defs>
-                </svg>
-              </div>
-            </div>
+          <div className="flex-1 grid grid-cols-4 gap-3">
+            <KpiCard icon={Users} value={totalApps} label="New Applicants" accent="blue" />
+            <KpiCard icon={Briefcase} value={stats?.active_jobs_count ?? 0} label="Active Postings" accent="violet" />
+            <KpiCard icon={MessageSquare} value={funnel.interviewed} label="Interviews" accent="emerald" />
+            <KpiCard icon={CheckCircle} value={stats?.total_hires_count ?? funnel.hired} label="Hired" accent="amber" />
           </div>
         </div>
 
-        {/* Premium Metric Bar */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard
-            label="Active Jobs"
-            value={stats?.active_jobs_count?.toString() || "0"}
-            sub="Open positions"
-            icon={Briefcase}
-            trend={stats?.active_jobs_count || 0 > 0 ? "Hiring" : "No jobs"}
-            color="indigo"
-          />
-          <StatCard
-            label="Total Reach"
-            value={stats?.total_views?.toLocaleString() || "0"}
-            sub="Candidates viewed"
-            icon={Users}
-            color="emerald"
-          />
-          <StatCard
-            label="Success Rate"
-            value={`${stats?.conversion_rate || 0}%`}
-            sub="Hiring conversion"
-            icon={TrendingUp}
-            color="amber"
-          />
-          <StatCard
-            label="Tier Status"
-            value={stats?.visibility_tier || "Growth"}
-            sub="Search ranking"
-            icon={Award}
-            color="purple"
-          />
-        </div>
-
-        {/* Analytics & Roadmap Section */}
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          <div className="xl:col-span-2 space-y-6">
-            <div className="bg-white rounded-2xl p-8 border border-slate-100 shadow-sm space-y-8">
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <h3 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
-                    <TrendingUp className="h-5 w-5 text-blue-600" />
-                    Hiring Progress
-                  </h3>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest opacity-80">
-                    Real-time candidate pipeline
-                  </p>
-                </div>
-                <div className="px-3 py-1 bg-slate-900/5 border border-slate-100 rounded-lg">
-                  <span className="text-[8px] font-black uppercase tracking-[0.2em] text-slate-500">
-                    Auto-Sync Active
-                  </span>
-                </div>
+        {/* ── MAIN CONTENT ── */}
+        <div className="flex gap-4 flex-1 min-h-0">
+          {/* Left — 60% — Jobs + Pipeline */}
+          <div className="flex-[3] flex flex-col gap-4 min-h-0">
+            {/* Active Jobs */}
+            <div className="bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_3px_rgba(0,0,0,0.04),0_6px_24px_rgba(0,0,0,0.04)] flex flex-col flex-1 min-h-0 overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100/80 flex-shrink-0">
+                <h2 className="text-[14px] font-bold text-[#0F172A] tracking-tight">Active Job Postings</h2>
+                <Link href="/dashboard/recruiter/hiring/jobs" className="text-[12px] font-semibold text-[#FF8A00] hover:text-[#E67A00] flex items-center gap-1 transition-colors">View all <ArrowRight className="h-3.5 w-3.5" /></Link>
               </div>
-
-              <HiringFunnel
-                data={
-                  stats?.funnel_data || {
-                    applied: stats?.total_applications || 0,
-                    shortlisted: 0,
-                    interviewed: 0,
-                    offered: 0,
-                    hired: 0,
-                  }
-                }
-              />
-            </div>
-
-            {/* Optimization Hub - Integrated Below Momentum */}
-            <div className="bg-white rounded-2xl border border-slate-100 p-8 shadow-sm relative overflow-hidden group">
-              <div className="absolute top-0 right-0 w-64 h-64 bg-blue-100 rounded-full blur-3xl -mr-32 -mt-32 opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
-
-              <div className="flex items-center justify-between mb-8 relative z-10">
-                <div>
-                  <h3 className="text-xl font-black text-slate-900 tracking-tight">
-                    Next Steps
-                  </h3>
-                  <p className="text-xs text-slate-500 font-medium">
-                    Critical tasks to improve your profile.
-                  </p>
-                </div>
-                <div className="flex items-center gap-4 bg-slate-50 px-4 py-2 rounded-xl border border-slate-100">
-                  <div className="flex flex-col items-end">
-                    <div className="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">
-                      Profile Strength
-                    </div>
-                    <div className="text-xl font-black text-blue-600 leading-none">
-                      {profile?.completion_score}%
-                    </div>
+              <div className="flex-1 overflow-hidden">
+                {jobs.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center">
+                    <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200/50 flex items-center justify-center mb-3"><Briefcase className="h-6 w-6 text-slate-300" strokeWidth={1.5} /></div>
+                    <p className="text-[14px] font-bold text-[#0F172A]">No active postings</p>
+                    <p className="text-[12px] text-slate-400 mt-1 max-w-[280px] text-center leading-relaxed">Post your first job to start building your candidate pipeline.</p>
+                    <Link href="/dashboard/recruiter/hiring/jobs/new"><button className="mt-4 px-5 py-2 bg-[#FF8A00] text-white rounded-xl text-[12px] font-semibold hover:bg-[#E67A00] transition-all shadow-sm">Create Job Post</button></Link>
                   </div>
-                  <div className="h-8 w-8 rounded-full border-4 border-slate-200 border-t-primary" />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-10">
-                <CompletionItem
-                  label="Company Branding"
-                  done={!!profile?.companies?.logo_url}
-                  href="/dashboard/recruiter/account/settings"
-                  icon={<Building2 className="h-3.5 w-3.5" />}
-                />
-                <CompletionItem
-                  label="Team Setup"
-                  done={profile?.is_admin || false}
-                  href="/dashboard/recruiter/organization/team"
-                  icon={<ShieldCheck className="h-3.5 w-3.5" />}
-                />
-                <CompletionItem
-                  label="Culture Audit"
-                  done={profile?.assessment_status === "completed"}
-                  href="/onboarding/recruiter"
-                  icon={<Zap className="h-3.5 w-3.5" />}
-                />
-                <CompletionItem
-                  label="Job Postings"
-                  done={(stats?.active_jobs_count || 0) > 0}
-                  href="/dashboard/recruiter/hiring/jobs/new"
-                  icon={<FileText className="h-3.5 w-3.5" />}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-6">
-            {/* AI Insights / Market Position */}
-            <div className="bg-slate-900 rounded-2xl p-6 text-white shadow-xl shadow-indigo-900/10 flex flex-col items-center text-center justify-between min-h-[300px] relative overflow-hidden group border border-white/5">
-              <div className="absolute top-0 right-0 w-40 h-40 bg-blue-600/10 rounded-full blur-3xl -mr-20 -mt-20 transition-all duration-700 pointer-events-none" />
-
-              <div className="space-y-4 relative z-10 w-full">
-                <div className="p-3 bg-white/5 border border-white/10 rounded-xl w-fit mx-auto backdrop-blur-xl">
-                  <Compass className="h-5 w-5 text-blue-600" />
-                </div>
-                <div className="space-y-2">
-                  <div className="text-[9px] font-black uppercase tracking-[0.2em] text-blue-600">
-                    Market Insights
-                  </div>
-                  <h3 className="text-xl font-black tracking-tighter leading-tight">
-                    Market Standing
-                  </h3>
-                  <p className="text-slate-400 text-[11px] leading-relaxed font-medium opacity-80 px-4">
-                    Your quality index is higher than <span className="text-white font-bold">{profile?.companies?.profile_score}%</span> of other companies.
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-3 pt-4 mt-4 border-t border-white/5 relative z-10 w-full">
-                <div className="flex items-center justify-between px-2">
-                  <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest leading-none">
-                    Visibility
-                  </span>
-                  <span className="text-[10px] font-black text-white italic tracking-widest leading-none">
-                    {stats?.visibility_tier?.toUpperCase() || "GROWTH"}
-                  </span>
-                </div>
-                <button 
-                  onClick={() => router.push("/dashboard/recruiter/intelligence/recommendations")}
-                  className="w-full py-2 bg-white/5 border border-white/10 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-white/10 transition-all hover:scale-[1.02] active:scale-95"
-                >
-                  Deep Insights
-                </button>
-              </div>
-            </div>
-
-            {/* Tiers Card */}
-            <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm flex-1">
-              <div className="h-full flex flex-col">
-                <div className="h-8 w-8 bg-blue-100 rounded-lg flex items-center justify-center text-blue-600 mb-4 shrink-0">
-                  <Award className="h-4 w-4" />
-                </div>
-                <h4 className="text-[13px] font-black text-slate-900 tracking-tight mb-3 shrink-0">
-                  Quick Tier Guide
-                </h4>
-                <div className="flex-1 flex flex-col justify-around gap-2">
-                  {[
-                    { l: "Elite", d: "Premium visibility", c: "bg-emerald-400" },
-                    { l: "Prime", d: "Brand strength", c: "bg-blue-600" },
-                    { l: "Growth", d: "Building signals", c: "bg-slate-300" }
-                  ].map(t => (
-                    <div key={t.l} className="flex items-center justify-between group cursor-default">
-                      <div className="flex items-center gap-2">
-                        <div className={`h-1.5 w-1.5 rounded-full ${t.c}`} />
-                        <span className="text-[10px] font-bold text-slate-700 truncate">{t.l}</span>
+                ) : jobs.map((job, i) => (
+                  <div key={job.id} className={`flex items-center gap-4 px-5 py-3.5 hover:bg-[#FAFBFC] transition-all group ${i < jobs.length - 1 ? "border-b border-slate-100/70" : ""}`}>
+                    <Link href={`/dashboard/recruiter/hiring/jobs/${job.id}`} className="flex-1 min-w-0 cursor-pointer">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <h3 className="text-[13px] font-semibold text-[#0F172A] truncate group-hover:text-[#FF8A00] transition-colors">{job.title}</h3>
+                        <span className={`px-1.5 py-0.5 text-[9px] font-bold rounded uppercase tracking-wider flex-shrink-0 ring-1 ${(job.status || "active") === "active" ? "bg-emerald-50 text-emerald-600 ring-emerald-100" : "bg-slate-50 text-slate-500 ring-slate-200"}`}>{job.status || "Active"}</span>
                       </div>
-                      <span className="text-[9px] font-medium text-slate-400">{t.d}</span>
+                      <div className="flex items-center gap-2 text-[10.5px] text-slate-400"><MapPin className="h-2.5 w-2.5" /><span>{job.location || "Remote"}</span><span className="text-slate-200">·</span><span>{job.job_type || "Full-time"}</span></div>
+                    </Link>
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                      <div className="text-right"><p className="text-[16px] font-bold text-[#0F172A]">{jobAppCounts[job.id] ?? 0}</p><p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Applicants</p></div>
+                      <Link href={`/dashboard/recruiter/hiring/jobs/${job.id}/edit`}>
+                        <span className="px-3 py-1.5 bg-slate-50 border border-slate-200/80 text-[#0F172A] text-[11px] font-semibold rounded-lg hover:bg-slate-100 transition-colors cursor-pointer">Manage</span>
+                      </Link>
                     </div>
-                  ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* Pipeline — compact strip */}
+            <div className="flex-shrink-0 bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_3px_rgba(0,0,0,0.04),0_6px_24px_rgba(0,0,0,0.04)] px-5 py-3.5">
+              <div className="flex items-center justify-between mb-2.5">
+                <h2 className="text-[13px] font-bold text-[#0F172A]">Candidate Pipeline</h2>
+                <Link href="/dashboard/recruiter/hiring/applications" className="text-[11px] font-semibold text-[#FF8A00] hover:text-[#E67A00] flex items-center gap-1 transition-colors">View all <ArrowRight className="h-3 w-3" /></Link>
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                <PipeStage label="Applied" value={funnel.applied} icon={Users} accent="blue" />
+                <PipeStage label="Shortlisted" value={funnel.shortlisted} icon={UserCheck} accent="amber" />
+                <PipeStage label="Interviewing" value={funnel.interviewed} icon={MessageSquare} accent="purple" />
+                <PipeStage label="Hired" value={funnel.hired} icon={CheckCircle} accent="emerald" />
+              </div>
+            </div>
+          </div>
+
+          {/* Right — 40% — AI Matches + Employer Brand */}
+          <div className="flex-[2] flex flex-col gap-4 min-h-0">
+            {/* AI Matches */}
+            <div className="flex-shrink-0 bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_3px_rgba(0,0,0,0.04),0_6px_24px_rgba(0,0,0,0.04)] p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <h2 className="text-[14px] font-bold text-[#0F172A]">AI Matches</h2>
+                <span className="flex items-center gap-1 text-[9px] font-bold text-emerald-600 bg-emerald-50 ring-1 ring-emerald-100 px-2 py-0.5 rounded-full"><Zap className="h-2.5 w-2.5" />POWERED</span>
+              </div>
+              <div className="bg-gradient-to-br from-[#FFF6ED] to-[#FFF0E0] border border-orange-100/80 rounded-xl p-5 text-center">
+                <div className="h-10 w-10 rounded-xl bg-white/70 border border-orange-100 flex items-center justify-center mx-auto mb-2.5 shadow-sm"><Sparkles className="h-5 w-5 text-[#FF8A00]" strokeWidth={1.5} /></div>
+                <p className="text-[13px] font-bold text-[#0F172A]">Unlock AI Sourcing</p>
+                <p className="text-[11px] text-slate-500 mt-1 leading-relaxed max-w-[220px] mx-auto">Post a job and our AI will identify top talent automatically.</p>
+                <Link href="/dashboard/recruiter/talent-pool">
+                  <button className="mt-3 w-full py-2.5 bg-[#FF8A00] hover:bg-[#E67A00] text-white rounded-xl text-[11px] font-bold transition-all shadow-sm flex items-center justify-center gap-1.5"><Users className="h-3.5 w-3.5" />Browse Talent Pool</button>
+                </Link>
+              </div>
+            </div>
+
+            {/* Employer Brand */}
+            <div className="flex-1 min-h-0 bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_3px_rgba(0,0,0,0.04),0_6px_24px_rgba(0,0,0,0.04)] flex flex-col overflow-hidden">
+              <div className="px-5 py-3.5 border-b border-slate-100/80 flex-shrink-0">
+                <h2 className="text-[14px] font-bold text-[#0F172A] tracking-tight">Employer Brand</h2>
+              </div>
+              <div className="flex-1 flex flex-col p-4 gap-4">
+                {/* Dark score card */}
+                <div className="bg-[#0F172A] rounded-xl overflow-hidden flex-shrink-0">
+                  <div className="p-4 pb-3">
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center gap-1.5">
+                        <Award className="h-3.5 w-3.5 text-[#FF8A00]" strokeWidth={2} />
+                        <p className="text-[9px] font-bold text-white/50 uppercase tracking-[0.1em]">Profile Score</p>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[28px] font-black text-white leading-none">{companyScore}</span>
+                        <span className="text-[12px] font-bold text-white/25 ml-0.5">/100</span>
+                      </div>
+                    </div>
+                    <div className="h-1.5 w-full bg-white/[0.06] rounded-full overflow-hidden">
+                      <div className="h-full bg-gradient-to-r from-[#FF8A00] to-[#FFB800] rounded-full" style={{ width: `${companyScore}%` }} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 border-t border-white/[0.06]">
+                    <ScoreTile label="Culture" pct={culturePct} />
+                    <ScoreTile label="Brand" pct={brandPct} border />
+                    <ScoreTile label="Benefits" pct={benefitsPct} />
+                  </div>
                 </div>
+                {/* Metrics */}
+                <div className="flex-1 flex flex-col justify-center gap-2">
+                  <BrandRow icon={Eye} label="Total Applications" sub="All time" value={`${totalApps}`} />
+                  <BrandRow icon={TrendingUp} label="Conversion Rate" sub="Applications → Hires" value={`${conversionRate}%`} />
+                </div>
+                {profile.completion_score < 100 && (
+                  <div className="flex-shrink-0 pt-3 border-t border-slate-100">
+                    <Link href="/assessment/recruiter"><span className="text-[11px] font-bold text-[#FF8A00] hover:underline flex items-center gap-0.5">Complete assessment ({profile.completion_score}%) <ChevronRight className="h-3 w-3" /></span></Link>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -526,97 +228,55 @@ export default function RecruiterDashboard() {
   );
 }
 
-function CompletionItem({
-  label,
-  done,
-  href,
-  icon,
-}: {
-  label: string;
-  done: boolean;
-  href?: string;
-  icon: React.ReactNode;
-}) {
-  return (
-    <div
-      className={`flex items-center justify-between p-5 rounded-2xl border transition-all duration-500 group ${done ? "bg-slate-50 border-slate-100 shadow-sm" : "bg-white border-slate-200 hover:border-blue-100 hover:shadow-2xl hover:shadow-blue-600/10"}`}
-    >
-      <div className="flex items-center gap-4">
-        <div
-          className={`h-9 w-9 rounded-xl flex items-center justify-center transition-all duration-500 ${done ? "bg-emerald-100 text-emerald-600 scale-90" : "bg-slate-100 text-slate-400 group-hover:bg-blue-100 group-hover:text-blue-600 group-hover:rotate-6"}`}
-        >
-          {icon}
-        </div>
-        <span
-          className={`text-xs font-bold tracking-tight transition-colors ${done ? "text-slate-400" : "text-slate-700 group-hover:text-slate-900"}`}
-        >
-          {label}
-        </span>
-      </div>
-      {done ? (
-        <div className="h-7 w-7 bg-emerald-50 rounded-full flex items-center justify-center">
-          <BadgeCheck className="h-4 w-4 text-emerald-500" />
-        </div>
-      ) : (
-        href && (
-          <Link
-            href={href}
-            className="px-4 py-1.5 bg-blue-100 text-[9px] font-black uppercase tracking-widest text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all transform active:scale-90"
-          >
-            Optimize
-          </Link>
-        )
-      )}
-    </div>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  sub,
-  icon: Icon,
-  trend,
-  color = "slate",
-}: {
-  label: string;
-  value: string;
-  sub: string;
-  icon?: React.ElementType;
-  trend?: string;
-  color?: "slate" | "indigo" | "emerald" | "amber" | "purple";
-}) {
-  const colorMap = {
-    slate: "text-slate-500 bg-slate-50",
-    indigo: "text-blue-600 bg-blue-100",
-    emerald: "text-emerald-600 bg-emerald-50",
-    amber: "text-amber-600 bg-amber-50",
-    purple: "text-purple-600 bg-purple-50",
+function KpiCard({ icon: Icon, value, label, accent }: { icon: React.ElementType; value: number; label: string; accent: string }) {
+  const c: Record<string, { bg: string; ic: string; ring: string }> = {
+    blue: { bg: "bg-blue-50", ic: "text-blue-500", ring: "ring-blue-100" },
+    violet: { bg: "bg-violet-50", ic: "text-violet-500", ring: "ring-violet-100" },
+    emerald: { bg: "bg-emerald-50", ic: "text-emerald-500", ring: "ring-emerald-100" },
+    amber: { bg: "bg-amber-50", ic: "text-amber-500", ring: "ring-amber-100" },
   };
-
+  const s = c[accent] || c.blue;
   return (
-    <div className="bg-white px-5 py-4 rounded-2xl border border-slate-100 shadow-sm hover:shadow-lg hover:border-slate-200 transition-all duration-300 group flex items-start gap-3">
-      <div
-        className={`p-3 rounded-lg transition-all duration-500 ${colorMap[color]} group-hover:scale-110 shadow-sm shrink-0`}
-      >
-        {Icon && <Icon className="h-5 w-5" />}
-      </div>
-
-      <div className="flex-1 min-w-0">
-        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">
-          {label}
-        </div>
-        <div className="text-xl font-black text-slate-900 tracking-tight">{value}</div>
-        <div className="text-[9px] font-medium text-slate-400 mt-1 opacity-70 group-hover:opacity-100 transition-opacity">
-          {sub}
-        </div>
-        {trend && (
-          <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded mt-2 inline-block border border-emerald-100 uppercase">
-            {trend}
-          </span>
-        )}
-      </div>
+    <div className="bg-white rounded-2xl border border-slate-200/60 px-4 py-3.5 shadow-[0_1px_3px_rgba(0,0,0,0.04),0_6px_24px_rgba(0,0,0,0.04)] hover:shadow-[0_4px_24px_rgba(0,0,0,0.08)] hover:-translate-y-px transition-all duration-200 flex flex-col justify-between">
+      <div className={`h-9 w-9 rounded-xl ${s.bg} ${s.ic} ring-1 ${s.ring} flex items-center justify-center mb-2`}><Icon className="h-4 w-4" strokeWidth={1.8} /></div>
+      <p className="text-[24px] font-extrabold text-[#0F172A] leading-none tracking-tight">{value}</p>
+      <p className="text-[11px] font-medium text-slate-400 mt-1">{label}</p>
     </div>
   );
 }
 
+function PipeStage({ label, value, icon: Icon, accent }: { label: string; value: number; icon: React.ElementType; accent: string }) {
+  const c: Record<string, { bg: string; ic: string }> = { blue: { bg: "bg-blue-50", ic: "text-blue-500" }, amber: { bg: "bg-amber-50", ic: "text-amber-500" }, purple: { bg: "bg-purple-50", ic: "text-purple-500" }, emerald: { bg: "bg-emerald-50", ic: "text-emerald-500" } };
+  const s = c[accent] || c.blue;
+  return (
+    <div className={`flex flex-col items-center gap-1 ${s.bg} rounded-xl py-2.5`}>
+      <div className={`h-7 w-7 rounded-lg bg-white/70 ${s.ic} flex items-center justify-center shadow-sm`}><Icon className="h-3 w-3" strokeWidth={1.8} /></div>
+      <span className="text-[17px] font-extrabold text-[#0F172A] leading-none">{value}</span>
+      <span className="text-[9px] font-semibold text-slate-400">{label}</span>
+    </div>
+  );
+}
+
+function ScoreTile({ label, pct, border }: { label: string; pct: number; border?: boolean }) {
+  return (
+    <div className={`px-3 py-2.5 text-center ${border ? "border-x border-white/[0.06]" : ""}`}>
+      <p className="text-[7px] font-semibold text-white/30 uppercase tracking-[0.1em] mb-1">{label}</p>
+      <div className="h-1 w-full bg-white/[0.06] rounded-full overflow-hidden mb-1 max-w-[50px] mx-auto">
+        <div className="h-full bg-gradient-to-r from-[#FF8A00] to-[#FFB800] rounded-full" style={{ width: `${pct}%` }} />
+      </div>
+      <p className="text-[13px] font-bold text-white/90">{pct}%</p>
+    </div>
+  );
+}
+
+function BrandRow({ icon: Icon, label, sub, value }: { icon: React.ElementType; label: string; sub: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between py-2 px-2 rounded-xl hover:bg-slate-50/70 transition-colors">
+      <div className="flex items-center gap-2.5">
+        <div className="h-9 w-9 rounded-xl bg-slate-50 ring-1 ring-slate-100 flex items-center justify-center"><Icon className="h-4 w-4 text-slate-400" strokeWidth={1.8} /></div>
+        <div><p className="text-[12px] font-semibold text-[#0F172A]">{label}</p><p className="text-[9.5px] text-slate-400">{sub}</p></div>
+      </div>
+      <span className="text-[15px] font-bold text-[#0F172A]">{value}</span>
+    </div>
+  );
+}

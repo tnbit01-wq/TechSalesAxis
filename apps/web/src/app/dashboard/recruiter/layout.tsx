@@ -49,9 +49,9 @@ export default function RecruiterDashboardLayout({
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC]">
         <div className="flex flex-col items-center gap-4">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#ff9800]"></div>
           <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">
             Loading Dashboard...
           </p>
@@ -62,7 +62,7 @@ export default function RecruiterDashboardLayout({
 
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen bg-[#f8fafc]">
+      <div className="flex h-screen overflow-hidden bg-[#F8FAFC]">
         <RecruiterSidebar
           assessmentStatus={profile?.assessment_status}
           teamRole={profile?.team_role}
@@ -70,7 +70,7 @@ export default function RecruiterDashboardLayout({
         />
         <RecruiterLayoutClient>
           <RecruiterHeader />
-          <main className="w-full px-8 py-8 pt-20">{children}</main>
+          <main className="w-full pt-16 h-screen overflow-hidden">{children}</main>
         </RecruiterLayoutClient>
       </div>
     </SidebarProvider>

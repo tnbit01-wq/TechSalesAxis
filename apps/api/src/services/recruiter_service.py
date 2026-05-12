@@ -163,7 +163,7 @@ class RecruiterService:
             print(f"DEBUG: Analyzing email domain: {domain}, domain_name: {domain_name}")
             
             # Skip personal email domains
-            personal_domains = ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "aol.com", "mail.com", "mailinator.com"]
+            personal_domains = ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "aol.com", "mail.com", "mailinator.com", "yahoo.co.in"]
             if domain in personal_domains:
                 return {"company_name": "", "domain": domain, "confidence": "low", "website": "", "description": ""}
             

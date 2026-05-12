@@ -62,15 +62,19 @@ export function TermsModal({ isOpen, onClose, onAccept }: TermsModalProps) {
         return false;
       }
       
-      // Call onAccept callback if provided
-      if (onAccept) {
-        await onAccept();
-      }
-      
+      // Close modal immediately (don't wait for async operations)
       onClose();
+      
+      // Call onAccept callback in background (non-blocking)
+      if (onAccept) {
+        try {
+          await onAccept();
+        } catch (error) {
+          console.error("Error in onAccept callback:", error);
+        }
+      }
     } catch (error) {
       console.error("Error in handleAcceptClick:", error);
-      onClose();
     }
   };
 

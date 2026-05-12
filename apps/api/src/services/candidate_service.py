@@ -487,11 +487,11 @@ class CandidateService:
     @staticmethod
     def _get_experience_band_label(years: int) -> str:
         """Convert years of experience to band label"""
-        if years < 2:
+        if years <= 1:
             return "fresher"
-        elif years < 5:
+        elif years <= 5:
             return "mid"
-        elif years < 10:
+        elif years <= 10:
             return "senior"
         else:
             return "leadership"
@@ -645,7 +645,7 @@ class CandidateService:
         if years_exp >= 5:
             base_score += 12
             reasoning_parts.append("Expert level (5+ years)")
-        elif years_exp >= 2:
+        elif years_exp >= 1:
             base_score += 8
             reasoning_parts.append("Intermediate level")
 

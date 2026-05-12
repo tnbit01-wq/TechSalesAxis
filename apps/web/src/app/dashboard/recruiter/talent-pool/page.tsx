@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useEffect, useMemo } from "react";
 import { awsAuth } from "@/lib/awsAuth";
@@ -15,7 +15,12 @@ import {
   MessageSquare,
   Mail,
   Phone,
-  Calendar
+  Calendar,
+  Search,
+  X,
+  ChevronRight,
+  Lock,
+  Star
 } from "lucide-react";
 
 interface CandidateData {
@@ -63,7 +68,7 @@ function parseQuery(query: string): Record<string, any> {
 
   const lowerQuery = query.toLowerCase();
 
-  console.log("🔎 Starting detailed query parsing...");
+  console.log("ðŸ”Ž Starting detailed query parsing...");
 
   // ===== PARSE EXPERIENCE WITH NATURAL LANGUAGE =====
   // Handle natural language comparisons FIRST
@@ -75,7 +80,7 @@ function parseQuery(query: string): Record<string, any> {
     criteria.minExp = 0;
     criteria.maxExp = maxYears - 1; // less than 4 means 0-3
     criteria.experienceConstraints = `less than ${maxYears}`;
-    console.log(`✓ Experience: < ${maxYears} years (0-${maxYears - 1})`);
+    console.log(`âœ“ Experience: < ${maxYears} years (0-${maxYears - 1})`);
   }
 
   // Pattern 2: "more than X", "greater than X", "above X", "over X"
@@ -85,7 +90,7 @@ function parseQuery(query: string): Record<string, any> {
     criteria.minExp = minYears + 1; // more than 5 means 6+
     criteria.maxExp = 50;
     criteria.experienceConstraints = `more than ${minYears}`;
-    console.log(`✓ Experience: > ${minYears} years (${minYears + 1}+)`);
+    console.log(`âœ“ Experience: > ${minYears} years (${minYears + 1}+)`);
   }
 
   // Pattern 3: "at least X", "minimum X"
@@ -95,7 +100,7 @@ function parseQuery(query: string): Record<string, any> {
     criteria.minExp = minYears;
     criteria.maxExp = 50;
     criteria.experienceConstraints = `at least ${minYears}`;
-    console.log(`✓ Experience: >= ${minYears} years`);
+    console.log(`âœ“ Experience: >= ${minYears} years`);
   }
 
   // Pattern 4: "up to X", "maximum X"
@@ -105,7 +110,7 @@ function parseQuery(query: string): Record<string, any> {
     criteria.minExp = 0;
     criteria.maxExp = maxYears;
     criteria.experienceConstraints = `up to ${maxYears}`;
-    console.log(`✓ Experience: <= ${maxYears} years`);
+    console.log(`âœ“ Experience: <= ${maxYears} years`);
   }
 
   // Pattern 5: "between X and Y", "X to Y"
@@ -116,7 +121,7 @@ function parseQuery(query: string): Record<string, any> {
     criteria.minExp = min;
     criteria.maxExp = max;
     criteria.experienceConstraints = `between ${min} and ${max}`;
-    console.log(`✓ Experience: ${min}-${max} years`);
+    console.log(`âœ“ Experience: ${min}-${max} years`);
   }
 
   // Pattern 6: Senior/Mid/Junior (if no explicit years mentioned)
@@ -125,17 +130,17 @@ function parseQuery(query: string): Record<string, any> {
       criteria.minExp = 10;
       criteria.maxExp = 50;
       criteria.experienceConstraints = "senior level (10+)";
-      console.log(`✓ Experience: Senior level (10+)`);
+      console.log(`âœ“ Experience: Senior level (10+)`);
     } else if (/\bmid[\s-]?level\b|intermediate/i.test(lowerQuery)) {
       criteria.minExp = 5;
       criteria.maxExp = 9;
       criteria.experienceConstraints = "mid level (5-9)";
-      console.log(`✓ Experience: Mid level (5-9)`);
+      console.log(`âœ“ Experience: Mid level (5-9)`);
     } else if (/\bjunior\b|entry[\s-]?level|fresher|intern|beginner/i.test(lowerQuery)) {
       criteria.minExp = 0;
       criteria.maxExp = 2;
       criteria.experienceConstraints = "junior level (0-2)";
-      console.log(`✓ Experience: Junior level (0-2)`);
+      console.log(`âœ“ Experience: Junior level (0-2)`);
     }
   }
 
@@ -153,18 +158,18 @@ function parseQuery(query: string): Record<string, any> {
     if (lowerQuery.includes(loc)) {
       if (!criteria.locations.includes(loc)) {
         criteria.locations.push(loc);
-        console.log(`✓ Location: ${loc}`);
+        console.log(`âœ“ Location: ${loc}`);
       }
     }
   });
 
   if (/tier\s*1/i.test(lowerQuery)) {
     criteria.locations.push('Tier 1');
-    console.log(`✓ Location: Tier 1`);
+    console.log(`âœ“ Location: Tier 1`);
   }
   if (/tier\s*2/i.test(lowerQuery)) {
     criteria.locations.push('Tier 2');
-    console.log(`✓ Location: Tier 2`);
+    console.log(`âœ“ Location: Tier 2`);
   }
 
   // ===== PARSE SKILLS =====
@@ -200,7 +205,7 @@ function parseQuery(query: string): Record<string, any> {
 
   criteria.skills = Array.from(extractedSkills);
   if (criteria.skills.length > 0) {
-    console.log(`✓ Skills: ${criteria.skills.join(', ')}`);
+    console.log(`âœ“ Skills: ${criteria.skills.join(', ')}`);
   }
 
   // ===== PARSE ROLES =====
@@ -220,15 +225,15 @@ function parseQuery(query: string): Record<string, any> {
   });
 
   if (criteria.roles.length > 0) {
-    console.log(`✓ Roles: ${criteria.roles.join(', ')}`);
+    console.log(`âœ“ Roles: ${criteria.roles.join(', ')}`);
   }
 
   // ===== PARSE SALARY =====
-  // Pattern: "salary X to Y", "X-Y salary", "₹ X lakhs", etc.
+  // Pattern: "salary X to Y", "X-Y salary", "â‚¹ X lakhs", etc.
   const salaryPatterns = [
-    /salary\s+(?:of\s+)?₹?\s*([\d.]+)\s*(?:to|-)\s*₹?\s*([\d.]+)/i,
-    /₹?\s*([\d.]+)\s*(?:to|-)\s*₹?\s*([\d.]+)\s*(?:lakhs?|salary)?/i,
-    /(?:upto|up to|max|maximum)\s+₹?\s*([\d.]+)/i,
+    /salary\s+(?:of\s+)?â‚¹?\s*([\d.]+)\s*(?:to|-)\s*â‚¹?\s*([\d.]+)/i,
+    /â‚¹?\s*([\d.]+)\s*(?:to|-)\s*â‚¹?\s*([\d.]+)\s*(?:lakhs?|salary)?/i,
+    /(?:upto|up to|max|maximum)\s+â‚¹?\s*([\d.]+)/i,
   ];
 
   salaryPatterns.forEach(pattern => {
@@ -238,11 +243,11 @@ function parseQuery(query: string): Record<string, any> {
         // Range
         criteria.minSalary = parseFloat(match[1]) > 100 ? parseFloat(match[1]) : parseFloat(match[1]) * 100000;
         criteria.maxSalary = parseFloat(match[2]) > 100 ? parseFloat(match[2]) : parseFloat(match[2]) * 100000;
-        console.log(`✓ Salary range: ₹${criteria.minSalary/100000}L - ₹${criteria.maxSalary/100000}L`);
+        console.log(`âœ“ Salary range: â‚¹${criteria.minSalary/100000}L - â‚¹${criteria.maxSalary/100000}L`);
       } else {
         // Max only
         criteria.maxSalary = parseFloat(match[1]) > 100 ? parseFloat(match[1]) : parseFloat(match[1]) * 100000;
-        console.log(`✓ Max salary: ₹${criteria.maxSalary/100000}L`);
+        console.log(`âœ“ Max salary: â‚¹${criteria.maxSalary/100000}L`);
       }
     }
   });
@@ -254,7 +259,7 @@ function matchCandidate(candidate: CandidateData, criteria: Record<string, any>)
   let score = 0;
   let totalWeight = 0;
 
-  console.log(`\n🔍 Checking ${candidate.full_name}...`);
+  console.log(`\nðŸ” Checking ${candidate.full_name}...`);
 
   // ===== HARD FILTERS - MUST PASS OR REJECT COMPLETELY =====
 
@@ -265,10 +270,10 @@ function matchCandidate(candidate: CandidateData, criteria: Record<string, any>)
     const maxOk = criteria.maxExp === -1 || candExp <= criteria.maxExp;
 
     if (!minOk || !maxOk) {
-      console.log(`  ❌ Experience filter FAILED: ${candExp} years (needed ${criteria.minExp === -1 ? '?' : criteria.minExp}-${criteria.maxExp === -1 ? '?' : criteria.maxExp})`);
+      console.log(`  âŒ Experience filter FAILED: ${candExp} years (needed ${criteria.minExp === -1 ? '?' : criteria.minExp}-${criteria.maxExp === -1 ? '?' : criteria.maxExp})`);
       return 0; // REJECT
     }
-    console.log(`  ✓ Experience OK: ${candExp} years`);
+    console.log(`  âœ“ Experience OK: ${candExp} years`);
     score += 25;
     totalWeight += 25;
   }
@@ -285,10 +290,10 @@ function matchCandidate(candidate: CandidateData, criteria: Record<string, any>)
     });
 
     if (!locationMatches) {
-      console.log(`  ❌ Location filter FAILED: ${candidate.location} (needed ${criteria.locations.join(', ')})`);
+      console.log(`  âŒ Location filter FAILED: ${candidate.location} (needed ${criteria.locations.join(', ')})`);
       return 0; // REJECT
     }
-    console.log(`  ✓ Location OK: ${candidate.location}`);
+    console.log(`  âœ“ Location OK: ${candidate.location}`);
     score += 25;
     totalWeight += 25;
   } else {
@@ -348,14 +353,14 @@ function matchCandidate(candidate: CandidateData, criteria: Record<string, any>)
     });
 
     if (skillMatches.length === 0) {
-      console.log(`  ❌ Skills filter FAILED: has none of [${criteria.skills.join(', ')}]`);
+      console.log(`  âŒ Skills filter FAILED: has none of [${criteria.skills.join(', ')}]`);
       console.log(`     Candidate skills: [${candidateSkills.slice(0, 5).join(', ')}...]`);
       return 0; // REJECT - no skills match
     }
 
     // Partial score based on how many skills match
     const skillScore = (skillMatches.length / criteria.skills.length) * 30;
-    console.log(`  ✓ Skills OK: matched ${skillMatches.length}/${criteria.skills.length} (${skillMatches.join(', ')})`);
+    console.log(`  âœ“ Skills OK: matched ${skillMatches.length}/${criteria.skills.length} (${skillMatches.join(', ')})`);
     score += skillScore;
     totalWeight += 30;
   } else {
@@ -375,10 +380,10 @@ function matchCandidate(candidate: CandidateData, criteria: Record<string, any>)
     );
 
     if (!roleMatches) {
-      console.log(`  ❌ Role filter FAILED: ${candidate.current_role} / ${candidate.target_role} (needed ${criteria.roles.join(', ')})`);
+      console.log(`  âŒ Role filter FAILED: ${candidate.current_role} / ${candidate.target_role} (needed ${criteria.roles.join(', ')})`);
       return 0; // REJECT
     }
-    console.log(`  ✓ Role OK: ${candidate.current_role}`);
+    console.log(`  âœ“ Role OK: ${candidate.current_role}`);
     score += 20;
     totalWeight += 20;
   } else {
@@ -393,7 +398,7 @@ function matchCandidate(candidate: CandidateData, criteria: Record<string, any>)
     if (candSalary > criteria.maxSalary) {
       // Check if it's just mildly over budget
       if (candSalary > criteria.maxSalary * 1.2) {
-        console.log(`  ❌ Salary filter FAILED: ${candSalary} > ${criteria.maxSalary} (over budget by 20%+)`);
+        console.log(`  âŒ Salary filter FAILED: ${candSalary} > ${criteria.maxSalary} (over budget by 20%+)`);
         return 0; // REJECT - too expensive
       }
     }
@@ -401,7 +406,7 @@ function matchCandidate(candidate: CandidateData, criteria: Record<string, any>)
 
   // ===== FINAL SCORING =====
   const finalScore = totalWeight > 0 ? (score / totalWeight) * 100 : 0;
-  console.log(`  📊 PASSED - Score: ${finalScore.toFixed(1)}%`);
+  console.log(`  ðŸ“Š PASSED - Score: ${finalScore.toFixed(1)}%`);
 
   return finalScore;
 }
@@ -463,10 +468,10 @@ export default function TalentPoolPage() {
         {},
         token,
       );
-      console.log("[TRACKING] ✓ Profile view tracked:", candidateId);
+      console.log("[TRACKING] âœ“ Profile view tracked:", candidateId);
       console.log("[TRACKING] Response:", response);
     } catch (err: any) {
-      console.error("[TRACKING] ✗ Failed to track profile view:", candidateId);
+      console.error("[TRACKING] âœ— Failed to track profile view:", candidateId);
       console.error("[TRACKING] Error details:", err);
     }
   };
@@ -546,7 +551,7 @@ export default function TalentPoolPage() {
     }
 
     console.log("\n=".repeat(60));
-    console.log("🔍 STARTING TALENT POOL SEARCH");
+    console.log("ðŸ” STARTING TALENT POOL SEARCH");
     console.log("=".repeat(60));
     console.log("Query:", searchQuery);
     console.log(`Total candidates in pool: ${candidates.length}\n`);
@@ -567,7 +572,7 @@ export default function TalentPoolPage() {
       .map(s => s.candidate);
 
     console.log("\n" + "=".repeat(60));
-    console.log(`✨ SEARCH COMPLETE: Found ${matches.length} matching ${matches.length === 1 ? 'candidate' : 'candidates'}`);
+    console.log(`âœ¨ SEARCH COMPLETE: Found ${matches.length} matching ${matches.length === 1 ? 'candidate' : 'candidates'}`);
     console.log("=".repeat(60) + "\n");
 
     setQueryResult({
@@ -583,309 +588,268 @@ export default function TalentPoolPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
-        <div className="flex flex-col items-center gap-4">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
-          <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Loading Talent Pool...</p>
+      <div className="h-[calc(100vh-64px)] flex items-center justify-center bg-[#F8F9FC]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-9 w-9 rounded-full border-[2.5px] border-slate-200 border-t-[#FF8A00] animate-spin" />
+          <p className="text-[11px] text-slate-400 font-medium tracking-widest uppercase">Loading Talent Poolâ€¦</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="w-full bg-gradient-to-br from-slate-50 via-blue-50/30 to-cyan-50/20">
-      <div className="relative z-10 max-w-7xl mx-auto px-8 py-8 space-y-8 font-sans pb-20">
-        {/* Header */}
-        <div className="flex flex-col gap-4 border-b border-blue-200/50 pb-6">
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2">
-              <div className="h-2 w-2 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full shadow-[0_0_12px_#06b6d4]" />
-              <span className="text-[10px] font-black bg-gradient-to-r from-cyan-600 to-blue-600 bg-clip-text text-transparent uppercase tracking-[0.3em]">Talent Discovery</span>
+    <div className="h-[calc(100vh-64px)] bg-[#F8F9FC] overflow-hidden flex gap-4 p-4">
+      <style>{`
+        .pool-invisible-scroll {
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+        }
+        .pool-invisible-scroll::-webkit-scrollbar {
+          width: 0;
+          height: 0;
+        }
+      `}</style>
+
+      {/* â”€â”€ LEFT: Search + Candidate List â”€â”€ */}
+      <div className="w-[320px] flex-shrink-0 flex flex-col bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_3px_rgba(0,0,0,0.04),0_6px_24px_rgba(0,0,0,0.04)] overflow-hidden">
+        {/* Search header */}
+        <div className="p-4 border-b border-slate-100 flex-shrink-0">
+          <div className="relative group mb-3">
+            <Search className="absolute left-3 top-3.5 h-3.5 w-3.5 text-slate-400 group-focus-within:text-[#FF8A00] transition-colors" />
+            <textarea
+              placeholder="Describe who you're looking forâ€¦"
+              rows={2}
+              className="w-full pl-9 pr-3 py-2.5 bg-[#F8F9FC] border border-slate-200/60 rounded-xl text-[12.5px] leading-relaxed text-[#0F172A] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#FF8A00]/20 focus:border-[#FF8A00]/50 transition-all resize-none min-h-[74px]"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleQuery(query);
+                }
+              }}
+            />
+          </div>
+          <button
+            onClick={() => handleQuery(query)}
+            className="w-full flex items-center justify-center gap-2 py-2 bg-[#FF8A00] hover:bg-[#E67A00] text-white rounded-xl text-[12px] font-semibold transition-all active:scale-95 shadow-sm"
+          >
+            <Send className="h-3.5 w-3.5" />
+            Search Talent Pool
+          </button>
+          {queryResult && (
+            <button
+              onClick={() => { setQueryResult(null); setQuery(""); }}
+              className="w-full mt-2 flex items-center justify-center gap-1.5 py-1.5 text-[11px] font-medium text-slate-400 hover:text-slate-600 transition-colors"
+            >
+              <X className="h-3 w-3" /> Clear Filter
+            </button>
+          )}
+        </div>
+
+        {/* Stats strip */}
+        <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between flex-shrink-0 bg-slate-50/50">
+          <span className="text-[11px] font-semibold text-slate-500">
+            {queryResult ? "Matching Results" : "All Candidates"}
+          </span>
+          <span className="text-[13px] font-bold text-[#FF8A00]">{filteredCandidates.length}</span>
+        </div>
+
+        {/* Candidate list */}
+        <div className="flex-1 overflow-y-auto dashboard-scroll pool-invisible-scroll">
+          {filteredCandidates.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full px-4 text-center">
+              <div className="h-10 w-10 rounded-xl bg-slate-50 border border-slate-200/60 flex items-center justify-center mb-2">
+                <User className="h-4 w-4 text-slate-300" strokeWidth={1.5} />
+              </div>
+              <p className="text-[12px] font-semibold text-[#0F172A]">No matches found</p>
+              <p className="text-[11px] text-slate-400 mt-1">Try adjusting your search criteria</p>
             </div>
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-              Find Your <span className="bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 bg-clip-text text-transparent">Perfect</span> Fit
-            </h1>
-            <p className="text-slate-600 text-xs font-medium">
-              Describe the qualities you're looking for, and we'll find the best matches from your talent pool.
-            </p>
+          ) : (
+            filteredCandidates.map((candidate) => {
+              const isSelected = selectedCandidate?.user_id === candidate.user_id;
+              return (
+                <button
+                  key={candidate.user_id}
+                  onClick={() => { trackProfileView(candidate.user_id); setSelectedCandidate(candidate); }}
+                  className={`w-full px-4 py-3 text-left border-b border-slate-100/70 transition-all relative ${isSelected ? "bg-[#FFF6ED]" : "hover:bg-slate-50/80"}`}
+                >
+                  {isSelected && <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#FF8A00] rounded-r-full" />}
+                  <div className="flex items-center gap-2.5">
+                    <div className="h-8 w-8 rounded-lg flex-shrink-0 bg-gradient-to-br from-[#FF8A00]/10 to-[#FF8A00]/5 flex items-center justify-center text-[12px] font-bold text-[#FF8A00] ring-1 ring-[#FF8A00]/10">
+                      {getDisplayName(candidate.full_name, candidate.user_id)[0]}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-[12px] font-semibold truncate ${isSelected ? "text-[#FF8A00]" : "text-[#0F172A]"}`}>
+                        {getDisplayName(candidate.full_name, candidate.user_id)}
+                      </p>
+                      <p className="text-[10.5px] text-slate-400 truncate">{candidate.current_role || "Professional"}</p>
+                    </div>
+                    <ChevronRight className={`h-3.5 w-3.5 flex-shrink-0 transition-colors ${isSelected ? "text-[#FF8A00]" : "text-slate-300"}`} />
+                  </div>
+                  <div className="flex items-center gap-3 mt-1.5 pl-[42px]">
+                    <span className="flex items-center gap-1 text-[10px] text-slate-400">
+                      <TrendingUp className="h-2.5 w-2.5" />{candidate.years_of_experience}y exp
+                    </span>
+                    <span className="flex items-center gap-1 text-[10px] text-slate-400">
+                      <MapPin className="h-2.5 w-2.5" />{getCityTier(candidate.location)}
+                    </span>
+                  </div>
+                  {candidate.skills?.length > 0 && (
+                    <div className="flex gap-1 mt-1.5 pl-[42px] flex-wrap">
+                      {candidate.skills.slice(0, 2).map((skill, i) => (
+                        <span key={i} className="text-[9px] px-1.5 py-0.5 bg-[#FFF6ED] border border-orange-100/80 rounded-md text-[#FF8A00] font-medium">{skill}</span>
+                      ))}
+                      {candidate.skills.length > 2 && (
+                        <span className="text-[9px] px-1.5 py-0.5 bg-slate-100 rounded-md text-slate-500 font-medium">+{candidate.skills.length - 2}</span>
+                      )}
+                    </div>
+                  )}
+                </button>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      {/* â”€â”€ CENTER: Bubble Chart â”€â”€ */}
+      <div className="flex-1 min-w-0 flex flex-col gap-4">
+        <div className="flex-1 bg-gradient-to-br from-white via-[#FFFDF9] to-[#FFF6ED] rounded-2xl border border-orange-100/70 shadow-[0_1px_3px_rgba(0,0,0,0.04),0_8px_28px_rgba(255,138,0,0.08)] overflow-hidden flex flex-col">
+          <div className="px-5 py-3.5 border-b border-orange-100/70 flex items-center justify-between flex-shrink-0">
+            <div className="flex items-center gap-2.5">
+              <div className="h-8 w-8 rounded-xl bg-[#FFF6ED] border border-orange-200/80 flex items-center justify-center shadow-sm">
+                <Zap className="h-3.5 w-3.5 text-[#FF8A00]" strokeWidth={2} />
+              </div>
+              <div>
+                <p className="text-[13px] font-bold text-[#0F172A]">Talent Distribution</p>
+                <p className="text-[10.5px] text-slate-400">Candidates by experience level</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 text-[10px] text-[#C25E00] bg-[#FFF6ED] px-2.5 py-1.5 rounded-lg border border-orange-100/80">
+              <MousePointer2 className="h-3 w-3" />
+              Hover for details
+            </div>
+          </div>
+          <div className="flex-1 relative p-3">
+            <TalentBubbleChart data={filteredCandidates} />
+          </div>
+        </div>
+      </div>
+
+      {/* â”€â”€ RIGHT: Candidate Detail Panel â”€â”€ */}
+      {selectedCandidate && (
+        <div className="w-[320px] flex-shrink-0 flex flex-col bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_3px_rgba(0,0,0,0.04),0_6px_24px_rgba(0,0,0,0.04)] overflow-hidden">
+          {/* Panel header */}
+          <div className="px-4 py-3.5 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="h-9 w-9 rounded-xl flex-shrink-0 bg-gradient-to-br from-[#FF8A00]/10 to-[#FF8A00]/5 flex items-center justify-center text-[14px] font-bold text-[#FF8A00] ring-1 ring-[#FF8A00]/10">
+                {getDisplayName(selectedCandidate.full_name, selectedCandidate.user_id)[0]}
+              </div>
+              <div className="min-w-0">
+                <p className="text-[13px] font-bold text-[#0F172A] truncate">
+                  {getDisplayName(selectedCandidate.full_name, selectedCandidate.user_id)}
+                </p>
+                <p className="text-[10.5px] text-slate-400 truncate">{selectedCandidate.current_role || "Professional"}</p>
+              </div>
+            </div>
+            <button onClick={() => setSelectedCandidate(null)} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-slate-100 transition-colors flex-shrink-0">
+              <X className="h-4 w-4 text-slate-400" />
+            </button>
           </div>
 
-          {/* Chat Query Input */}
-          <div className="flex gap-3">
-            <div className="flex-1 relative group">
-              <MessageSquare className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 group-focus-within:text-cyan-600 transition-colors" />
-              <input
-                type="text"
-                placeholder="e.g., Looking for experienced professionals in Bangalore with strong technical background..."
-                className="w-full pl-12 pr-4 py-2.5 bg-white border border-blue-200 rounded-lg text-xs font-medium focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/15 outline-none transition-all placeholder:text-slate-400 hover:border-blue-300 shadow-sm hover:shadow-md"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyPress={(e) => {
-                  if (e.key === "Enter") {
-                    const searchQuery = (e.target as HTMLInputElement).value;
-                    handleQuery(searchQuery);
-                  }
-                }}
-              />
+          {/* Scrollable body */}
+          <div className="flex-1 overflow-y-auto dashboard-scroll pool-invisible-scroll p-4 space-y-4">
+            {/* KPI grid */}
+            <div className="grid grid-cols-2 gap-2.5">
+              <div className="bg-[#FFF6ED] rounded-xl p-3 border border-orange-100/80">
+                <p className="text-[9px] font-semibold text-[#FF8A00] uppercase tracking-wider mb-1">Experience</p>
+                <p className="text-[22px] font-extrabold text-[#0F172A] leading-none">{selectedCandidate.years_of_experience}</p>
+                <p className="text-[9px] text-slate-400 mt-0.5">years</p>
+              </div>
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/60">
+                <p className="text-[9px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Level</p>
+                <p className="text-[12px] font-bold text-[#0F172A] leading-tight">{selectedCandidate.experience || "Mid-level"}</p>
+              </div>
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/60">
+                <p className="text-[9px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Location</p>
+                <p className="text-[11px] font-bold text-[#0F172A]">{getCityTier(selectedCandidate.location)}</p>
+                <p className="text-[9px] text-slate-400 truncate">{selectedCandidate.location || "â€”"}</p>
+              </div>
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/60">
+                <p className="text-[9px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Salary Exp.</p>
+                <p className="text-[12px] font-bold text-[#0F172A]">
+                  {selectedCandidate.expected_salary ? `â‚¹${(selectedCandidate.expected_salary / 100000).toFixed(1)}L` : "Flexible"}
+                </p>
+              </div>
             </div>
+
+            {/* Skills */}
+            {selectedCandidate.skills?.length > 0 && (
+              <div>
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <Briefcase className="h-3 w-3" />Expertise Areas
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedCandidate.skills.map((skill, idx) => (
+                    <span key={idx} className="text-[10px] px-2.5 py-1 bg-[#FFF6ED] border border-orange-100/80 rounded-lg text-[#FF8A00] font-medium">
+                      {skill}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Privacy notice */}
+            {!hasAccessToPersonalInfo(selectedCandidate.user_id) && (
+              <div className="bg-amber-50 border border-amber-200/60 rounded-xl p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <Lock className="h-3.5 w-3.5 text-amber-500" />
+                  <p className="text-[11px] font-semibold text-amber-800">Personal Info Locked</p>
+                </div>
+                <div className="space-y-1.5 pl-5">
+                  {[{ icon: Mail, label: "Email Address" }, { icon: Phone, label: "Phone Number" }, { icon: Calendar, label: "Date of Birth" }].map(({ icon: Icon, label }) => (
+                    <p key={label} className="flex items-center gap-1.5 text-[10.5px] text-slate-400 line-through">
+                      <Icon className="h-3 w-3 text-amber-400" />{label}
+                    </p>
+                  ))}
+                </div>
+                <p className="text-[9.5px] text-amber-600 mt-2">Unlocks when candidate applies, is shortlisted, or replies to an invite</p>
+              </div>
+            )}
+
+            {hasAccessToPersonalInfo(selectedCandidate.user_id) && (
+              <div className="bg-emerald-50 border border-emerald-200/60 rounded-xl p-3 space-y-2">
+                <p className="text-[10px] font-semibold text-emerald-700 uppercase tracking-wider mb-1">Contact Info</p>
+                <p className="flex items-center gap-1.5 text-[11px] text-slate-600"><Mail className="h-3 w-3 text-emerald-500" />Accessible</p>
+                <p className="flex items-center gap-1.5 text-[11px] text-slate-600"><Phone className="h-3 w-3 text-emerald-500" />Accessible</p>
+              </div>
+            )}
+          </div>
+
+          {/* Action footer */}
+          <div className="p-4 border-t border-slate-100 flex flex-col gap-2 flex-shrink-0">
             <button
-              onClick={() => handleQuery(query)}
-              className="px-6 py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 text-white font-black rounded-lg transition-all flex items-center gap-2 shadow-md hover:shadow-lg hover:shadow-blue-500/30 text-sm"
+              onClick={handleInvite}
+              disabled={selectedCandidate?.is_shadow_profile || inviteLoading}
+              className="w-full py-2.5 bg-[#FF8A00] hover:bg-[#E67A00] disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white rounded-xl text-[12px] font-semibold transition-all active:scale-[0.98] shadow-sm flex items-center justify-center gap-2"
             >
-              <Send className="h-4 w-4" />
-              <span className="hidden sm:inline text-[11px]">FIND</span>
+              <Send className="h-3.5 w-3.5" />
+              {inviteLoading ? "Sending Inviteâ€¦" : "Invite Candidate"}
+            </button>
+            <button
+              onClick={handleEmailClick}
+              className="w-full py-2 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-xl text-[12px] font-medium transition-all border border-slate-200/60 relative"
+            >
+              Email
+              {showComingSoon && (
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-[#0F172A] text-white text-[10px] rounded-lg whitespace-nowrap shadow-lg">
+                  Coming Soon
+                </div>
+              )}
             </button>
           </div>
         </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-          {/* Bubble Chart */}
-          <div className="lg:col-span-2">
-            <div className="relative bg-gradient-to-br from-white to-blue-50/40 border border-blue-200/50 rounded-2xl p-6 overflow-hidden group hover:shadow-lg hover:border-blue-300/70 transition-all shadow-md">
-              <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-cyan-500/5 to-blue-500/5 rounded-full blur-3xl -mr-20 -mt-20" />
-              <div className="flex items-center gap-3 mb-4 relative z-10">
-                <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-cyan-100 to-blue-100 border border-cyan-300 flex items-center justify-center shadow-sm">
-                  <Zap className="h-4 w-4 bg-gradient-to-r from-cyan-600 to-blue-600 bg-clip-text text-transparent" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-black text-slate-900 uppercase tracking-tighter italic">Team Distribution</h3>
-                  <p className="text-[9px] text-slate-500 font-bold">Candidates by experience level</p>
-                </div>
-              </div>
-              <div className="h-[350px] w-full relative z-10 transition-all duration-700">
-                <TalentBubbleChart data={filteredCandidates} />
-                <div className="absolute bottom-4 right-4 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gradient-to-r from-cyan-600/40 to-blue-600/40 border border-cyan-400/50 backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
-                  <MousePointer2 className="h-3 w-3 text-white" />
-                  <span className="text-[8px] font-black text-white uppercase tracking-widest">Hover for details</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Results Panel */}
-          <div className="lg:col-span-1">
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 relative shadow-sm overflow-hidden">
-              <div className="mb-4">
-                <div className="flex items-baseline gap-2 mb-1">
-                  <span className="text-3xl font-black text-cyan-600">{filteredCandidates.length}</span>
-                  <span className="text-xs font-bold text-slate-600 uppercase">Candidates</span>
-                </div>
-                <p className="text-[9px] text-slate-600 font-black uppercase tracking-widest">
-                  {queryResult ? "Matching Results" : "Available Pool"}
-                </p>
-              </div>
-
-              {queryResult && (
-                <div className="mb-4 p-3 bg-cyan-50 border border-cyan-200 rounded-lg">
-                  <p className="text-[10px] font-bold text-cyan-700 mb-1">Your Request:</p>
-                  <p className="text-[11px] text-slate-700 italic line-clamp-2">{queryResult.query}</p>
-                </div>
-              )}
-
-              <div className="space-y-2 max-h-[calc(100vh-380px)] overflow-y-auto">
-                {filteredCandidates.slice(0, 10).map((candidate) => (
-                  <div
-                    key={candidate.user_id}
-                    onClick={() => {
-                      trackProfileView(candidate.user_id);
-                      setSelectedCandidate(candidate);
-                    }}
-                    className="p-2.5 bg-white border border-slate-200 rounded-lg hover:border-cyan-300 hover:bg-cyan-50 cursor-pointer transition-all group"
-                  >
-                    <div className="flex items-start justify-between mb-1.5">
-                      <div className="flex items-start gap-2 flex-1">
-                        <div className="h-3.5 w-3.5 rounded-full bg-gradient-to-br from-cyan-600 to-blue-600 mt-0.5 flex-shrink-0" />
-                        <div className="min-w-0">
-                          <p className="text-[10px] font-black text-slate-900 truncate group-hover:bg-gradient-to-r group-hover:from-cyan-600 group-hover:to-blue-600 group-hover:bg-clip-text group-hover:text-transparent">
-                            {getDisplayName(candidate.full_name, candidate.user_id)}
-                          </p>
-                          <p className="text-[8px] text-slate-500 truncate">{candidate.current_role || "Professional"}</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 text-[8px]">
-                      <div className="flex items-center gap-1 text-slate-600">
-                        <TrendingUp className="h-3 w-3 bg-gradient-to-r from-cyan-600 to-blue-600 bg-clip-text text-transparent" />
-                        <span>{candidate.years_of_experience} yrs exp</span>
-                      </div>
-                      <div className="flex items-center gap-1 text-slate-600">
-                        <MapPin className="h-3 w-3 bg-gradient-to-r from-cyan-600 to-blue-600 bg-clip-text text-transparent" />
-                        <span className="truncate">{getCityTier(candidate.location)}</span>
-                      </div>
-                    </div>
-
-                    {candidate.skills && candidate.skills.length > 0 && (
-                      <div className="mt-1.5 flex flex-wrap gap-1">
-                        {candidate.skills.slice(0, 2).map((skill, idx) => (
-                          <span key={idx} className="text-[7px] px-2 py-0.5 bg-gradient-to-r from-cyan-100/80 to-blue-100/80 border border-cyan-300/50 rounded-full bg-clip-text text-transparent bg-gradient-to-r from-cyan-700 to-blue-700 bg-clip-text text-transparent font-semibold">
-                            {skill}
-                          </span>
-                        ))}
-                        {candidate.skills.length > 2 && (
-                          <span className="text-[7px] px-2 py-0.5 bg-slate-200/50 rounded-full text-slate-700 font-semibold">
-                            +{candidate.skills.length - 2}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
-
-                {filteredCandidates.length === 0 && (
-                  <div className="flex flex-col items-center justify-center py-6 text-center">
-                    <div className="h-8 w-8 rounded-full bg-gradient-to-br from-cyan-200/50 to-blue-200/50 flex items-center justify-center mb-2">
-                      <MessageSquare className="h-5 w-5 text-slate-400" />
-                    </div>
-                    <p className="text-[10px] text-slate-600 font-black uppercase tracking-wider">No Results</p>
-                    <p className="text-[8px] text-slate-500 mt-1">Try adjusting requirements</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Candidate Detail Modal */}
-        {selectedCandidate && (
-          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="w-full max-w-2xl bg-gradient-to-br from-white via-blue-50/30 to-cyan-50/30 border border-blue-200/50 rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
-              <div className="sticky top-0 bg-gradient-to-r from-white to-blue-50/50 border-b border-blue-200/50 p-5 backdrop-blur-sm">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-xl font-black bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
-                        {getDisplayName(selectedCandidate.full_name, selectedCandidate.user_id)}
-                      </h2>
-                      {!hasAccessToPersonalInfo(selectedCandidate.user_id) && (
-                        <div className="flex items-center gap-1 px-2 py-1 bg-amber-50 border border-amber-200 rounded-lg">
-                          <svg className="h-3.5 w-3.5 text-amber-600" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
-                          </svg>
-                          <span className="text-[10px] font-black text-amber-700">LOCKED</span>
-                        </div>
-                      )}
-                    </div>
-                    <p className="text-xs text-slate-600 mt-1">{selectedCandidate.current_role || "Professional"}</p>
-                    {!hasAccessToPersonalInfo(selectedCandidate.user_id) && (
-                      <p className="text-[10px] text-amber-600 mt-2 font-semibold">
-                        📌 Personal info unlocks when candidate applies, is shortlisted, or replies to an invite
-                      </p>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => setSelectedCandidate(null)}
-                    className="text-slate-400 hover:text-slate-700 transition flex-shrink-0 ml-4 text-xl font-bold"
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-5 space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="p-3 bg-gradient-to-br from-cyan-50/80 to-blue-50/80 border border-cyan-300/50 rounded-lg hover:border-cyan-400/70 hover:shadow-md transition-all">
-                    <p className="text-[8px] text-slate-600 font-black uppercase mb-1.5">Years of Experience</p>
-                    <p className="text-lg font-black bg-gradient-to-r from-cyan-700 to-blue-700 bg-clip-text text-transparent">{selectedCandidate.years_of_experience}</p>
-                    <p className="text-[8px] text-slate-600 mt-0.5">years</p>
-                  </div>
-
-                  <div className="p-3 bg-gradient-to-br from-blue-50/80 to-indigo-50/80 border border-blue-300/50 rounded-lg hover:border-blue-400/70 hover:shadow-md transition-all">
-                    <p className="text-[8px] text-slate-600 font-black uppercase mb-1.5">Location</p>
-                    <p className="text-sm font-black bg-gradient-to-r from-blue-700 to-indigo-700 bg-clip-text text-transparent">{getCityTier(selectedCandidate.location)}</p>
-                    <p className="text-[8px] text-slate-600 mt-0.5">{selectedCandidate.location}</p>
-                  </div>
-
-                  <div className="p-3 bg-gradient-to-br from-indigo-50/80 to-purple-50/80 border border-indigo-300/50 rounded-lg hover:border-indigo-400/70 hover:shadow-md transition-all">
-                    <p className="text-[8px] text-slate-600 font-black uppercase mb-1.5">Expected Compensation</p>
-                    <p className="text-lg font-black bg-gradient-to-r from-indigo-700 to-purple-700 bg-clip-text text-transparent">
-                      {selectedCandidate.expected_salary 
-                        ? `₹${(selectedCandidate.expected_salary / 100000).toFixed(1)}L` 
-                        : "Flexible"}
-                    </p>
-                  </div>
-
-                  <div className="p-3 bg-gradient-to-br from-cyan-50/80 to-teal-50/80 border border-cyan-300/50 rounded-lg hover:border-cyan-400/70 hover:shadow-md transition-all">
-                    <p className="text-[8px] text-slate-600 font-black uppercase mb-1.5">Experience Level</p>
-                    <p className="text-sm font-black bg-gradient-to-r from-cyan-700 to-teal-700 bg-clip-text text-transparent uppercase">{selectedCandidate.experience}</p>
-                  </div>
-                </div>
-
-                {selectedCandidate.skills && selectedCandidate.skills.length > 0 && (
-                  <div className="border-t border-blue-200/50 pt-4">
-                    <p className="text-xs font-black text-slate-900 uppercase mb-3 flex items-center gap-2">
-                      <Briefcase className="h-4 w-4 bg-gradient-to-r from-cyan-600 to-blue-600 bg-clip-text text-transparent" />
-                      Expertise Areas
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedCandidate.skills.map((skill, idx) => (
-                        <span key={idx} className="text-[11px] px-3 py-1.5 bg-gradient-to-r from-cyan-100/80 to-blue-100/80 border border-cyan-300/50 rounded-lg bg-gradient-to-r from-cyan-700 to-blue-700 bg-clip-text text-transparent font-semibold hover:from-cyan-200/80 hover:to-blue-200/80 transition">
-                          {skill}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {!hasAccessToPersonalInfo(selectedCandidate.user_id) && (
-                  <div className="border-t border-blue-200/50 pt-4">
-                    <div className="p-3 bg-amber-50/60 border border-amber-200/60 rounded-lg">
-                      <p className="text-xs font-black text-slate-900 uppercase mb-3 flex items-center gap-2">
-                        <svg className="h-4 w-4 text-amber-600" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
-                        </svg>
-                        Personal Information (Locked)
-                      </p>
-                      <div className="space-y-2 text-[11px] text-slate-600">
-                        <p className="flex items-center gap-2">
-                          <Mail className="h-3.5 w-3.5 text-amber-600" />
-                          <span className="line-through opacity-50">Email Address</span>
-                        </p>
-                        <p className="flex items-center gap-2">
-                          <Phone className="h-3.5 w-3.5 text-amber-600" />
-                          <span className="line-through opacity-50">Phone Number</span>
-                        </p>
-                        <p className="flex items-center gap-2">
-                          <Calendar className="h-3.5 w-3.5 text-amber-600" />
-                          <span className="line-through opacity-50">Date of Birth</span>
-                        </p>
-                      </div>
-                      <p className="text-[9px] text-amber-700 mt-2 font-semibold">✓ Unlock by applying, shortlisting, or inviting this candidate</p>
-                    </div>
-                  </div>
-                )}
-
-                <div className="border-t border-blue-200/50 pt-4 flex gap-2">
-                  <button
-                    onClick={handleInvite}
-                    disabled={selectedCandidate?.is_shadow_profile || inviteLoading}
-                    className="flex-1 px-4 py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 disabled:from-slate-400 disabled:to-slate-400 disabled:cursor-not-allowed text-white font-bold rounded-lg transition shadow-md hover:shadow-lg hover:shadow-blue-500/30 disabled:shadow-none text-sm"
-                  >
-                    {inviteLoading ? "Inviting..." : "Invite"}
-                  </button>
-                  <button
-                    onClick={handleEmailClick}
-                    className="flex-1 px-4 py-2.5 bg-slate-200/50 hover:bg-slate-300/50 text-slate-900 font-bold rounded-lg transition text-sm relative"
-                  >
-                    Email
-                    {showComingSoon && (
-                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-slate-900 text-white text-[10px] rounded whitespace-nowrap">
-                        Coming Soon
-                      </div>
-                    )}
-                  </button>
-                  <button
-                    onClick={() => setSelectedCandidate(null)}
-                    className="px-4 py-2.5 bg-slate-200/50 hover:bg-slate-300/50 text-slate-900 font-bold rounded-lg transition text-sm"
-                  >
-                    Done
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }

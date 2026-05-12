@@ -38,12 +38,7 @@ function getCityTier(location: string): string {
   return "Tier 3";
 }
 
-const COLORS = {
-  fresher: "#06b6d4",    // Vibrant Cyan
-  mid: "#0891b2",        // Darker Cyan
-  senior: "#0e7490",     // Teal
-  leadership: "#164e63"  // Dark Teal
-};
+const BRAND_ORANGE = "#FF8A00";
 
 const BAND_LABELS: Record<string, string> = {
   fresher: "Entry Level",
@@ -51,6 +46,20 @@ const BAND_LABELS: Record<string, string> = {
   senior: "Senior",
   leadership: "Leadership"
 };
+
+function getLabelLines(name: string, radius: number): string[] {
+  const words = name.trim().split(/\s+/);
+  if (words.length > 1 && radius < 120) {
+    return words;
+  }
+  return [name];
+}
+
+function getLabelFontSize(radius: number, name: string): number {
+  const perCharBudget = (radius * 1.45) / Math.max(name.length, 1);
+  const adaptive = Math.min(radius * 0.36, perCharBudget * 1.65);
+  return Math.max(12, Math.min(58, adaptive));
+}
 
 export default function TalentBubbleChart({ data }: TalentBubbleChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -75,7 +84,7 @@ export default function TalentBubbleChart({ data }: TalentBubbleChartProps) {
         name: BAND_LABELS[band] || band.toUpperCase(),
         value: count,
         radius: 0, // Will be set by scale
-        color: COLORS[band as keyof typeof COLORS],
+        color: BRAND_ORANGE,
         details: {
           count,
           avgSal: (avgSal / 100000).toFixed(1),
@@ -83,7 +92,19 @@ export default function TalentBubbleChart({ data }: TalentBubbleChartProps) {
         }
       };
     });
-    return results.filter(r => r.value > 0);
+    const filtered = results.filter(r => r.value > 0);
+    const minCount = d3.min(filtered, d => d.value) ?? 0;
+    const maxCount = d3.max(filtered, d => d.value) ?? 1;
+    const colorScale = d3.scaleLinear<string>()
+      .domain([minCount, maxCount])
+      .range(["#FFC98E", "#FF8A00"])
+      .interpolate(d3.interpolateRgb);
+
+    filtered.forEach((node) => {
+      node.color = colorScale(node.value);
+    });
+
+    return filtered;
   }, [data]);
 
   useEffect((): undefined | (() => void) => {
@@ -102,13 +123,14 @@ export default function TalentBubbleChart({ data }: TalentBubbleChartProps) {
       .attr("viewBox", [0, 0, width, height])
       .attr("style", "max-width: 100%; height: auto;");
 
-    // Scale for bubble sizes - adjust range to prevent overlapping
+    // Scale for bubble sizes
+    const minValue = d3.min(aggregateData, d => d.value) || 0;
     const maxValue = d3.max(aggregateData, d => d.value) || 10;
-    const minRadius = Math.min(width, height) / 12;
-    const maxRadius = Math.min(width, height) / 3.5;
+    const minRadius = Math.max(64, Math.min(width, height) / 11);
+    const maxRadius = Math.max(minRadius + 24, Math.min(width, height) / 3.45);
     
     const radiusScale = d3.scaleSqrt()
-      .domain([0, maxValue])
+      .domain([minValue, maxValue])
       .range([minRadius, maxRadius]);
 
     aggregateData.forEach(d => {
@@ -118,7 +140,7 @@ export default function TalentBubbleChart({ data }: TalentBubbleChartProps) {
     const simulation = d3.forceSimulation(aggregateData)
       .force("x", d3.forceX(width / 2).strength(0.12))
       .force("y", d3.forceY(height / 2).strength(0.12))
-      .force("collide", d3.forceCollide((d: any) => d.radius + 30).strength(1.0))
+      .force("collide", d3.forceCollide((d: any) => d.radius + 22).strength(1.0))
       .on("tick", () => {
         node.attr("transform", (d: any) => {
           // Constrain bubbles within bounds
@@ -141,66 +163,63 @@ export default function TalentBubbleChart({ data }: TalentBubbleChartProps) {
       .on("mouseover", (event, d) => {
         setHoverNode(d);
         d3.select(event.currentTarget)
-          .selectAll("circle:nth-child(1)")
+          .select("circle")
           .transition()
           .duration(200)
-          .attr("fill-opacity", 0.35);
-        d3.select(event.currentTarget)
-          .selectAll("circle:nth-child(2)")
-          .transition()
-          .duration(200)
-          .attr("fill-opacity", 0.5);
+            .attr("filter", "drop-shadow(0 12px 24px rgba(255, 138, 0, 0.34))")
+          .attr("opacity", 1);
       })
       .on("mouseout", (event, d) => {
         setHoverNode(null);
         d3.select(event.currentTarget)
-          .selectAll("circle:nth-child(1)")
+          .select("circle")
           .transition()
           .duration(200)
-          .attr("fill-opacity", 0.15);
-        d3.select(event.currentTarget)
-          .selectAll("circle:nth-child(2)")
-          .transition()
-          .duration(200)
-          .attr("fill-opacity", 0.25);
+            .attr("filter", "drop-shadow(0 8px 18px rgba(255, 138, 0, 0.22))")
+          .attr("opacity", 0.96);
       });
 
-    // Outer glow circle
+    // Single-layer brand bubble without ring borders
     node.append("circle")
       .attr("r", d => d.radius)
       .attr("fill", d => d.color)
-      .attr("fill-opacity", 0.15)
-      .attr("stroke", d => d.color)
-      .attr("stroke-width", 2)
-      .attr("stroke-opacity", 0.3)
-      .style("filter", "drop-shadow(0 0 8px " + "rgba(6, 182, 212, 0.3)" + ")");
+      .attr("stroke", "none")
+      .attr("opacity", 0.96)
+      .attr("filter", "drop-shadow(0 8px 18px rgba(255, 138, 0, 0.22))")
+      .style("transition", "all 0.3s ease");
 
-    // Main circle
-    node.append("circle")
-      .attr("r", d => d.radius - 5)
-      .attr("fill", d => d.color)
-      .attr("fill-opacity", 0.25)
-      .attr("stroke", d => d.color)
-      .attr("stroke-width", 2)
-      .attr("stroke-opacity", 0.4);
-
-    // Label
-    node.append("text")
-      .attr("dy", "-0.5em")
+    // Adaptive label kept fully inside the bubble
+    const label = node.append("text")
       .attr("text-anchor", "middle")
       .attr("fill", "white")
-      .attr("font-size", d => Math.max(10, d.radius / 4))
+      .attr("font-size", d => getLabelFontSize(d.radius, d.name))
       .attr("font-weight", "900")
-      .attr("class", "uppercase tracking-tighter italic shadow-sm")
-      .text(d => d.name);
+      .attr("class", "uppercase italic")
+      .style("text-shadow", "0 2px 8px rgba(0, 0, 0, 0.3)")
+      .style("letter-spacing", "0.02em");
+
+    label.each(function(d) {
+      const lines = getLabelLines(d.name, d.radius);
+      const textSel = d3.select(this);
+      const lineHeight = lines.length > 1 ? 0.95 : 1.0;
+      const startOffset = lines.length > 1 ? -0.85 : -0.55;
+
+      lines.forEach((line, i) => {
+        textSel.append("tspan")
+          .attr("x", 0)
+          .attr("dy", i === 0 ? `${startOffset}em` : `${lineHeight}em`)
+          .text(line);
+      });
+    });
 
     // Count
     node.append("text")
-      .attr("dy", "1em")
+      .attr("dy", d => (getLabelLines(d.name, d.radius).length > 1 ? "1.8em" : "0.95em"))
       .attr("text-anchor", "middle")
-      .attr("fill", d => d.color)
-      .attr("font-size", d => Math.max(12, d.radius / 3))
-      .attr("font-weight", "black")
+      .attr("fill", "white")
+      .attr("font-size", d => Math.max(18, Math.min(64, d.radius * 0.42)))
+      .attr("font-weight", "900")
+      .style("text-shadow", "0 2px 8px rgba(0, 0, 0, 0.3)")
       .text(d => d.value);
 
     return () => simulation.stop();
@@ -212,41 +231,41 @@ export default function TalentBubbleChart({ data }: TalentBubbleChartProps) {
       
       {hoverNode && (
         <div 
-          className="absolute top-4 left-4 z-50 p-5 bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl min-w-[240px] animate-in fade-in zoom-in duration-200"
+          className="absolute top-4 left-4 z-50 p-6 bg-gradient-to-br from-[#FF8A00] to-[#FF6B00] backdrop-blur-xl border border-white/20 rounded-2xl shadow-2xl min-w-[280px] animate-in fade-in zoom-in duration-200"
         >
-          <div className="flex items-center gap-3 mb-4">
-            <div className="h-2 w-2 rounded-full animate-pulse" style={{ backgroundColor: hoverNode.color }} />
-            <h4 className="text-sm font-black text-white uppercase tracking-[0.2em]">{hoverNode.name} SEGMENT</h4>
+          <div className="flex items-center gap-3 mb-5">
+            <div className="h-3 w-3 rounded-full animate-pulse bg-white/80" />
+            <h4 className="text-sm font-black text-white uppercase tracking-[0.2em]">{hoverNode.name}</h4>
           </div>
           
-          <div className="space-y-4">
+          <div className="space-y-5">
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-[8px] font-bold text-slate-500 uppercase tracking-widest mb-1">Population</p>
-                <p className="text-xl font-black text-white tracking-tighter">{hoverNode.details.count} <span className="text-[10px] text-slate-400">Hits</span></p>
+              <div className="bg-white/15 backdrop-blur-sm rounded-xl p-3.5 border border-white/20">
+                <p className="text-[8px] font-bold text-white/70 uppercase tracking-widest mb-2">Population</p>
+                <p className="text-2xl font-black text-white tracking-tighter">{hoverNode.details.count}</p>
+                <p className="text-[9px] text-white/60 mt-1">Candidates</p>
               </div>
-              <div>
-                <p className="text-[8px] font-bold text-slate-500 uppercase tracking-widest mb-1">Avg Salary</p>
-                <p className="text-xl font-black text-white tracking-tighter">?{hoverNode.details.avgSal}L</p>
+              <div className="bg-white/15 backdrop-blur-sm rounded-xl p-3.5 border border-white/20">
+                <p className="text-[8px] font-bold text-white/70 uppercase tracking-widest mb-2">Avg Salary</p>
+                <p className="text-2xl font-black text-white tracking-tighter">₹{hoverNode.details.avgSal}L</p>
               </div>
             </div>
 
-            <div className="space-y-2 pt-2 border-t border-white/5">
-              <p className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em]">Geographic Density</p>
+            <div className="space-y-3 pt-4 border-t border-white/20">
+              <p className="text-[8px] font-bold text-white/70 uppercase tracking-[0.2em]">Geographic Spread</p>
               {Object.entries(hoverNode.details.tiers).map(([tier, count]: any) => (
                 <div key={tier} className="flex items-center justify-between">
-                  <span className="text-[9px] font-bold text-slate-500 uppercase">{tier}</span>
+                  <span className="text-[10px] font-bold text-white/80 uppercase">{tier}</span>
                   <div className="flex items-center gap-2">
-                    <div className="h-1 w-20 bg-white/5 rounded-full overflow-hidden">
+                    <div className="h-1.5 w-20 bg-white/20 rounded-full overflow-hidden border border-white/30">
                       <div 
-                        className="h-full rounded-full transition-all duration-500"
+                        className="h-full rounded-full transition-all duration-500 bg-white/70"
                         style={{ 
-                          width: `${(count / (hoverNode.details.count || 1)) * 100}%`,
-                          backgroundColor: hoverNode.color 
+                          width: `${(count / (hoverNode.details.count || 1)) * 100}%`
                         }} 
                       />
                     </div>
-                    <span className="text-[9px] font-black text-white">{count}</span>
+                    <span className="text-[10px] font-black text-white">{count}</span>
                   </div>
                 </div>
               ))}

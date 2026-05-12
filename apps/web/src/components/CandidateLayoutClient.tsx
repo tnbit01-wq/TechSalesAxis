@@ -1,16 +1,12 @@
 "use client";
-
 import { useSidebar } from "@/context/SidebarContext";
 import { ReactNode } from "react";
 
 export default function CandidateLayoutClient({ children }: { children: ReactNode }) {
   const { isOpen } = useSidebar();
-
   return (
-    <div className={`flex-1 ${isOpen ? "ml-64" : "ml-20"} min-h-screen w-full relative transition-all duration-300`}>
-      <div className="relative w-full">
-        {children}
-      </div>
+    <div className={`${isOpen ? "ml-[240px]" : "ml-[68px]"} flex-1 h-screen overflow-hidden flex flex-col transition-all duration-300 ease-in-out`}>
+      {children}
     </div>
   );
 }
