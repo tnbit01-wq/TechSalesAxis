@@ -22,21 +22,6 @@ const pageTitles: Record<string, { title: string; sub: string }> = {
   "/dashboard/candidate/settings": { title: "Settings", sub: "Account preferences" },
 };
 
-const resolvePageMeta = (pathname: string): { title: string; sub: string } => {
-  if (pageTitles[pathname]) {
-    return pageTitles[pathname];
-  }
-
-  if (/^\/dashboard\/candidate\/applications\/[^/]+$/.test(pathname)) {
-    return { title: "Application Details", sub: "View and track your application progress" };
-  }
-
-  return {
-    title: pathname.split("/").filter(Boolean).slice(-1)[0]?.replace(/-/g, " ") || "Dashboard",
-    sub: "",
-  };
-};
-
 const navPages = [
   { label: "Dashboard", href: "/dashboard/candidate", icon: LayoutDashboard },
   { label: "Browse Jobs", href: "/dashboard/candidate/jobs", icon: Compass },
@@ -96,7 +81,7 @@ export default function CandidateHeader({ profile: initialProfile }: { profile?:
     try { const t = awsAuth.getToken(); if (!t) return; await apiClient.patch(`/notifications/${id}/read`, {}, t); setNotifications(p => p.map(n => n.id === id ? { ...n, is_read: true } : n)); setUnreadCount(p => Math.max(0, p - 1)); } catch {}
   };
 
-  const page = resolvePageMeta(pathname);
+  const page = pageTitles[pathname] || { title: pathname.split("/").filter(Boolean).slice(-1)[0]?.replace(/-/g, " ") || "Dashboard", sub: "" };
 
   return (
     <header className={`fixed top-0 right-0 ${isOpen ? "left-[240px]" : "left-[68px]"} z-20 transition-all duration-300`}>

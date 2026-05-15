@@ -15,6 +15,7 @@ import {
   ChevronRight,
   MapPin,
   Compass,
+  Sparkles,
 } from "lucide-react";
 
 interface CandidateSidebarProps {
@@ -27,6 +28,7 @@ const navGroups = [
     label: "Main",
     items: [
       { label: "Dashboard", href: "/dashboard/candidate", icon: LayoutDashboard },
+      { label: "Recommendations", href: "/dashboard/candidate/recommendations", icon: Sparkles },
       { label: "Jobs", href: "/dashboard/candidate/jobs", icon: Compass },
       { label: "Applications", href: "/dashboard/candidate/applications", icon: Briefcase },
       { label: "Career GPS", href: "/dashboard/candidate/gps", icon: MapPin },

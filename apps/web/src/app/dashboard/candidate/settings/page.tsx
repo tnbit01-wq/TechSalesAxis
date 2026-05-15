@@ -9,18 +9,15 @@ import {
   User, 
   Shield, 
   Bell, 
-  Settings, 
+  Mail,
   Globe, 
   Eye, 
   EyeOff,
-  Clock,
-  LogOut,
-  Upload,
   Lock,
-  Mail,
   Smartphone,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  ChevronRight
 } from "lucide-react";
 import Image from "next/image";
 
@@ -220,269 +217,248 @@ export default function CandidateSettingsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50/50">
+    <div className="h-full bg-slate-50/50">
       <CandidateHeader profile={profile} />
-      <div className="max-w-6xl mx-auto px-4 py-8 space-y-10 pb-20">
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Settings</h1>
-          <p className="text-slate-500 text-sm mt-1">Manage your personal profile, notifications, and privacy preferences.</p>
-        </div>
-      </header>
+      <div className="mx-auto flex h-[calc(100vh-5rem)] max-w-7xl flex-col px-4 py-6">
+        {message && (
+          <div className={`mb-6 p-4 rounded-2xl border shadow-sm transition-all animate-in fade-in slide-in-from-top-4 flex items-center gap-3 ${
+            message.type === "success"
+              ? "bg-emerald-50 border-emerald-100 text-emerald-800"
+              : "bg-rose-50 border-rose-100 text-rose-800"
+          }`}>
+            {message.type === "success" ? <CheckCircle2 className="h-5 w-5 flex-shrink-0" /> : <AlertCircle className="h-5 w-5 flex-shrink-0" />}
+            <span className="text-sm font-medium">{message.text}</span>
+          </div>
+        )}
 
-      {message && (
-        <div className={`p-4 rounded-2xl border shadow-sm transition-all animate-in fade-in slide-in-from-top-4 mt-6 flex items-center gap-3 ${
-          message.type === "success"
-            ? "bg-emerald-50 border-emerald-100 text-emerald-800"
-            : "bg-rose-50 border-rose-100 text-rose-800"
-        }`}>
-          {message.type === "success" ? <CheckCircle2 className="h-5 w-5 flex-shrink-0" /> : <AlertCircle className="h-5 w-5 flex-shrink-0" />}
-          <span className="text-sm font-medium">{message.text}</span>
-        </div>
-      )}
-
-      <div className="mt-8">
-        <div className="flex flex-wrap gap-3">
-          <button
-            onClick={() => setActiveTab("profile")}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all font-medium text-sm ${
-              activeTab === "profile"
-                ? "bg-primary text-white border-primary"
-                : "bg-white text-slate-700 border-slate-200 hover:border-slate-300"
-            }`}
-          >
-            <User className="h-4 w-4" />
-            Profile
-          </button>
-          <button
-            onClick={() => setActiveTab("security")}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all font-medium text-sm ${
-              activeTab === "security"
-                ? "bg-primary text-white border-primary"
-                : "bg-white text-slate-700 border-slate-200 hover:border-slate-300"
-            }`}
-          >
-            <Shield className="h-4 w-4" />
-            Security
-          </button>
-          <button
-            onClick={() => setActiveTab("notifications")}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all font-medium text-sm ${
-              activeTab === "notifications"
-                ? "bg-primary text-white border-primary"
-                : "bg-white text-slate-700 border-slate-200 hover:border-slate-300"
-            }`}
-          >
-            <Bell className="h-4 w-4" />
-            Notifications
-          </button>
-          <button
-            onClick={() => setActiveTab("privacy")}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all font-medium text-sm ${
-              activeTab === "privacy"
-                ? "bg-primary text-white border-primary"
-                : "bg-white text-slate-700 border-slate-200 hover:border-slate-300"
-            }`}
-          >
-            <Eye className="h-4 w-4" />
-            Privacy
-          </button>
-        </div>
-      </div>
-
-      {/* Content Area */}
-      <div className="mt-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-        {activeTab === "profile" && (
-          <div className="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm space-y-8">
-            <div className="flex items-center gap-6 mb-8">
-              <div className="h-20 w-20 rounded-full bg-linear-to-br from-primary to-primary-dark flex items-center justify-center relative overflow-hidden flex-shrink-0 border-2 border-slate-200">
-                {profile?.profile_photo_url ? (
-                  <Image 
-                    src={profile.profile_photo_url} 
-                    alt="Profile" 
-                    fill 
-                    sizes="80px"
-                    className="object-cover" 
-                  />
-                ) : (
-                  <User className="text-white" size={32} />
-                )}
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-slate-900">Profile Photo</h3>
-                <p className="text-sm text-slate-500 mt-1">This photo is displayed to recruiters viewing your profile.</p>
-              </div>
-            </div>
-
-              <form onSubmit={handleProfileSave} className="space-y-6">
-                <InputGroup label="Full Name" value={profile?.full_name} onChange={(val) => setProfile(p => p ? {...p, full_name: val} : null)} />
-                <InputGroup label="Phone Number" value={profile?.phone_number} onChange={(val) => setProfile(p => p ? {...p, phone_number: val} : null)} />
-                <InputGroup label="Professional Summary" isTextArea value={profile?.bio} onChange={(val) => setProfile(p => p ? {...p, bio: val} : null)} />
-                <InputGroup label="LinkedIn URL" value={profile?.linkedin_url} onChange={(val) => setProfile(p => p ? {...p, linkedin_url: val} : null)} />
-                <InputGroup label="Current City" value={profile?.location} onChange={(val) => setProfile(p => p ? {...p, location: val} : null)} />
-                
-                <div className="pt-6">
-                  <button type="submit" disabled={saving} className="bg-primary text-white px-6 py-3 rounded-lg text-sm font-bold hover:bg-primary-dark transition-all flex items-center gap-2 disabled:opacity-50">
-                    {saving ? "Saving..." : "Save Changes"}
-                    <Save size={16} />
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
-
-          {activeTab === "security" && (
-            <div className="space-y-6">
-              {/* Password Management */}
-              <div className="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm space-y-6">
-                <div>
-                  <h3 className="text-lg font-bold text-slate-900 mb-2">Change Password</h3>
-                  <p className="text-sm text-slate-500">Update your password to keep your account secure.</p>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="relative">
-                    <InputGroup label="Current Password" value={oldPassword} onChange={setOldPassword} isPassword={!showOldPassword} />
-                    <button 
-                      type="button"
-                      onClick={() => setShowOldPassword(!showOldPassword)}
-                      className="absolute right-3 top-9 text-slate-400 hover:text-primary transition-colors"
+        <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+          {/* Main Layout: Sidebar + Content */}
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* Sidebar Navigation */}
+          <div className="lg:col-span-1">
+            <div className="bg-white rounded-3xl border border-orange-100/80 shadow-[0_8px_24px_rgba(255,138,0,0.04)] p-4 sticky top-24">
+              <nav className="space-y-2">
+                {[
+                  { id: "profile", label: "Profile", icon: User },
+                  { id: "security", label: "Security", icon: Shield },
+                  { id: "notifications", label: "Notifications", icon: Bell },
+                  { id: "privacy", label: "Privacy", icon: Eye }
+                ].map((tab) => {
+                  const Icon = tab.icon;
+                  const isActive = activeTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id as any)}
+                      className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl transition-all font-medium text-sm ${
+                        isActive
+                          ? "bg-[#FF8A00] text-white shadow-[0_4px_12px_rgba(255,138,0,0.3)]"
+                          : "text-slate-700 hover:bg-slate-50"
+                      }`}
                     >
-                      {showOldPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      <div className="flex items-center gap-3">
+                        <Icon className="h-4 w-4" />
+                        {tab.label}
+                      </div>
+                      {isActive && <ChevronRight className="h-4 w-4" />}
                     </button>
-                  </div>
+                  );
+                })}
+              </nav>
+            </div>
+          </div>
+
+          {/* Content Area */}
+          <div className="lg:col-span-3">
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {/* PROFILE SECTION */}
+            {activeTab === "profile" && (
+              <div className="bg-white rounded-3xl border border-orange-100/80 shadow-[0_8px_24px_rgba(255,138,0,0.06)] p-8 space-y-8">
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-900 mb-2">Your Profile</h2>
+                  <p className="text-slate-500 text-sm">Update your information visible to recruiters.</p>
+                </div>
+
+                <form onSubmit={handleProfileSave} className="space-y-6">
+                  <InputGroup label="Full Name" value={profile?.full_name} onChange={(val) => setProfile(p => p ? {...p, full_name: val} : null)} />
+                  <InputGroup label="Phone Number" value={profile?.phone_number} onChange={(val) => setProfile(p => p ? {...p, phone_number: val} : null)} />
+                  <InputGroup label="Professional Summary" isTextArea value={profile?.bio} onChange={(val) => setProfile(p => p ? {...p, bio: val} : null)} />
+                  <InputGroup label="LinkedIn URL" value={profile?.linkedin_url} onChange={(val) => setProfile(p => p ? {...p, linkedin_url: val} : null)} />
+                  <InputGroup label="Location" value={profile?.location} onChange={(val) => setProfile(p => p ? {...p, location: val} : null)} />
                   
-                  <div className="relative">
-                    <InputGroup label="New Password" value={newPassword} onChange={setNewPassword} isPassword={!showNewPassword} />
-                    <button 
-                      type="button"
-                      onClick={() => setShowNewPassword(!showNewPassword)}
-                      className="absolute right-3 top-9 text-slate-400 hover:text-primary transition-colors"
-                    >
-                      {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  <div className="pt-4 flex gap-3">
+                    <button type="submit" disabled={saving} className="bg-[#FF8A00] hover:bg-[#E67A00] text-white px-6 py-3 rounded-xl text-sm font-bold transition-all flex items-center gap-2 disabled:opacity-50">
+                      {saving ? "Saving..." : "Save Changes"}
+                      <Save size={16} />
                     </button>
                   </div>
+                </form>
+              </div>
+            )}
 
-                  <div className="relative">
-                    <InputGroup label="Confirm New Password" value={confirmPassword} onChange={setConfirmPassword} isPassword={!showNewPassword} />
+            {/* SECURITY SECTION */}
+            {activeTab === "security" && (
+              <div className="space-y-6">
+                {/* Password Management */}
+                <div className="bg-white rounded-3xl border border-orange-100/80 shadow-[0_8px_24px_rgba(255,138,0,0.06)] p-8 space-y-6">
+                  <div>
+                    <h2 className="text-2xl font-bold text-slate-900 mb-2">Change Password</h2>
+                    <p className="text-slate-500 text-sm">Keep your account secure with a strong password.</p>
                   </div>
-                  
-                  <div className="flex items-center gap-3 pt-4">
-                    <button 
-                      onClick={handleUpdatePassword}
-                      disabled={saving || !newPassword || !oldPassword || !confirmPassword || newPassword !== confirmPassword}
-                      className="bg-primary text-white px-6 py-3 rounded-lg text-sm font-bold hover:bg-primary-dark transition-all disabled:opacity-50"
-                    >
-                      {saving ? "Updating..." : "Update Password"}
-                    </button>
-                    {newPassword && confirmPassword && newPassword !== confirmPassword && (
-                      <span className="text-xs font-bold text-rose-600 animate-pulse">Passwords do not match</span>
-                    )}
+
+                  <div className="space-y-4">
+                    <div className="relative">
+                      <InputGroup label="Current Password" value={oldPassword} onChange={setOldPassword} isPassword={!showOldPassword} />
+                      <button 
+                        type="button"
+                        onClick={() => setShowOldPassword(!showOldPassword)}
+                        className="absolute right-4 top-10 text-slate-400 hover:text-[#FF8A00] transition-colors"
+                      >
+                        {showOldPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+                    
+                    <div className="relative">
+                      <InputGroup label="New Password" value={newPassword} onChange={setNewPassword} isPassword={!showNewPassword} />
+                      <button 
+                        type="button"
+                        onClick={() => setShowNewPassword(!showNewPassword)}
+                        className="absolute right-4 top-10 text-slate-400 hover:text-[#FF8A00] transition-colors"
+                      >
+                        {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+
+                    <InputGroup label="Confirm Password" value={confirmPassword} onChange={setConfirmPassword} isPassword={!showNewPassword} />
+                    
+                    <div className="flex items-center gap-3 pt-4">
+                      <button 
+                        onClick={handleUpdatePassword}
+                        disabled={saving || !newPassword || !oldPassword || !confirmPassword || newPassword !== confirmPassword}
+                        className="bg-[#FF8A00] hover:bg-[#E67A00] text-white px-6 py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
+                      >
+                        {saving ? "Updating..." : "Update Password"}
+                      </button>
+                      {newPassword && confirmPassword && newPassword !== confirmPassword && (
+                        <span className="text-xs font-bold text-rose-600 animate-pulse">Passwords do not match</span>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Identity Verification */}
-              <div className="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm">
-                <h3 className="text-lg font-bold text-slate-900 mb-4">Identity Verification</h3>
-                <div className="bg-slate-50 p-6 rounded-lg border border-slate-200 flex flex-col md:flex-row items-center gap-6">
-                  <div className="h-16 w-16 rounded-lg bg-primary-light flex items-center justify-center flex-shrink-0">
-                    <Shield className="text-primary" size={32} />
+                {/* Identity Verification */}
+                <div className="bg-white rounded-3xl border border-orange-100/80 shadow-[0_8px_24px_rgba(255,138,0,0.06)] p-8">
+                  <h2 className="text-2xl font-bold text-slate-900 mb-4">Verification</h2>
+                  <div className="bg-gradient-to-br from-[#FF8A00]/10 to-[#FFB366]/5 p-6 rounded-2xl border border-orange-100/80 flex flex-col md:flex-row items-center gap-6">
+                    <div className="h-16 w-16 rounded-xl bg-[#FF8A00]/20 flex items-center justify-center flex-shrink-0">
+                      <Shield className="text-[#FF8A00]" size={32} />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-bold text-slate-900 mb-1">Verify Your Identity</h3>
+                      <p className="text-sm text-slate-500">Upload your ID to get verified. Verified profiles get 3x more recruiter views.</p>
+                    </div>
+                    <label className={`px-6 py-3 rounded-xl text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${profile?.identity_verified ? "bg-emerald-50 text-emerald-600 border border-emerald-100 pointer-events-none" : "bg-[#FF8A00] text-white hover:bg-[#E67A00] border border-[#FF8A00]"}`}>
+                      {profile?.identity_verified ? "✓ Verified" : "Upload ID"}
+                      {!profile?.identity_verified && (
+                        <input 
+                          type="file" 
+                          accept="image/*,.pdf" 
+                          className="hidden" 
+                          onChange={handleUploadID} 
+                          disabled={saving}
+                        />
+                      )}
+                    </label>
                   </div>
-                  <div className="flex-1">
-                    <h4 className="font-bold text-slate-900 mb-1">Verify Your Identity</h4>
-                    <p className="text-sm text-slate-500">Upload your government ID to get a verified badge. Verified profiles get 3x more recruiter views.</p>
-                  </div>
-                  <label className={`px-6 py-2.5 rounded-lg text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${profile?.identity_verified ? "bg-emerald-50 text-emerald-600 border border-emerald-100 pointer-events-none" : "bg-primary text-white hover:bg-primary-dark border border-primary"}`}>
-                    {profile?.identity_verified ? "✓ Verified" : "Upload ID"}
-                    {!profile?.identity_verified && (
-                      <input 
-                        type="file" 
-                        accept="image/*,.pdf" 
-                        className="hidden" 
-                        onChange={handleUploadID} 
-                        disabled={saving}
-                      />
-                    )}
-                  </label>
                 </div>
-              </div>
 
-              {/* Delete Account */}
-              <div className="bg-rose-50/50 rounded-2xl p-8 border border-rose-200 shadow-sm">
-                <h3 className="text-lg font-bold text-rose-600 mb-2">Danger Zone</h3>
-                <p className="text-sm text-rose-500 mb-6">This action cannot be undone.</p>
-                <button 
-                  onClick={handleDeleteAccount}
-                  disabled={saving}
-                  className="bg-rose-600 text-white px-6 py-3 rounded-lg text-sm font-bold hover:bg-rose-700 transition-all disabled:opacity-50"
-                >
-                  {saving ? "Deleting..." : "Delete Account"}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {activeTab === "notifications" && (
-            <div className="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm space-y-8">
-              <div>
-                <h3 className="text-lg font-bold text-slate-900 mb-2">Notification Preferences</h3>
-                <p className="text-sm text-slate-500">Choose how you'd like to be notified.</p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 py-6 border-y border-slate-200">
-                <ToggleCard title="Email Notifications" desc="Job matches and updates" icon={<Mail />} active={settings?.email_notifications || false} onToggle={(val) => handleSettingsSave({ email_notifications: val })} />
-                <ToggleCard title="Browser Alerts" desc="Real-time interview invites" icon={<Globe />} active={settings?.web_notifications || false} onToggle={(val) => handleSettingsSave({ web_notifications: val })} />
-                <ToggleCard title="Mobile Push" desc="Push notifications" icon={<Smartphone />} active={settings?.mobile_notifications || false} onToggle={(val) => handleSettingsSave({ mobile_notifications: val })} />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="text-sm font-bold text-slate-900 mb-2 block">Job Alert Frequency</label>
-                  <select value={settings?.job_alert_frequency || ""} onChange={(e) => handleSettingsSave({ job_alert_frequency: e.target.value })} className="w-full bg-white border-2 border-slate-300 rounded-lg px-4 py-2.5 text-sm font-medium text-slate-900 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/50">
-                    <option value="" disabled>Select Frequency</option>
-                    <option value="instant">Instant Alerts</option>
-                    <option value="daily">Daily Summary</option>
-                    <option value="weekly">Weekly Summary</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-sm font-bold text-slate-900 mb-2 block">Timezone</label>
-                  <select value={settings?.timezone || ""} onChange={(e) => handleSettingsSave({ timezone: e.target.value })} className="w-full bg-white border-2 border-slate-300 rounded-lg px-4 py-2.5 text-sm font-medium text-slate-900 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/50">
-                    <option value="" disabled>Select Timezone</option>
-                    <option value="UTC">UTC</option>
-                    <option value="IST">IST (India)</option>
-                    <option value="PST">PST (Pacific)</option>
-                    <option value="EST">EST (Eastern)</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === "privacy" && (
-            <div className="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm">
-              <div className="flex flex-col md:flex-row items-center gap-8">
-                <div className={`h-24 w-24 rounded-full flex items-center justify-center flex-shrink-0 shadow-lg ${settings?.is_public ? "bg-primary" : "bg-slate-900"}`}>
-                  {settings?.is_public ? <Eye className="text-white" size={40} /> : <EyeOff className="text-white" size={40} />}
-                </div>
-                <div className="flex-1 text-center md:text-left">
-                  <h3 className="text-xl font-bold text-slate-900 mb-2">{settings?.is_public ? "Public Profile" : "Private Mode"}</h3>
-                  <p className="text-slate-600 mb-4">
-                    {settings?.is_public 
-                      ? "Your profile is visible to recruiters. They can find you in the talent pool and view your details." 
-                      : "Your profile is hidden from search. Recruiters can only see you if you apply directly to them."}
-                  </p>
-                  <button onClick={() => handleSettingsSave({ is_public: !settings?.is_public })} className="bg-primary text-white px-6 py-2.5 rounded-lg text-sm font-bold hover:bg-primary-dark transition-all">
-                    {settings?.is_public ? "Enable Private Mode" : "Enable Public Profile"}
+                {/* Delete Account */}
+                <div className="bg-rose-50/50 rounded-3xl border border-rose-200 p-8">
+                  <h3 className="text-xl font-bold text-rose-600 mb-2">Danger Zone</h3>
+                  <p className="text-sm text-rose-500 mb-6">Permanently delete your account and all associated data. This cannot be undone.</p>
+                  <button 
+                    onClick={handleDeleteAccount}
+                    disabled={saving}
+                    className="bg-rose-600 hover:bg-rose-700 text-white px-6 py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
+                  >
+                    {saving ? "Deleting..." : "Delete Account"}
                   </button>
                 </div>
               </div>
+            )}
+
+            {/* NOTIFICATIONS SECTION */}
+            {activeTab === "notifications" && (
+              <div className="bg-white rounded-3xl border border-orange-100/80 shadow-[0_8px_24px_rgba(255,138,0,0.06)] p-8 space-y-8">
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-900 mb-2">Notification Preferences</h2>
+                  <p className="text-slate-500 text-sm">Choose how you receive updates and alerts.</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 py-6 border-y border-slate-200">
+                  <ToggleCard title="Email Notifications" desc="Job matches & updates" icon={<Mail />} active={settings?.email_notifications || false} onToggle={(val) => handleSettingsSave({ email_notifications: val })} />
+                  <ToggleCard title="Browser Alerts" desc="Interview invites" icon={<Globe />} active={settings?.web_notifications || false} onToggle={(val) => handleSettingsSave({ web_notifications: val })} />
+                  <ToggleCard title="Mobile Push" desc="Push alerts" icon={<Smartphone />} active={settings?.mobile_notifications || false} onToggle={(val) => handleSettingsSave({ mobile_notifications: val })} />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="text-sm font-bold text-slate-900 mb-2 block">Alert Frequency</label>
+                    <select value={settings?.job_alert_frequency || ""} onChange={(e) => handleSettingsSave({ job_alert_frequency: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium text-slate-900 focus:outline-none focus:border-[#FF8A00] focus:ring-2 focus:ring-[#FF8A00]/20 transition-all">
+                      <option value="" disabled>Select Frequency</option>
+                      <option value="instant">Instant</option>
+                      <option value="daily">Daily Summary</option>
+                      <option value="weekly">Weekly Summary</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-bold text-slate-900 mb-2 block">Timezone</label>
+                    <select value={settings?.timezone || ""} onChange={(e) => handleSettingsSave({ timezone: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium text-slate-900 focus:outline-none focus:border-[#FF8A00] focus:ring-2 focus:ring-[#FF8A00]/20 transition-all">
+                      <option value="" disabled>Select Timezone</option>
+                      <option value="UTC">UTC</option>
+                      <option value="IST">IST (India)</option>
+                      <option value="PST">PST (Pacific)</option>
+                      <option value="EST">EST (Eastern)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* PRIVACY SECTION */}
+            {activeTab === "privacy" && (
+              <div className="bg-white rounded-3xl border border-orange-100/80 shadow-[0_8px_24px_rgba(255,138,0,0.06)] p-8">
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-900 mb-2">Privacy Control</h2>
+                  <p className="text-slate-500 text-sm mb-8">Manage your profile visibility to recruiters.</p>
+                </div>
+
+                <div className="bg-gradient-to-br from-slate-50 to-slate-25 rounded-2xl border border-slate-200 p-8 space-y-6">
+                  <div className="flex flex-col md:flex-row items-center gap-8">
+                    <div className={`h-20 w-20 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg ${settings?.is_public ? "bg-[#FF8A00]" : "bg-slate-700"}`}>
+                      {settings?.is_public ? <Eye className="text-white" size={40} /> : <EyeOff className="text-white" size={40} />}
+                    </div>
+                    <div className="flex-1 text-center md:text-left">
+                      <h3 className="text-xl font-bold text-slate-900 mb-2">{settings?.is_public ? "Public Profile" : "Private Mode"}</h3>
+                      <p className="text-slate-600 mb-6 text-sm">
+                        {settings?.is_public 
+                          ? "Your profile is visible to all recruiters. They can discover you through search and direct messages." 
+                          : "Your profile is hidden from search. Recruiters can only see you if you apply to them."}
+                      </p>
+                      <button onClick={() => handleSettingsSave({ is_public: !settings?.is_public })} className="bg-[#FF8A00] hover:bg-[#E67A00] text-white px-6 py-3 rounded-xl text-sm font-bold transition-all">
+                        {settings?.is_public ? "Enable Private Mode" : "Go Public"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
             </div>
-          )}
+          </div>
         </div>
       </div>
     </div>
+  </div>
   );
 }
 
@@ -501,8 +477,8 @@ function InputGroup({ label, value, onChange, isTextArea = false, isPassword = f
 
 function ToggleCard({ title, desc, icon, active, onToggle }: { title: string, desc: string, icon: React.ReactNode, active: boolean, onToggle: (v: boolean) => void }) {
   return (
-    <div onClick={() => onToggle(!active)} className={`p-6 rounded-lg border-2 transition-all cursor-pointer hover:shadow-md ${active ? "bg-white border-primary shadow-lg" : "bg-slate-50 border-slate-200"}`}>
-      <div className={`h-10 w-10 rounded-lg mb-4 flex items-center justify-center transition-all ${active ? "bg-primary text-white" : "bg-slate-200 text-slate-400"}`}>
+    <div onClick={() => onToggle(!active)} className={`p-6 rounded-2xl border-2 transition-all cursor-pointer hover:shadow-md ${active ? "bg-white border-[#FF8A00] shadow-lg" : "bg-slate-50 border-slate-200"}`}>
+      <div className={`h-10 w-10 rounded-lg mb-4 flex items-center justify-center transition-all ${active ? "bg-[#FF8A00] text-white" : "bg-slate-200 text-slate-400"}`}>
         {icon}
       </div>
       <h4 className="font-bold text-slate-900 text-sm mb-1">{title}</h4>
