@@ -163,7 +163,7 @@ export function CareerReadinessComponent() {
         options: [
           "Immediate (less than 1 month)",
           "Soon (1-3 months)",
-          "Flexible (3-6 months)",
+          "Flexible (3 months)",
           "Long term (6+ months)",
         ],
       },

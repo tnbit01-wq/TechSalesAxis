@@ -10,6 +10,7 @@ from src.core.config import (
     SMTP_PORT,
     SMTP_USER,
     SMTP_PASSWORD,
+    ZEPTO_API_KEY,
     SMTP_FROM_EMAIL,
     SMTP_SENDER_NAME,
     ZEPTO_OTP_TEMPLATE_ID,
@@ -62,10 +63,10 @@ def send_smtp_fallback(recipient, subject, html_content):
 
 def send_templated_email(recipient, template_id, merge_info, fallback_subject="", fallback_html=""):
     print(f"[TEMPLATED_EMAIL] Attempting to send to {recipient} with template_id={template_id}")
-    print(f"[TEMPLATED_EMAIL] SMTP_PASSWORD is set: {bool(SMTP_PASSWORD)}")
+    print(f"[TEMPLATED_EMAIL] ZEPTO_API_KEY is set: {bool(ZEPTO_API_KEY)}")
     
-    if not SMTP_PASSWORD:
-        print(f"[TEMPLATED_EMAIL] ERROR: SMTP_PASSWORD is empty, cannot proceed")
+    if not ZEPTO_API_KEY:
+        print(f"[TEMPLATED_EMAIL] ERROR: ZEPTO_API_KEY is empty, cannot proceed")
         return None
 
     # ZeptoMail App API
@@ -73,7 +74,8 @@ def send_templated_email(recipient, template_id, merge_info, fallback_subject=""
     headers = {
         "Accept": "application/json",
         "Content-Type": "application/json",
-        "Authorization": SMTP_PASSWORD # Raw token often works better for .in
+        # ZeptoMail template API expects this auth scheme.
+        "Authorization": f"Zoho-enczapikey {ZEPTO_API_KEY}"
     }
     
     payload = {

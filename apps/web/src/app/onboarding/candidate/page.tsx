@@ -22,9 +22,15 @@ type Message = {
 type OnboardingState =
   | "INITIAL"
   | "AWAITING_EMPLOYMENT_STATUS"
+  | "AWAITING_BETWEEN_ROLE_DETAIL"
   | "AWAITING_JOB_SEARCH_MODE"
   | "AWAITING_TIMELINE"
   | "AWAITING_PREFERENCES"
+  | "AWAITING_CONTRACT_PREFERENCE"
+  | "AWAITING_VISA_NEED"
+  | "AWAITING_EXPECTED_SALARY"
+  | "AWAITING_CURRENT_SALARY"
+  | "AWAITING_TARGET_MARKET"
   | "AWAITING_RESUME"
   | "AWAITING_RESUME_CHOICE"
   | "AWAITING_MANUAL_BIO"
@@ -265,6 +271,12 @@ function OnboardingContent() {
               "I'm not working",
             ]
           );
+        } else if (savedStep === "AWAITING_CONTRACT_PREFERENCE") {
+          addMessage(
+            "What type of role appeals to you?",
+            "bot",
+            ["Full-time permanent","Contract/Temporary","Either"]
+          );
         } else if (savedStep === "AWAITING_JOB_SEARCH_MODE") {
           addMessage(
             "Great! What brings you to search for opportunities right now?",
@@ -278,13 +290,13 @@ function OnboardingContent() {
           );
         } else if (savedStep === "AWAITING_TIMELINE") {
           addMessage(
-            "What's your timeline for this transition?",
+            "How soon could you realistically start your next role?",
             "bot",
             [
               "Immediately available",
               "Within 1 month",
-              "2-3 months",
-              "Flexible timeline",
+              "Within 2 months",
+              "Within 3 months",
             ]
           );
         } else if (savedStep === "AWAITING_PREFERENCES") {
@@ -502,13 +514,132 @@ function OnboardingContent() {
     }
   };
 
+  const normalizeEmploymentStatus = (value: string | undefined) => {
+    const normalized = (value || "").toLowerCase();
+    if (normalized.includes("student")) return "Student";
+    if (normalized.includes("employ")) return "Employed";
+    if (normalized.includes("between") || normalized.includes("unemploy") || normalized.includes("not_working") || normalized.includes("not working")) {
+      return "Unemployed";
+    }
+    return null;
+  };
+
+  const normalizeJobSearchMode = (value: string | undefined) => {
+    const normalized = (value || "").toLowerCase();
+    if (!normalized) return null;
+    if (normalized.includes("active")) return "active";
+    if (normalized.includes("passive") || normalized.includes("open_to_offers") || normalized.includes("open to offers")) return "passive";
+    if (normalized.includes("explor") || normalized.includes("growth") || normalized.includes("transition")) return "exploring";
+    return "exploring";
+  };
+
+  const normalizeNoticePeriodDays = (value: any) => {
+    const validNoticePeriods = [0, 7, 14, 30, 60, 90, 180];
+
+    if (typeof value === "number") {
+      if (validNoticePeriods.includes(value)) return value;
+      if (value <= 0) return 0;
+      if (value <= 7) return 7;
+      if (value <= 14) return 14;
+      if (value <= 30) return 30;
+      if (value <= 60) return 60;
+      if (value <= 90) return 90;
+      return 180;
+    }
+
+    const normalized = (value || "").toString().toLowerCase();
+    if (!normalized) return null;
+    if (normalized.includes("immediate")) return 0;
+    if (normalized.includes("week")) return 14;
+    if (normalized.includes("one_month") || normalized.includes("within_1_month") || normalized.includes("within_30_days") || normalized.includes("1 month")) return 30;
+    if (normalized.includes("two_months") || normalized.includes("within_2_months") || normalized.includes("2 month") || normalized.includes("two_to_three_months") || normalized.includes("2-3")) return 60;
+    if (normalized.includes("three_months") || normalized.includes("within_3_months") || normalized.includes("3 month")) return 90;
+    if (normalized.includes("flexible")) return 90;
+    return null;
+  };
+
+  const inferWillingToRelocate = (data: any) => {
+    if (typeof data?.willing_to_relocate === "boolean") return data.willing_to_relocate;
+    const preference = (data?.work_location_preference || "").toString().toLowerCase();
+    return preference === "any" || preference === "flexible";
+  };
+
+  const shouldSkipTimeline = (employmentStatus: string) => {
+    const lower = (employmentStatus || "").toLowerCase();
+    return lower.includes("student");
+  };
+
+  const shouldSkipCurrentSalary = (employmentStatus: string) => {
+    const lower = (employmentStatus || "").toLowerCase();
+    return lower.includes("student");
+  };
+
+  const getNextStateAfterJobSearch = (data: any) => {
+    if (shouldSkipTimeline(data?.employment_status)) {
+      return "AWAITING_PREFERENCES";
+    }
+    return "AWAITING_TIMELINE";
+  };
+
+  const getNextStateAfterTimeline = (data: any) => {
+    return "AWAITING_PREFERENCES";
+  };
+
+  const getNextStateAfterPreferences = (data: any) => {
+    return "AWAITING_CONTRACT_PREFERENCE";
+  };
+
+  const buildCareerReadinessPayload = (data: any) => {
+    const employment_status = normalizeEmploymentStatus(data?.employment_status);
+    const job_search_mode = normalizeJobSearchMode(data?.job_search_mode);
+    const notice_period_days = normalizeNoticePeriodDays(data?.notice_period_days ?? data?.timeline);
+
+    // Must have employment status and job search mode
+    if (!employment_status || !job_search_mode) {
+      return null;
+    }
+
+    // Only require notice_period_days if the question was asked (not a student)
+    const isStudent = shouldSkipTimeline(employment_status);
+    if (!isStudent && notice_period_days === null) {
+      return null;
+    }
+
+    // Only include current_salary if the question was asked
+    const shouldAskCurrentSalary = !shouldSkipCurrentSalary(employment_status);
+    const current_salary = shouldAskCurrentSalary && typeof data?.current_salary === "number" 
+      ? data.current_salary 
+      : null;
+    const expected_salary = typeof data?.expected_salary === "number" ? data.expected_salary : null;
+
+    return {
+      employment_status,
+      job_search_mode,
+      notice_period_days: isStudent ? null : notice_period_days,
+      willing_to_relocate: inferWillingToRelocate(data),
+      contract_preference: data?.contract_preference || "fulltime",
+      visa_sponsorship_needed: data?.visa_sponsorship_needed ?? false,
+      salary_flexibility: typeof data?.salary_flexibility === "number" ? data.salary_flexibility : 0.5,
+      expected_salary: expected_salary,
+      current_salary: current_salary,
+      exploration_trigger: job_search_mode || null,
+      target_market_segment: data?.target_market_segment || "any",
+      current_company_name: data?.current_company_name || null,
+      between_role_detail: data?.between_role_detail || null,
+      between_role_note: data?.between_role_note || null,
+    };
+  };
+
   // Sync career readiness data to backend
   const syncCRDataToBackend = async (data: any) => {
     try {
       const token = awsAuth.getToken() || undefined;
       if (!token) return false;
+
+      const payload = buildCareerReadinessPayload(data);
+      if (!payload) return false;
       
-      await apiClient.patch("/candidate/career-readiness", data, token);
+      await apiClient.post("/api/v1/candidate/career-readiness/save", payload, token);
       return true;
     } catch (err) {
       console.error("[SYNC ERROR]", err);
@@ -571,7 +702,9 @@ function OnboardingContent() {
 
             if (analysisResponse?.extracted_info?.employment_status) {
               const status = analysisResponse.extracted_info.employment_status;
-              setCareerReadinessData(prev => ({ ...prev, employment_status: status }));
+              const nextCRData = { ...careerReadinessData, employment_status: status };
+              setCareerReadinessData(nextCRData);
+              saveCRDataToStorage(nextCRData);
               
               // Acknowledge understanding and move forward
               addMessage(
@@ -579,13 +712,25 @@ function OnboardingContent() {
                 "bot"
               );
 
-              setTimeout(() => {
-                addMessage(
-                  "What brings you to explore opportunities right now?",
-                  "bot"
-                );
-                setState("AWAITING_JOB_SEARCH_MODE");
-              }, 800);
+              // If user is between roles, ask for a short detail (laid off, contract ended, resigned, other)
+              if (status === "between_roles") {
+                setTimeout(() => {
+                  addMessage(
+                    "Can you tell me which best describes your situation? Were you laid off, did a contract end, did you resign, or something else?",
+                    "bot",
+                    ["Laid off", "Contract ended", "Resigned", "Other"]
+                  );
+                  setState("AWAITING_BETWEEN_ROLE_DETAIL");
+                }, 600);
+              } else {
+                setTimeout(() => {
+                  addMessage(
+                    "What brings you to explore opportunities right now?",
+                    "bot"
+                  );
+                  setState("AWAITING_JOB_SEARCH_MODE");
+                }, 800);
+              }
             } else {
               // AI couldn't extract, ask for clarification
               addMessage(
@@ -610,16 +755,29 @@ function OnboardingContent() {
             else if (lower.includes("not")) status = "not_working";
 
             if (status) {
-              setCareerReadinessData(prev => ({ ...prev, employment_status: status }));
+              const nextCRData = { ...careerReadinessData, employment_status: status };
+              setCareerReadinessData(nextCRData);
+              saveCRDataToStorage(nextCRData);
               addMessage(`Got it! You're ${status.replace('_', ' ')}.`, "bot");
 
-              setTimeout(() => {
-                addMessage(
-                  "What brings you to explore opportunities right now?",
-                  "bot"
-                );
-                setState("AWAITING_JOB_SEARCH_MODE");
-              }, 800);
+              if (status === "between_roles") {
+                setTimeout(() => {
+                  addMessage(
+                    "Can you tell me which best describes your situation? Were you laid off, did a contract end, did you resign, or something else?",
+                    "bot",
+                    ["Laid off", "Contract ended", "Resigned", "Other"]
+                  );
+                  setState("AWAITING_BETWEEN_ROLE_DETAIL");
+                }, 600);
+              } else {
+                setTimeout(() => {
+                  addMessage(
+                    "What brings you to explore opportunities right now?",
+                    "bot"
+                  );
+                  setState("AWAITING_JOB_SEARCH_MODE");
+                }, 800);
+              }
             } else {
               addMessage(
                 "I want to make sure I understand. Are you currently employed, between roles, a student, or not working?",
@@ -660,22 +818,53 @@ function OnboardingContent() {
           return;
         }
 
-        setCareerReadinessData(prev => ({ ...prev, employment_status: status }));
+        const nextCRData = { ...careerReadinessData, employment_status: status };
+        setCareerReadinessData(nextCRData);
+        saveCRDataToStorage(nextCRData);
         addMessage(`Got it! You're ${status.replace('_', ' ')}.`, "bot");
 
-        setTimeout(() => {
-          addMessage(
-            "What brings you to explore opportunities right now?",
-            "bot",
-            [
-              "Active job search",
-              "Explore opportunities",
-              "Career transition",
-              "Learning & growth",
-            ]
-          );
-          setState("AWAITING_JOB_SEARCH_MODE");
-        }, 800);
+        if (status === "between_roles") {
+          setTimeout(() => {
+            addMessage(
+              "Can you tell me which best describes your situation? Were you laid off, did a contract end, did you resign, or something else?",
+              "bot",
+              ["Laid off", "Contract ended", "Resigned", "Other"]
+            );
+            setState("AWAITING_BETWEEN_ROLE_DETAIL");
+          }, 600);
+        } else {
+          setTimeout(() => {
+            addMessage(
+              "What brings you to explore opportunities right now?",
+              "bot",
+              [
+                "Active job search",
+                "Explore opportunities",
+                "Career transition",
+                "Learning & growth",
+              ]
+            );
+            setState("AWAITING_JOB_SEARCH_MODE");
+          }, 800);
+        }
+        setIsLoading(false);
+        return;
+      }
+
+      if (state === "AWAITING_BETWEEN_ROLE_DETAIL") {
+        // Collect short reason for being between roles (laid off, contract ended, resigned, other)
+        const lowerDetail = workingInput.toLowerCase();
+        let detail = "other";
+        if (lowerDetail.includes("laid") || lowerDetail.includes("layoff") || lowerDetail.includes("fired")) detail = "laid_off";
+        else if (lowerDetail.includes("contract")) detail = "contract_ended";
+        else if (lowerDetail.includes("resign")) detail = "resigned";
+        const note = detail === "other" ? workingInput : null;
+        const nextCRData = { ...careerReadinessData, between_role_detail: detail, between_role_note: note };
+        setCareerReadinessData(nextCRData);
+        saveCRDataToStorage(nextCRData);
+        await syncCRDataToBackend(nextCRData);
+        addMessage("Thanks for sharing — that helps. What brings you to explore opportunities right now?", "bot", ["Active job search","Explore opportunities","Career transition","Learning & growth"]);
+        setState("AWAITING_JOB_SEARCH_MODE");
         setIsLoading(false);
         return;
       }
@@ -695,19 +884,37 @@ function OnboardingContent() {
 
             if (analysisResponse?.extracted_info?.job_search_mode) {
               const mode = analysisResponse.extracted_info.job_search_mode;
-              setCareerReadinessData(prev => ({ ...prev, job_search_mode: mode }));
+              const nextCRData = { ...careerReadinessData, job_search_mode: mode };
+              setCareerReadinessData(nextCRData);
+              saveCRDataToStorage(nextCRData);
               addMessage(
                 `Great! So you're looking to ${mode.replace('_', ' ')}. I understand your motivation.`,
                 "bot"
               );
 
+              // Check if we should skip timeline for students
+              if (shouldSkipTimeline(careerReadinessData?.employment_status)) {
+                // Don't set arbitrary defaults for skipped questions
+                // Only persist what user actually answered
+                setTimeout(() => {
+                  addMessage("Any work arrangement preferences?", "bot");
+                  setState("AWAITING_PREFERENCES");
+                }, 800);
+                return;
+              }
+
               setTimeout(() => {
-                addMessage("What's your timeline for this transition?", "bot");
+                addMessage("How soon could you realistically start your next role?", "bot", [
+                  "Immediately available",
+                  "Within 1 month",
+                  "Within 2 months",
+                  "Within 3 months",
+                ]);
                 setState("AWAITING_TIMELINE");
               }, 800);
             } else {
               addMessage(
-                "Are you looking for an active job search, exploring opportunities, a career transition, or learning & growth?",
+                "Are you actively searching, exploring, transitioning, or learning?",
                 "bot",
                 [
                   "Active job search",
@@ -726,10 +933,17 @@ function OnboardingContent() {
             else if (lower.includes("learning") || lower.includes("growth")) mode = "growth";
 
             if (mode) {
-              setCareerReadinessData(prev => ({ ...prev, job_search_mode: mode }));
+              const nextCRData = { ...careerReadinessData, job_search_mode: mode };
+              setCareerReadinessData(nextCRData);
+              saveCRDataToStorage(nextCRData);
               addMessage(`Perfect! ${mode.replace('_', ' ')} is a great approach.`, "bot");
               setTimeout(() => {
-                addMessage("What's your timeline?", "bot");
+                addMessage("How soon could you realistically start your next role?", "bot", [
+                  "Immediately available",
+                  "Within 1 month",
+                  "Within 2 months",
+                  "Within 3 months",
+                ]);
                 setState("AWAITING_TIMELINE");
               }, 800);
             } else {
@@ -772,18 +986,41 @@ function OnboardingContent() {
           return;
         }
 
-        setCareerReadinessData(prev => ({ ...prev, job_search_mode: mode }));
+        const nextCRData = { ...careerReadinessData, job_search_mode: mode };
+        setCareerReadinessData(nextCRData);
+        saveCRDataToStorage(nextCRData);
         addMessage(`Perfect! ${mode.replace('_', ' ')} is a great approach.`, "bot");
+
+        // Check if we should skip timeline question (e.g., for students)
+        if (shouldSkipTimeline(careerReadinessData?.employment_status)) {
+          // Don't set arbitrary defaults for skipped questions
+          addMessage("Got it! Let's focus on your preferences.", "bot");
+          setTimeout(() => {
+            addMessage(
+              "Any preferences for location or work arrangement?",
+              "bot",
+              [
+                "Remote only",
+                "On-site",
+                "Hybrid",
+                "Open to all",
+              ]
+            );
+            setState("AWAITING_PREFERENCES");
+          }, 800);
+          setIsLoading(false);
+          return;
+        }
 
         setTimeout(() => {
           addMessage(
-            "What's your timeline?",
+            "How soon could you realistically start your next role?",
             "bot",
             [
               "Immediately available",
               "Within 1 month",
-              "2-3 months",
-              "Flexible timeline",
+              "Within 2 months",
+              "Within 3 months",
             ]
           );
           setState("AWAITING_TIMELINE");
@@ -810,7 +1047,10 @@ function OnboardingContent() {
               : null;
 
             if (timeline) {
-              setCareerReadinessData(prev => ({ ...prev, timeline }));
+              const notice_period_days = normalizeNoticePeriodDays(analysisResponse?.extracted_info?.notice_period_days ?? timeline);
+              const nextCRData = { ...careerReadinessData, timeline, notice_period_days };
+              setCareerReadinessData(nextCRData);
+              saveCRDataToStorage(nextCRData);
               addMessage(
                 `Got it! ${timeline.replace('_', ' ')} works perfectly.`,
                 "bot"
@@ -822,13 +1062,13 @@ function OnboardingContent() {
               }, 800);
             } else {
               addMessage(
-                "When are you looking to make this transition? Immediately, within a month, 2-3 months, or flexible?",
+                "How soon could you realistically start your next role?",
                 "bot",
                 [
                   "Immediately available",
                   "Within 1 month",
-                  "2-3 months",
-                  "Flexible timeline",
+                  "Within 2 months",
+                  "Within 3 months",
                 ]
               );
             }
@@ -837,11 +1077,15 @@ function OnboardingContent() {
             const lower = workingInput.toLowerCase();
             if (lower.includes("immediately")) timeline = "immediate";
             else if (lower.includes("week") || lower.includes("1 month")) timeline = "one_month";
-            else if (lower.includes("2") || lower.includes("3")) timeline = "two_to_three_months";
+            else if (lower.includes("2 month") || lower.includes("within 2")) timeline = "two_months";
+            else if (lower.includes("3 month") || lower.includes("within 3")) timeline = "three_months";
             else if (lower.includes("flexible")) timeline = "flexible";
 
             if (timeline) {
-              setCareerReadinessData(prev => ({ ...prev, timeline }));
+              const notice_period_days = normalizeNoticePeriodDays(timeline);
+              const nextCRData = { ...careerReadinessData, timeline, notice_period_days };
+              setCareerReadinessData(nextCRData);
+              saveCRDataToStorage(nextCRData);
               addMessage(`Noted! That's very realistic.`, "bot");
               setTimeout(() => {
                 addMessage("Any work location preferences?", "bot");
@@ -849,13 +1093,13 @@ function OnboardingContent() {
               }, 800);
             } else {
               addMessage(
-                "Please let me know your timeline - immediately, within a month, 2-3 months, or flexible?",
+                "Please select your timeline:",
                 "bot",
                 [
                   "Immediately available",
                   "Within 1 month",
-                  "2-3 months",
-                  "Flexible timeline",
+                  "Within 2 months",
+                  "Within 3 months",
                 ]
               );
             }
@@ -869,7 +1113,8 @@ function OnboardingContent() {
         const lower = workingInput.toLowerCase();
         if (lower.includes("immediately")) timeline = "immediate";
         else if (lower.includes("week") || lower.includes("1 month")) timeline = "one_month";
-        else if (lower.includes("2") || lower.includes("3")) timeline = "two_to_three_months";
+        else if (lower.includes("2 month") || lower.includes("within 2")) timeline = "two_months";
+        else if (lower.includes("3 month") || lower.includes("within 3")) timeline = "three_months";
         else if (lower.includes("flexible")) timeline = "flexible";
 
         if (!timeline) {
@@ -879,15 +1124,18 @@ function OnboardingContent() {
             [
               "Immediately available",
               "Within 1 month",
-              "2-3 months",
-              "Flexible timeline",
+              "Within 2 months",
+              "Within 3 months",
             ],
           );
           setIsLoading(false);
           return;
         }
 
-        setCareerReadinessData(prev => ({ ...prev, timeline }));
+        const notice_period_days = normalizeNoticePeriodDays(timeline);
+        const nextCRData = { ...careerReadinessData, timeline, notice_period_days };
+        setCareerReadinessData(nextCRData);
+        saveCRDataToStorage(nextCRData);
         addMessage(`Noted! That's very realistic.`, "bot");
 
         setTimeout(() => {
@@ -926,7 +1174,14 @@ function OnboardingContent() {
                                workingInput.toLowerCase().includes("hybrid") ? "hybrid" : "flexible";
             
             if (preferences) {
-              setCareerReadinessData(prev => ({ ...prev, work_location_preference: preferences }));
+              const nextCRData = {
+                ...careerReadinessData,
+                work_location_preference: preferences,
+                willing_to_relocate: preferences !== "remote",
+              };
+              setCareerReadinessData(nextCRData);
+              saveCRDataToStorage(nextCRData);
+              await syncCRDataToBackend(nextCRData);
               addMessage(
                 `Perfect! ${preferences} works great. Now I have a clear picture of your career goals.`,
                 "bot"
@@ -966,7 +1221,14 @@ function OnboardingContent() {
             else if (lower.includes("open") || lower.includes("all")) preferences = "any";
 
             if (preferences) {
-              setCareerReadinessData(prev => ({ ...prev, work_location_preference: preferences }));
+              const nextCRData = {
+                ...careerReadinessData,
+                work_location_preference: preferences,
+                willing_to_relocate: preferences !== "remote",
+              };
+              setCareerReadinessData(nextCRData);
+              saveCRDataToStorage(nextCRData);
+              await syncCRDataToBackend(nextCRData);
               addMessage(`Great! Now I understand your full preferences.`, "bot");
               setTimeout(() => {
                 addMessage("Which experience band describes your level?", "bot", [
@@ -1017,8 +1279,192 @@ function OnboardingContent() {
           return;
         }
 
-        setCareerReadinessData(prev => ({ ...prev, work_location_preference: preferences }));
+        const nextCRData = {
+          ...careerReadinessData,
+          work_location_preference: preferences,
+          willing_to_relocate: preferences !== "remote",
+        };
+        setCareerReadinessData(nextCRData);
+        saveCRDataToStorage(nextCRData);
+        await syncCRDataToBackend(nextCRData);
         addMessage(`Great! Now I have a clear picture of your career goals.`, "bot");
+
+        // Ask additional preference questions: contract, visa, salary, target market
+        setTimeout(() => {
+          addMessage(
+            "Do you prefer full-time, contract, or either?",
+            "bot",
+            ["Full-time","Contract/Contractor","Either"]
+          );
+          setState("AWAITING_CONTRACT_PREFERENCE");
+        }, 800);
+        setIsLoading(false);
+        return;
+      }
+
+      // AWAITING_CONTRACT_PREFERENCE - collect contract type
+      if (state === "AWAITING_CONTRACT_PREFERENCE") {
+        let pref = "";
+        const lower = workingInput.toLowerCase();
+        if (lower.includes("full")) pref = "fulltime";
+        else if (lower.includes("contract")) pref = "contract";
+        else if (lower.includes("either") || lower.includes("any")) pref = "both";
+
+        if (!pref) {
+          addMessage("Please select: Full-time permanent, Contract/Temporary, or Either.", "bot", ["Full-time permanent","Contract/Temporary","Either"]);
+          setIsLoading(false);
+          return;
+        }
+
+        const nextCRData = { ...careerReadinessData, contract_preference: pref };
+        setCareerReadinessData(nextCRData);
+        saveCRDataToStorage(nextCRData);
+        await syncCRDataToBackend(nextCRData);
+        addMessage(`Got it: ${pref === "fulltime" ? "full-time" : pref === "contract" ? "contract" : "either"}.`, "bot");
+
+        setTimeout(() => {
+          addMessage("Will you need visa sponsorship?", "bot", ["Yes","No"]);
+          setState("AWAITING_VISA_NEED");
+        }, 600);
+
+        setIsLoading(false);
+        return;
+      }
+
+      // AWAITING_VISA_NEED - collect visa sponsorship need
+      if (state === "AWAITING_VISA_NEED") {
+        const lower = workingInput.toLowerCase();
+        const needsVisa = lower === "yes" || lower.startsWith("yes") || lower === "y";
+        const noVisa = lower === "no" || lower.startsWith("no") || lower === "n";
+
+        if (!needsVisa && !noVisa) {
+          addMessage("Please choose: Yes or No.", "bot", ["Yes","No"]);
+          setIsLoading(false);
+          return;
+        }
+
+        const nextCRData = { ...careerReadinessData, visa_sponsorship_needed: !!needsVisa };
+        setCareerReadinessData(nextCRData);
+        saveCRDataToStorage(nextCRData);
+        await syncCRDataToBackend(nextCRData);
+        addMessage(`${needsVisa ? "Noted: you'll need visa sponsorship." : "Got it: no visa sponsorship needed."}`, "bot");
+
+        setTimeout(() => {
+          addMessage("What's your expected salary range?", "bot");
+          setState("AWAITING_EXPECTED_SALARY");
+        }, 600);
+
+        setIsLoading(false);
+        return;
+      }
+
+      // AWAITING_EXPECTED_SALARY - collect expected salary numeric
+      if (state === "AWAITING_EXPECTED_SALARY") {
+        const digits = workingInput.replace(/[^0-9.]/g, "");
+        const expected = digits ? parseFloat(digits) : null;
+        if (!expected) {
+          addMessage("Please enter a numeric expected salary amount (numbers only).", "bot");
+          setIsLoading(false);
+          return;
+        }
+
+        const nextCRData = { ...careerReadinessData, expected_salary: expected };
+        setCareerReadinessData(nextCRData);
+        saveCRDataToStorage(nextCRData);
+        await syncCRDataToBackend(nextCRData);
+        addMessage(`Noted expected salary: ${expected}.`, "bot");
+
+        setTimeout(() => {
+          const statusLower = (careerReadinessData?.employment_status || "").toLowerCase();
+          if (statusLower.includes("student")) {
+            addMessage("What market would you prefer? (Local / National / Any)", "bot", ["Local only","Nationwide","Any"]);
+            setState("AWAITING_TARGET_MARKET");
+          } else if (statusLower.includes("between") || statusLower.includes("unemploy") || statusLower.includes("not_working") || statusLower.includes("not working")) {
+            addMessage("What was your last package? (type 'none' if not applicable)", "bot");
+            setState("AWAITING_CURRENT_SALARY");
+          } else {
+            addMessage("What's your current package? (type 'none' if not applicable)", "bot");
+            setState("AWAITING_CURRENT_SALARY");
+          }
+        }, 600);
+
+        setIsLoading(false);
+        return;
+      }
+
+      // AWAITING_CURRENT_SALARY - collect current package numeric or none
+      if (state === "AWAITING_CURRENT_SALARY") {
+        // Skip for students only
+        if (shouldSkipCurrentSalary(careerReadinessData?.employment_status)) {
+          // Don't sync - this question wasn't asked, so don't persist any value
+          setTimeout(() => {
+            addMessage("What market would you prefer? (Local / National / Any)", "bot", ["Local only","Nationwide","Any"]);
+            setState("AWAITING_TARGET_MARKET");
+          }, 600);
+
+          setIsLoading(false);
+          return;
+        }
+
+        const lower = workingInput.toLowerCase();
+        if (lower.includes("none") || lower.includes("not") || lower.includes("na")) {
+          const nextCRData = { ...careerReadinessData, current_salary: null };
+          setCareerReadinessData(nextCRData);
+          saveCRDataToStorage(nextCRData);
+          await syncCRDataToBackend(nextCRData);
+          addMessage(`No current salary recorded.`, "bot");
+
+          setTimeout(() => {
+            addMessage("What market would you prefer? (Local / National / Any)", "bot", ["Local only","Nationwide","Any"]);
+            setState("AWAITING_TARGET_MARKET");
+          }, 600);
+
+          setIsLoading(false);
+          return;
+        }
+
+        const digits = workingInput.replace(/[^0-9.]/g, "");
+        const current = digits ? parseFloat(digits) : null;
+        if (current === null) {
+          addMessage("Please enter a numeric package amount or 'none'.", "bot");
+          setIsLoading(false);
+          return;
+        }
+
+        const nextCRData = { ...careerReadinessData, current_salary: current };
+        setCareerReadinessData(nextCRData);
+        saveCRDataToStorage(nextCRData);
+        await syncCRDataToBackend(nextCRData);
+        addMessage(`Current package recorded.`, "bot");
+
+        setTimeout(() => {
+          addMessage("What market would you prefer? (Local / National / Any)", "bot", ["Local only","Nationwide","Any"]);
+          setState("AWAITING_TARGET_MARKET");
+        }, 600);
+
+        setIsLoading(false);
+        return;
+      }
+
+      // AWAITING_TARGET_MARKET - collect target market
+      if (state === "AWAITING_TARGET_MARKET") {
+        const lower = workingInput.toLowerCase();
+        let market = "any";
+        if (lower.includes("local")) market = "local";
+        else if (lower.includes("nation") || lower.includes("national")) market = "national";
+        else market = "any";
+        
+        if (!lower.includes("local") && !lower.includes("nation") && !lower.includes("any") && !lower.includes("open")) {
+          addMessage("Please select: Local only, National, or Open to any location.", "bot", ["Local only","National","Open to any"]);
+          setIsLoading(false);
+          return;
+        }
+
+        const nextCRData = { ...careerReadinessData, target_market_segment: market };
+        setCareerReadinessData(nextCRData);
+        saveCRDataToStorage(nextCRData);
+        await syncCRDataToBackend(nextCRData);
+        addMessage(`Thanks — preferences saved.`, "bot");
 
         setTimeout(() => {
           addMessage(
@@ -1033,6 +1479,7 @@ function OnboardingContent() {
           );
           setState("AWAITING_EXPERIENCE");
         }, 800);
+
         setIsLoading(false);
         return;
       }

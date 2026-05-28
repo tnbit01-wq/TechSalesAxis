@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
@@ -12,17 +12,38 @@ interface CandidateStats {
   assessment_status: string; identity_verified: boolean; profile_views_count?: number;
 }
 
+interface AssessmentFeedbackReport {
+  overall_tier?: string;
+  final_score?: number;
+  score_explanation?: string;
+  strengths?: string[];
+  improvement_areas?: string[];
+  recommendations?: string[];
+  next_steps?: string[];
+  visibility_impact?: string;
+  generated_at?: string;
+  llm_feedback?: {
+    overall_summary?: string;
+    category_feedback?: Record<string, { summary?: string; next_move?: string; practice?: string }>;
+    [key: string]: any;
+  };
+}
+
 export default function CandidateDashboard() {
   const router = useRouter();
   const [stats, setStats] = useState<CandidateStats | null>(null);
   const [jobs, setJobs] = useState<any[]>([]);
+  const [feedback, setFeedback] = useState<AssessmentFeedbackReport | null>(null);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState("there");
+  const feedbackLoadedRef = useRef(false);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (options?: { refreshFeedback?: boolean }) => {
     try {
       const token = awsAuth.getToken();
       if (!token) { router.replace("/login"); return; }
+      const shouldRefreshFeedback = Boolean(options?.refreshFeedback) || !feedbackLoadedRef.current;
       const [s, p, j] = await Promise.all([
         apiClient.get("/candidate/stats", token),
         apiClient.get("/candidate/profile", token).catch(() => null),
@@ -31,11 +52,33 @@ export default function CandidateDashboard() {
       setStats(s);
       if (p?.full_name) setUserName(p.full_name.split(" ")[0]);
       setJobs((j?.data || j?.recommended_jobs || j?.recommendations || []).slice(0, 4));
+
+      const assessmentCompleted = (s?.assessment_status || "").toLowerCase() === "completed";
+
+      if (assessmentCompleted && shouldRefreshFeedback) {
+        setFeedbackLoading(true);
+        const fb = await apiClient.get("/assessment/feedback", token).catch(() => null);
+        if (fb?.data) {
+          setFeedback(fb.data);
+          feedbackLoadedRef.current = true;
+        } else if (fb && !fb.error) {
+          setFeedback(fb);
+          feedbackLoadedRef.current = true;
+        }
+        setFeedbackLoading(false);
+      } else if (!assessmentCompleted) {
+        feedbackLoadedRef.current = false;
+        setFeedback(null);
+      }
     } catch {}
     finally { setLoading(false); }
   }, [router]);
 
-  useEffect(() => { loadData(); const iv = setInterval(loadData, 60000); return () => clearInterval(iv); }, [loadData]);
+  useEffect(() => {
+    loadData({ refreshFeedback: true });
+    const iv = setInterval(() => loadData({ refreshFeedback: false }), 60000);
+    return () => clearInterval(iv);
+  }, [loadData]);
 
   if (loading) return <div className="h-[calc(100vh-64px)] flex items-center justify-center bg-[#F8F9FC]"><div className="flex flex-col items-center gap-3"><div className="h-9 w-9 rounded-full border-[2.5px] border-slate-200 border-t-[#FF8A00] animate-spin" /><p className="text-[11px] text-slate-400 font-medium tracking-widest uppercase">Loading…</p></div></div>;
   if (!stats) return <div className="h-[calc(100vh-64px)] flex items-center justify-center bg-[#F8F9FC]"><div className="text-center"><p className="text-sm text-slate-600 mb-4">Could not load dashboard</p><button onClick={() => window.location.reload()} className="px-5 py-2.5 bg-[#FF8A00] text-white rounded-xl text-[13px] font-semibold">Retry</button></div></div>;
@@ -55,8 +98,8 @@ export default function CandidateDashboard() {
   const idPct = stats.identity_verified ? 100 : 0;
 
   return (
-    <div className="h-[calc(100vh-64px)] bg-[#F8F9FC] overflow-hidden">
-      <div className="h-full p-5 flex flex-col gap-4">
+    <div className="min-h-[calc(100vh-64px)] bg-[#F8F9FC] overflow-y-auto overflow-x-hidden">
+      <div className="min-h-[calc(100vh-64px)] p-5 flex flex-col gap-4 pb-8">
         {/* ── TOP ROW: Welcome (narrow) + 4 KPIs ── */}
         <div className="flex gap-4 flex-shrink-0">
           {/* Welcome — compact horizontal strip */}
@@ -179,6 +222,89 @@ export default function CandidateDashboard() {
               </div>
             </div>
 
+            {/* Assessment Feedback */}
+            <div className="flex-shrink-0 bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_3px_rgba(0,0,0,0.04),0_6px_24px_rgba(0,0,0,0.04)] overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100/80">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <Sparkles className="h-4 w-4 text-[#FF8A00]" strokeWidth={2} />
+                    <h2 className="text-[14px] font-bold text-[#0F172A] tracking-tight">Assessment Feedback</h2>
+                  </div>
+                  <p className="text-[11px] text-slate-400">Category-level coaching and your 30-day improvement plan</p>
+                </div>
+                <Link href="/assessment/candidate" className="text-[11px] font-semibold text-[#FF8A00] hover:text-[#E67A00] transition-colors">Retake flow</Link>
+              </div>
+
+              <div className="p-5 space-y-4">
+                {feedbackLoading ? (
+                  <div className="flex items-center gap-3 text-slate-500 text-[12px]">
+                    <div className="h-4 w-4 rounded-full border-2 border-slate-200 border-t-[#FF8A00] animate-spin" />
+                    Loading feedback...
+                  </div>
+                ) : feedback ? (
+                  <>
+                    <div className="rounded-2xl bg-gradient-to-br from-orange-50 to-amber-50 border border-orange-100 p-4">
+                      <div className="flex items-center justify-between gap-3 mb-2">
+                        <div>
+                          <p className="text-[10px] font-bold text-[#FF8A00] uppercase tracking-[0.14em]">{feedback.overall_tier || "Assessment"}</p>
+                          <p className="text-[13px] font-semibold text-[#0F172A] mt-1">{feedback.llm_feedback?.overall_summary || feedback.score_explanation || "Your assessment feedback is ready."}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className="text-[28px] font-black text-[#0F172A] leading-none">{feedback.final_score ?? score}</span>
+                          <span className="text-[12px] font-bold text-slate-400">/100</span>
+                        </div>
+                      </div>
+                      {feedback.visibility_impact && (
+                        <p className="text-[11px] text-slate-600 leading-relaxed">{feedback.visibility_impact}</p>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <FeedbackList title="Strengths" items={feedback.strengths || []} tone="emerald" />
+                      <FeedbackList title="Improve" items={feedback.improvement_areas || []} tone="amber" />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {Object.entries(feedback.llm_feedback?.category_feedback || {}).slice(0, 4).map(([category, item]) => (
+                        <div key={category} className="rounded-2xl border border-slate-100 bg-slate-50/70 p-3.5">
+                          <div className="flex items-center justify-between mb-1">
+                            <p className="text-[11px] font-bold text-[#0F172A] capitalize">{category}</p>
+                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.12em]">Coach tip</span>
+                          </div>
+                          <p className="text-[11px] text-slate-600 leading-relaxed">{item?.summary || item?.next_move || item?.practice || "Keep improving this category."}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {(feedback.llm_feedback?.["30_day_plan"] || feedback.recommendations || feedback.next_steps) && (
+                      <div className="rounded-2xl border border-slate-100 p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-[11px] font-bold text-[#0F172A] uppercase tracking-[0.14em]">30-day plan</p>
+                          <span className="text-[10px] font-semibold text-slate-400">Retake after 30 days</span>
+                        </div>
+                        <ol className="space-y-2">
+                          {(feedback.llm_feedback?.["30_day_plan"] || feedback.recommendations || feedback.next_steps || []).slice(0, 4).map((item: string, index: number) => (
+                            <li key={`${index}-${item}`} className="flex gap-2 text-[11px] text-slate-600 leading-relaxed">
+                              <span className="mt-0.5 h-5 w-5 rounded-full bg-[#FF8A00]/10 text-[#FF8A00] flex items-center justify-center text-[10px] font-bold shrink-0">{index + 1}</span>
+                              <span>{item}</span>
+                            </li>
+                          ))}
+                        </ol>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-center">
+                    <p className="text-[13px] font-semibold text-[#0F172A]">No feedback yet</p>
+                    <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">Complete your assessment to unlock category feedback and a 30-day improvement plan.</p>
+                    <Link href="/assessment/candidate">
+                      <button className="mt-3 px-4 py-2 rounded-xl bg-[#FF8A00] text-white text-[11px] font-semibold hover:bg-[#E67A00] transition-all">Go to assessment</button>
+                    </Link>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Application Status */}
             <div className="flex-1 min-h-0 bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_3px_rgba(0,0,0,0.04),0_6px_24px_rgba(0,0,0,0.04)] flex flex-col overflow-hidden">
               <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100/80 flex-shrink-0">
@@ -252,6 +378,31 @@ function StatusRow({ label, value, icon: Icon, accent }: { label: string; value:
         <span className="text-[12px] font-medium text-slate-600">{label}</span>
       </div>
       <span className="text-[14px] font-bold text-[#0F172A]">{value}</span>
+    </div>
+  );
+}
+
+function FeedbackList({ title, items, tone }: { title: string; items: string[]; tone: "emerald" | "amber" }) {
+  const toneStyles = {
+    emerald: { badge: "bg-emerald-50 text-emerald-600", dot: "bg-emerald-500" },
+    amber: { badge: "bg-amber-50 text-amber-600", dot: "bg-amber-500" },
+  };
+  const style = toneStyles[tone];
+
+  return (
+    <div className="rounded-2xl border border-slate-100 p-3.5 bg-white">
+      <div className={`inline-flex items-center gap-2 px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-[0.12em] ${style.badge}`}>
+        <span className={`h-1.5 w-1.5 rounded-full ${style.dot}`} />
+        {title}
+      </div>
+      <ul className="mt-3 space-y-2">
+        {(items.length ? items : ["No item available yet."]).slice(0, 3).map((item, index) => (
+          <li key={`${title}-${index}`} className="text-[11px] text-slate-600 leading-relaxed flex gap-2">
+            <span className={`mt-1 h-1.5 w-1.5 rounded-full ${style.dot} shrink-0`} />
+            <span>{item}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

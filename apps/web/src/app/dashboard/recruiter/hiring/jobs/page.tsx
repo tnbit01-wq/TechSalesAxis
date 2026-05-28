@@ -73,6 +73,21 @@ export default function JobsManagement() {
 
   const isLocked = Boolean(profile && (profile.companies?.profile_score ?? 0) === 0);
 
+  const getExperienceBandLabel = (band: string) => {
+    switch (band) {
+      case "fresher":
+        return "0-1 (Fresher)";
+      case "mid":
+        return "1-5 (Mid-level)";
+      case "senior":
+        return "5-10 (Senior)";
+      case "leadership":
+        return "10+ (Leadership)";
+      default:
+        return band || "Flexible";
+    }
+  };
+
   useEffect(() => {
     async function loadData() {
       try {
@@ -209,12 +224,22 @@ export default function JobsManagement() {
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(255,138,0,0.08),_transparent_42%),linear-gradient(180deg,#FFFCF8_0%,#FFFFFF_100%)] text-slate-900">
       <style>{`
         .jobs-scroll {
-          scrollbar-width: none;
-          -ms-overflow-style: none;
+          scrollbar-width: thin;
+          scrollbar-color: #cbd5e1 transparent;
         }
         .jobs-scroll::-webkit-scrollbar {
-          width: 0;
-          height: 0;
+          width: 4px;
+          height: 4px;
+        }
+        .jobs-scroll::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .jobs-scroll::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 999px;
+        }
+        .jobs-scroll::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
         }
       `}</style>
 
@@ -225,26 +250,20 @@ export default function JobsManagement() {
         </div>
       ) : (
         <>
-          <section className="grid grid-cols-2 gap-3 md:grid-cols-5">
-            <div className="rounded-2xl border border-orange-100 bg-white px-4 py-3 shadow-[0_8px_20px_rgba(255,138,0,0.06)]">
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Total Roles</p>
-              <p className="mt-1 text-2xl font-black text-slate-900">{stats.total}</p>
+          <section className="flex flex-col gap-3 rounded-[28px] border border-orange-100/80 bg-white px-5 py-4 shadow-[0_8px_24px_rgba(255,138,0,0.08)] lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#FF8A00]">Hiring Workspace</p>
+              <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-900">Job management</h1>
+              <p className="mt-1 text-sm text-slate-500">
+                Review openings, keep the board readable, and move candidates through the pipeline without wasting vertical space.
+              </p>
             </div>
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">Open Roles</p>
-              <p className="mt-1 text-2xl font-black text-emerald-800">{stats.active}</p>
-            </div>
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-700">Paused</p>
-              <p className="mt-1 text-2xl font-black text-amber-800">{stats.paused}</p>
-            </div>
-            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3">
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-rose-700">Closed</p>
-              <p className="mt-1 text-2xl font-black text-rose-800">{stats.closed}</p>
-            </div>
-            <div className="rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3">
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-700">Recent Candidate Views</p>
-              <p className="mt-1 text-2xl font-black text-indigo-800">{stats.views}</p>
+
+            <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-600">
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5">{stats.total} total</span>
+              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-emerald-700">{stats.active} open</span>
+              <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-amber-700">{stats.paused} paused</span>
+              <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-rose-700">{stats.closed} closed</span>
             </div>
           </section>
 
@@ -477,7 +496,7 @@ export default function JobsManagement() {
                           </div>
                           <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Experience</p>
-                            <p className="mt-1 font-semibold text-slate-800 capitalize">{job.experience_band || "Flexible"}</p>
+                            <p className="mt-1 font-semibold text-slate-800">{getExperienceBandLabel(job.experience_band)}</p>
                           </div>
                           <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Candidate Views</p>

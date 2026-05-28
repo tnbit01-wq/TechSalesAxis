@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
@@ -57,28 +57,41 @@ interface CompanyRecommendation {
 }
 
 type ActiveTab = "jobs" | "companies";
-type JobFilterType = "role_match" | "skills_focus" | "opportunity_explorer";
-type CompanyFilterType = "culture_fit" | "hiring_intent" | "growth_hub";
+type JobFilterType = "skills_focus";
 
 export default function RecommendationsPage() {
   const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>("jobs");
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
+  const [jobSearchTerm, setJobSearchTerm] = useState("");
+  const [appliedJobSearchTerm, setAppliedJobSearchTerm] = useState("");
+  const [jobExperience, setJobExperience] = useState<string>("all");
+  const [appliedJobExperience, setAppliedJobExperience] = useState<string>("all");
+  const [companySearchTerm, setCompanySearchTerm] = useState("");
+  const [appliedCompanySearchTerm, setAppliedCompanySearchTerm] = useState("");
   
   // Job recommendations state
-  const [jobFilterType, setJobFilterType] = useState<JobFilterType>("role_match");
+  const [jobFilterType, setJobFilterType] = useState<JobFilterType>("skills_focus");
   const [jobLocation, setJobLocation] = useState("");
+  const [appliedJobLocation, setAppliedJobLocation] = useState("");
   const [minSalary, setMinSalary] = useState("");
+  const [appliedMinSalary, setAppliedMinSalary] = useState("");
   const [maxSalary, setMaxSalary] = useState("");
+  const [appliedMaxSalary, setAppliedMaxSalary] = useState("");
   const [jobs, setJobs] = useState<JobRecommendation[]>([]);
   const [jobsLoading, setJobsLoading] = useState(false);
   const [jobsError, setJobsError] = useState("");
 
   // Company recommendations state
-  const [companyFilterType, setCompanyFilterType] = useState<CompanyFilterType>("culture_fit");
   const [selectedIndustries, setSelectedIndustries] = useState<string[]>([]);
+  const [appliedSelectedIndustries, setAppliedSelectedIndustries] = useState<string[]>([]);
   const [companySize, setCompanySize] = useState("");
+  const [appliedCompanySize, setAppliedCompanySize] = useState("");
   const [companyLocation, setCompanyLocation] = useState("");
+  const [appliedCompanyLocation, setAppliedCompanyLocation] = useState("");
+  const [excludeAppliedCompanies, setExcludeAppliedCompanies] = useState(false);
+  const [appliedExcludeAppliedCompanies, setAppliedExcludeAppliedCompanies] = useState(false);
   const [companies, setCompanies] = useState<CompanyRecommendation[]>([]);
   const [companiesLoading, setCompaniesLoading] = useState(false);
   const [companiesError, setCompaniesError] = useState("");
@@ -90,6 +103,27 @@ export default function RecommendationsPage() {
     }
     return [];
   };
+
+  const savedJobCount = jobs.filter((job) => job.is_saved).length;
+  const appliedJobCount = jobs.filter((job) => job.is_applied).length;
+  const openRolesCount = companies.reduce((sum, company) => sum + (company.job_openings_count || 0), 0);
+  const selectedCompany = companies.find((company) => company.company_id === selectedCompanyId) || null;
+  const selectedCompanyOpenRoles = selectedCompany?.job_openings_count ?? 0;
+  const filteredJobs = useMemo(() => {
+    const search = appliedJobSearchTerm.trim().toLowerCase();
+    return jobs.filter((job) => {
+      const matchesSearch = !search || [job.title, job.company_name, job.location, job.experience_band, ...(job.skills_required || [])].join(" ").toLowerCase().includes(search);
+      const matchesExperience = appliedJobExperience === "all" || (job.experience_band || "").toLowerCase() === appliedJobExperience;
+      return matchesSearch && matchesExperience;
+    });
+  }, [jobs, appliedJobSearchTerm, appliedJobExperience]);
+  const filteredCompanies = useMemo(() => {
+    const search = appliedCompanySearchTerm.trim().toLowerCase();
+    return companies.filter((company) => {
+      const matchesSearch = !search || [company.company_name, company.industry, company.location, company.stage, company.match_reasoning, company.culture_keywords].join(" ").toLowerCase().includes(search);
+      return matchesSearch;
+    });
+  }, [companies, appliedCompanySearchTerm]);
 
   // Get user ID on mount
   useEffect(() => {
@@ -117,9 +151,9 @@ export default function RecommendationsPage() {
 
       const params = new URLSearchParams({
         filter_type: jobFilterType,
-        ...(jobLocation && { location: jobLocation }),
-        ...(minSalary && { min_salary: minSalary }),
-        ...(maxSalary && { max_salary: maxSalary }),
+        ...(appliedJobLocation && { location: appliedJobLocation }),
+        ...(appliedMinSalary && { min_salary: appliedMinSalary }),
+        ...(appliedMaxSalary && { max_salary: appliedMaxSalary }),
       });
 
       const response = await apiClient.get(
@@ -134,7 +168,7 @@ export default function RecommendationsPage() {
     } finally {
       setJobsLoading(false);
     }
-  }, [userId, jobFilterType, jobLocation, minSalary, maxSalary]);
+  }, [userId, jobFilterType, appliedJobLocation, appliedMinSalary, appliedMaxSalary]);
 
   // Fetch company recommendations
   const fetchCompanyRecommendations = useCallback(async () => {
@@ -151,10 +185,11 @@ export default function RecommendationsPage() {
       }
 
       const params = new URLSearchParams({
-        filter_type: companyFilterType,
-        ...(companyLocation && { location: companyLocation }),
-        ...(companySize && { company_size: companySize }),
-        ...(selectedIndustries.length > 0 && { industry: selectedIndustries.join(",") }),
+        filter_type: "culture_fit",
+        ...(appliedCompanyLocation && { location: appliedCompanyLocation }),
+        ...(appliedCompanySize && { company_size: appliedCompanySize }),
+        ...(appliedSelectedIndustries.length > 0 && { industry: appliedSelectedIndustries.join(",") }),
+        ...(appliedExcludeAppliedCompanies ? { exclude_applied: "true" } : {}),
       });
 
       const response = await apiClient.get(
@@ -162,14 +197,21 @@ export default function RecommendationsPage() {
         token
       );
 
-      setCompanies(normalizeList<CompanyRecommendation>(response, ["recommended_companies", "recommendations", "companies", "matches"]));
+      const companyList = normalizeList<CompanyRecommendation>(response, ["recommended_companies", "recommendations", "companies", "matches"]);
+      setCompanies(companyList);
+      setSelectedCompanyId((current) => {
+        if (current && companyList.some((company) => company.company_id === current)) {
+          return current;
+        }
+        return companyList[0]?.company_id ?? null;
+      });
     } catch (err) {
       setCompaniesError(err instanceof Error ? err.message : "Error fetching companies");
       console.error(err);
     } finally {
       setCompaniesLoading(false);
     }
-  }, [userId, companyFilterType, companyLocation, companySize, selectedIndustries]);
+  }, [userId, appliedCompanyLocation, appliedCompanySize, appliedSelectedIndustries, appliedExcludeAppliedCompanies]);
 
   // Load recommendations when tab or filters change
   useEffect(() => {
@@ -178,7 +220,23 @@ export default function RecommendationsPage() {
     } else {
       fetchCompanyRecommendations();
     }
-  }, [activeTab, jobFilterType, jobLocation, minSalary, maxSalary, companyFilterType, companySize, companyLocation, selectedIndustries, fetchJobRecommendations, fetchCompanyRecommendations]);
+  }, [activeTab, fetchJobRecommendations, fetchCompanyRecommendations]);
+
+  const handleApplyJobFilters = () => {
+    setAppliedJobSearchTerm(jobSearchTerm);
+    setAppliedJobExperience(jobExperience);
+    setAppliedJobLocation(jobLocation);
+    setAppliedMinSalary(minSalary);
+    setAppliedMaxSalary(maxSalary);
+  };
+
+  const handleApplyCompanyFilters = () => {
+    setAppliedCompanySearchTerm(companySearchTerm);
+    setAppliedCompanyLocation(companyLocation);
+    setAppliedCompanySize(companySize);
+    setAppliedSelectedIndustries(selectedIndustries);
+    setAppliedExcludeAppliedCompanies(excludeAppliedCompanies);
+  };
 
   const handleSaveJob = async (jobId: string) => {
     try {
@@ -219,86 +277,144 @@ export default function RecommendationsPage() {
   };
 
   return (
-    <div className="h-[calc(100vh-5rem)] min-h-0 overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(255,138,0,0.12),_transparent_28%),linear-gradient(180deg,#fffaf5_0%,#f8fafc_42%,#f8fafc_100%)]">
-      <div className="mx-auto flex min-h-full max-w-7xl flex-col gap-6 px-4 py-6 lg:px-6">
-        <section className="overflow-hidden rounded-[32px] border border-orange-100/70 bg-[#111827] text-white shadow-[0_20px_60px_rgba(17,24,39,0.18)]">
-          <div className="relative overflow-hidden px-6 py-6 lg:px-8 lg:py-7">
-            <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-[#FF8A00]/15 blur-3xl" />
-            <div className="absolute -bottom-10 right-24 h-24 w-24 rounded-full bg-white/10 blur-2xl" />
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-              <div className="max-w-2xl">
-                <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-black uppercase tracking-[0.24em] text-white/70">
-                  <Sparkles className="h-3.5 w-3.5 text-[#FF8A00]" />
-                  Career recommendations
-                </div>
-                <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">My Opportunities</h1>
-                <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/65">
-                  Explore jobs and companies matched to your profile, then save the ones worth tracking.
-                </p>
-              </div>
-              <div className="grid grid-cols-2 gap-3 lg:min-w-[340px]">
-                <MiniStat label="Jobs" value={jobs.length} />
-                <MiniStat label="Companies" value={companies.length} />
-              </div>
-            </div>
-          </div>
-        </section>
-
+    <div className="reco-scroll h-[calc(100vh-5rem)] min-h-0 overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(255,138,0,0.12),_transparent_28%),linear-gradient(180deg,#fffaf5_0%,#f8fafc_42%,#f8fafc_100%)] text-slate-900">
+      <style>{`
+        .reco-scroll {
+          scrollbar-width: thin;
+          scrollbar-color: #cbd5e1 transparent;
+        }
+        .reco-scroll::-webkit-scrollbar {
+          width: 4px;
+          height: 4px;
+        }
+        .reco-scroll::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .reco-scroll::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 999px;
+        }
+        .reco-scroll::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
+        }
+      `}</style>
+      <div className="mx-auto flex min-h-full max-w-[1600px] flex-col gap-4 px-4 py-3">
         {jobsError && activeTab === "jobs" && <AlertBox title="Could not load jobs" text={jobsError} />}
         {companiesError && activeTab === "companies" && <AlertBox title="Could not load companies" text={companiesError} />}
 
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="inline-flex rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
             <TabButton active={activeTab === "jobs"} onClick={() => setActiveTab("jobs")} label={`Jobs for you (${jobs.length})`} icon={Briefcase} />
-            <TabButton active={activeTab === "companies"} onClick={() => setActiveTab("companies")} label={`Companies hiring you (${companies.length})`} icon={Building2} />
+            <TabButton active={activeTab === "companies"} onClick={() => setActiveTab("companies")} label={`Companies for you (${companies.length})`} icon={Building2} />
+          </div>
+
+          <div className="flex flex-wrap items-center justify-center gap-2 lg:flex-1">
+            {activeTab === "jobs" ? (
+              <>
+                <MiniChip label="Saved" value={savedJobCount} />
+                <MiniChip label="Applied" value={appliedJobCount} />
+              </>
+            ) : (
+              <>
+                <MiniChip label="Companies" value={companies.length} />
+                <MiniChip label="Open roles" value={selectedCompanyOpenRoles} />
+              </>
+            )}
           </div>
 
           <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
             <Target className="h-4 w-4 text-[#FF8A00]" />
-            Personalized based on your profile score and assessment signals
+            {activeTab === "jobs"
+              ? "Skills Match uses 75% skill overlap."
+              : selectedCompany
+                ? `${selectedCompany.company_name} has ${selectedCompanyOpenRoles} open role${selectedCompanyOpenRoles === 1 ? "" : "s"}.`
+                : "Company matches use your assessment profile."}
           </div>
         </div>
 
         {activeTab === "jobs" && (
-          <div className="grid grid-cols-1 gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
-            <aside className="space-y-4 xl:sticky xl:top-6 xl:self-start">
-              <FilterPanel
-                title="Filter opportunities"
-                icon={SlidersHorizontal}
-                action={
-                  <button onClick={() => { setJobLocation(""); setMinSalary(""); setMaxSalary(""); setJobFilterType("role_match"); }} className="text-xs font-bold text-[#FF8A00] hover:text-[#E67A00]">
-                    Reset
-                  </button>
-                }
-              >
-                <Field label="Recommendation type" icon={Target}>
-                  <SelectInput value={jobFilterType} onChange={(e) => setJobFilterType(e.target.value as JobFilterType)} options={["role_match", "skills_focus", "opportunity_explorer"]} labels={["Role Match", "Skills Focus", "Opportunity Explorer"]} />
-                </Field>
-                <Field label="Location" icon={MapPin}>
-                  <TextInput value={jobLocation} onChange={(e) => setJobLocation(e.target.value)} placeholder="City name..." />
-                </Field>
-                <div className="grid grid-cols-2 gap-4">
-                  <Field label="Min salary" icon={Flame}><TextInput type="number" value={minSalary} onChange={(e) => setMinSalary(e.target.value)} placeholder="0" /></Field>
-                  <Field label="Max salary" icon={Flame}><TextInput type="number" value={maxSalary} onChange={(e) => setMaxSalary(e.target.value)} placeholder="0" /></Field>
-                </div>
-                <button onClick={fetchJobRecommendations} disabled={jobsLoading} className="mt-2 inline-flex items-center justify-center gap-2 rounded-2xl bg-[#FF8A00] px-4 py-3 text-sm font-bold text-white transition-all hover:bg-[#E67A00] disabled:opacity-60">
-                  {jobsLoading ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" /> : <Search className="h-4 w-4" />}
-                  Refresh matches
-                </button>
-              </FilterPanel>
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+            <aside className="flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border border-orange-100/80 bg-white/90 shadow-[0_8px_28px_rgba(255,138,0,0.07)] xl:sticky xl:top-3 xl:self-start">
+              <div className="flex-shrink-0 border-b border-orange-100/70 bg-gradient-to-r from-[#FFF6ED] to-white px-4 py-3">
+                <p className="text-xs font-black uppercase tracking-[0.22em] text-[#FF8A00]">Filters</p>
+                <p className="mt-1 text-xs text-slate-500">Narrow the list without leaving the page.</p>
+              </div>
 
-              <FilterPanel title="Search snapshot" icon={Search}>
-                <div className="grid grid-cols-2 gap-3">
-                  <MiniChip label="Saved" value={jobs.filter((job) => job.is_saved).length} />
-                  <MiniChip label="Applied" value={jobs.filter((job) => job.is_applied).length} />
+              <div className="reco-scroll flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
+                <div className="relative">
+                  <label className="mb-1.5 block text-xs font-bold text-slate-600">Search</label>
+                  <Search className="absolute left-3.5 top-[2rem] w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Title, company, keywords"
+                    value={jobSearchTerm}
+                    onChange={(e) => setJobSearchTerm(e.target.value)}
+                    className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 pl-11 pr-4 text-sm text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-[#FF8A00]/60 focus:ring-2 focus:ring-[#FF8A00]/15"
+                  />
                 </div>
-              </FilterPanel>
+
+                <div className="grid gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1.5 block text-xs font-bold text-slate-600">Experience</label>
+                      <select
+                        value={jobExperience}
+                        onChange={(e) => setJobExperience(e.target.value)}
+                        className="w-full cursor-pointer rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-medium text-slate-900 outline-none transition-all focus:border-[#FF8A00]/60 focus:ring-2 focus:ring-[#FF8A00]/15"
+                      >
+                        <option value="all">All</option>
+                        <option value="fresher">0-1 yrs</option>
+                        <option value="mid">1-5 yrs</option>
+                        <option value="senior">5-10 yrs</option>
+                        <option value="leadership">10+ yrs</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-xs font-bold text-slate-600">Location</label>
+                      <div className="relative">
+                        <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <input
+                          type="text"
+                          placeholder="City name..."
+                          value={jobLocation}
+                          onChange={(e) => setJobLocation(e.target.value)}
+                          className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-xs text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-[#FF8A00]/60 focus:ring-2 focus:ring-[#FF8A00]/15"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Min salary" icon={Flame}><TextInput type="number" value={minSalary} onChange={(e) => setMinSalary(e.target.value)} placeholder="0" /></Field>
+                    <Field label="Max salary" icon={Flame}><TextInput type="number" value={maxSalary} onChange={(e) => setMaxSalary(e.target.value)} placeholder="0" /></Field>
+                  </div>
+                </div>
+
+                <button onClick={handleApplyJobFilters} disabled={jobsLoading} className="mt-auto inline-flex items-center justify-center gap-2 rounded-2xl bg-[#FF8A00] px-4 py-3 text-xs font-bold uppercase tracking-widest text-white transition-all hover:bg-[#E67A00] disabled:opacity-60">
+                  {jobsLoading ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" /> : <Search className="h-4 w-4" />}
+                  Apply Filters
+                </button>
+              </div>
+
             </aside>
 
-            <section className="space-y-4 min-w-0">
+            <section className="flex min-h-0 flex-col rounded-[28px] border border-orange-100/70 bg-white/85 shadow-[0_8px_28px_rgba(255,138,0,0.07)] min-w-0">
+              <div className="flex-shrink-0 border-b border-orange-100/70 px-5 py-4">
+                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="text-sm font-bold text-slate-700">
+                      {filteredJobs.length} match{filteredJobs.length !== 1 ? "es" : ""}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">Jobs for you uses your profile, search terms, location, salary, and experience filters.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="min-h-0 p-5">
               {jobsLoading ? (
                 <LoadingState label="Loading job matches..." />
-              ) : jobs.length === 0 ? (
+              ) : filteredJobs.length === 0 ? (
                 <EmptyState
                   title="No matching opportunities yet"
                   text="Complete more of your profile or widen the filters to surface additional roles."
@@ -307,7 +423,7 @@ export default function RecommendationsPage() {
                 />
               ) : (
                 <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                  {jobs.map((job) => (
+                  {filteredJobs.map((job) => (
                     <OpportunityCard
                       key={job.job_id}
                       badge={`${Math.round(job.match_score)}% match`}
@@ -337,46 +453,86 @@ export default function RecommendationsPage() {
                   ))}
                 </div>
               )}
+              </div>
             </section>
           </div>
         )}
 
         {activeTab === "companies" && (
-          <div className="grid grid-cols-1 gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
-            <aside className="space-y-4 xl:sticky xl:top-6 xl:self-start">
-              <FilterPanel
-                title="Filter companies"
-                icon={SlidersHorizontal}
-                action={
-                  <button onClick={() => { setCompanyFilterType("culture_fit"); setCompanyLocation(""); setCompanySize(""); setSelectedIndustries([]); }} className="text-xs font-bold text-[#FF8A00] hover:text-[#E67A00]">
-                    Reset
-                  </button>
-                }
-              >
-                <Field label="Recommendation type" icon={Target}>
-                  <SelectInput value={companyFilterType} onChange={(e) => setCompanyFilterType(e.target.value as CompanyFilterType)} options={["culture_fit", "hiring_intent", "growth_hub"]} labels={["Culture Fit", "Hiring Intent", "Growth Hub"]} />
-                </Field>
-                <Field label="Location" icon={MapPin}><TextInput value={companyLocation} onChange={(e) => setCompanyLocation(e.target.value)} placeholder="City name..." /></Field>
-                <Field label="Company size" icon={Users}><SelectInput value={companySize} onChange={(e) => setCompanySize(e.target.value)} options={["", "10-50", "50-200", "200+"]} labels={["All sizes", "10-50", "50-200", "200+"]} /></Field>
-                <Field label="Industries" icon={Globe}><TextInput value={selectedIndustries.join(", ")} onChange={(e) => updateIndustryInput(e.target.value)} placeholder="Tech, FinTech, AI" /></Field>
-                <button onClick={fetchCompanyRecommendations} disabled={companiesLoading} className="mt-2 inline-flex items-center justify-center gap-2 rounded-2xl bg-[#FF8A00] px-4 py-3 text-sm font-bold text-white transition-all hover:bg-[#E67A00] disabled:opacity-60">
-                  {companiesLoading ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" /> : <Search className="h-4 w-4" />}
-                  Refresh matches
-                </button>
-              </FilterPanel>
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+            <aside className="flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border border-orange-100/80 bg-white/90 shadow-[0_8px_28px_rgba(255,138,0,0.07)] xl:sticky xl:top-3 xl:self-start">
+              <div className="flex-shrink-0 border-b border-orange-100/70 bg-gradient-to-r from-[#FFF6ED] to-white px-4 py-3">
+                <p className="text-xs font-black uppercase tracking-[0.22em] text-[#FF8A00]">Filters</p>
+                <p className="mt-1 text-xs text-slate-500">Compare companies by culture fit, size band, and hiring focus.</p>
+              </div>
 
-              <FilterPanel title="Opportunity pulse" icon={Sparkles}>
-                <div className="grid grid-cols-2 gap-3">
-                  <MiniChip label="Open roles" value={companies.reduce((sum, company) => sum + (company.job_openings_count || 0), 0)} />
-                  <MiniChip label="Avg score" value={companies.length ? Math.round(companies.reduce((sum, company) => sum + company.match_score, 0) / companies.length) : 0} />
+              <div className="reco-scroll flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
+                <div className="relative">
+                  <label className="mb-1.5 block text-xs font-bold text-slate-600">Search</label>
+                  <Search className="absolute left-3.5 top-[2rem] w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Company, industry, stage"
+                    value={companySearchTerm}
+                    onChange={(e) => setCompanySearchTerm(e.target.value)}
+                    className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 pl-11 pr-4 text-sm text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-[#FF8A00]/60 focus:ring-2 focus:ring-[#FF8A00]/15"
+                  />
                 </div>
-              </FilterPanel>
+
+                <div className="grid gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1.5 block text-xs font-bold text-slate-600">Location</label>
+                      <TextInput value={companyLocation} onChange={(e) => setCompanyLocation(e.target.value)} placeholder="City name..." />
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-xs font-bold text-slate-600">Size band</label>
+                      <SelectInput value={companySize} onChange={(e) => setCompanySize(e.target.value)} options={["", "10-50", "50-200", "200+"]} labels={["All sizes", "10-50", "50-200", "200+"]} />
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-xs font-bold text-slate-600">Industry focus</label>
+                      <TextInput value={selectedIndustries.join(", ")} onChange={(e) => updateIndustryInput(e.target.value)} placeholder="Tech, FinTech, AI" />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3 text-sm font-semibold text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={excludeAppliedCompanies}
+                          onChange={(e) => setExcludeAppliedCompanies(e.target.checked)}
+                          className="h-4 w-4 rounded border-slate-300 text-[#FF8A00] focus:ring-[#FF8A00]"
+                        />
+                        Hide companies I already applied to
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <button onClick={handleApplyCompanyFilters} disabled={companiesLoading} className="mt-auto inline-flex items-center justify-center gap-2 rounded-2xl bg-[#FF8A00] px-4 py-3 text-xs font-bold uppercase tracking-widest text-white transition-all hover:bg-[#E67A00] disabled:opacity-60">
+                  {companiesLoading ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" /> : <Search className="h-4 w-4" />}
+                  Apply Filters
+                </button>
+              </div>
             </aside>
 
-            <section className="space-y-4 min-w-0">
+            <section className="flex min-h-0 flex-col rounded-[28px] border border-orange-100/70 bg-white/85 shadow-[0_8px_28px_rgba(255,138,0,0.07)] min-w-0">
+              <div className="flex-shrink-0 border-b border-orange-100/70 px-5 py-4">
+                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="text-sm font-bold text-slate-700">
+                      {filteredCompanies.length} match{filteredCompanies.length !== 1 ? "es" : ""}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">Companies for you uses culture fit, location, size band, industry focus, and optional hide-applied filter.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="min-h-0 p-5">
               {companiesLoading ? (
                 <LoadingState label="Loading company matches..." />
-              ) : companies.length === 0 ? (
+              ) : filteredCompanies.length === 0 ? (
                 <EmptyState
                   title="No matching companies yet"
                   text="Tighten your filters or update your profile to surface more hiring companies."
@@ -385,7 +541,7 @@ export default function RecommendationsPage() {
                 />
               ) : (
                 <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                  {companies.map((company) => (
+                  {filteredCompanies.map((company) => (
                     <OpportunityCard
                       key={company.company_id}
                       badge={`${Math.round(company.match_score)}% match`}
@@ -395,6 +551,8 @@ export default function RecommendationsPage() {
                       description={company.match_reasoning}
                       meta={[company.size, company.location, `${company.job_openings_count} open roles`]}
                       tags={company.culture_keywords.split(",").slice(0, 4).map((item) => item.trim()).filter(Boolean)}
+                      active={selectedCompanyId === company.company_id}
+                      onClick={() => setSelectedCompanyId(company.company_id)}
                       footer={
                         <div className="flex flex-wrap gap-2">
                           <button className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition-all hover:border-[#FF8A00] hover:text-[#FF8A00]">
@@ -409,6 +567,7 @@ export default function RecommendationsPage() {
                   ))}
                 </div>
               )}
+              </div>
             </section>
           </div>
         )}
@@ -426,20 +585,13 @@ function TabButton({ active, onClick, label, icon: Icon }: { active: boolean; on
   );
 }
 
-function MiniStat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-      <p className="text-[10px] font-black uppercase tracking-[0.24em] text-white/45">{label}</p>
-      <p className="mt-1 text-2xl font-black text-white">{value}</p>
-    </div>
-  );
-}
-
 function MiniChip({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
-      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">{label}</p>
-      <p className="mt-1 text-xl font-black text-slate-900">{value}</p>
+    <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+      <span className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{label}</span>
+      <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#FFF5E8] px-1.5 text-[11px] font-black text-[#FF8A00]">
+        {value}
+      </span>
     </div>
   );
 }
@@ -533,6 +685,8 @@ function OpportunityCard({
   description,
   meta,
   tags,
+  active = false,
+  onClick,
   footer,
 }: {
   badge: string;
@@ -542,6 +696,8 @@ function OpportunityCard({
   description: string;
   meta: string[];
   tags: string[];
+  active?: boolean;
+  onClick?: () => void;
   footer: React.ReactNode;
 }) {
   const toneClass =
@@ -552,7 +708,10 @@ function OpportunityCard({
         : "bg-amber-100 text-amber-800";
 
   return (
-    <article className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_8px_24px_rgba(15,23,42,0.05)] transition-all hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(15,23,42,0.08)]">
+    <article
+      onClick={onClick}
+      className={`rounded-[28px] border bg-white p-5 shadow-[0_8px_24px_rgba(15,23,42,0.05)] transition-all hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(15,23,42,0.08)] ${onClick ? "cursor-pointer" : ""} ${active ? "border-[#FF8A00] ring-2 ring-[#FF8A00]/15" : "border-slate-200"}`}
+    >
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="mb-3 flex items-center gap-2">

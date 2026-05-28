@@ -3,9 +3,13 @@ Assessment Feedback & Retake Management Service
 Provides detailed feedback, improvement recommendations, and retake eligibility tracking
 """
 
+import asyncio
 import json
-from datetime import datetime, timedelta
+import logging
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Any
+
+import httpx
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from src.core.models import (
@@ -13,39 +17,88 @@ from src.core.models import (
     ProfileScore, AssessmentFeedback, AssessmentRetakeEligibility
 )
 from src.core.database import SessionLocal
+from src.core.config import OPENAI_API_KEY
+
+
+logger = logging.getLogger(__name__)
 
 
 class AssessmentFeedbackService:
     """Provides comprehensive feedback and recommendations for assessment scores"""
+
+    def __init__(self):
+        self.openai_key = OPENAI_API_KEY
+        self._client = httpx.AsyncClient(timeout=30.0)
+
+    async def _call_ai_robust(self, prompt: str, system_message: str = "You are a professional assessment coach.") -> Optional[str]:
+        if not self.openai_key:
+            return None
+
+        try:
+            response = await self._client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.openai_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "gpt-4o",
+                    "messages": [
+                        {"role": "system", "content": system_message},
+                        {"role": "user", "content": prompt},
+                    ],
+                    "temperature": 0.4,
+                },
+            )
+            if response.status_code == 200:
+                data = response.json()
+                return data["choices"][0]["message"]["content"].strip()
+            logger.error("OpenAI feedback generation failed (%s): %s", response.status_code, response.text)
+        except Exception as exc:
+            logger.error("OpenAI feedback generation exception: %s", exc)
+        return None
+
+    def _run_coroutine_sync(self, coroutine):
+        try:
+            asyncio.get_running_loop()
+            return None
+        except RuntimeError:
+            try:
+                return asyncio.run(coroutine)
+            except Exception:
+                return None
     
-    def generate_feedback_report(self, user_id: str, db: Session) -> Dict[str, Any]:
+    async def generate_feedback_report_async(self, user_id: str, db: Session, session_id: Optional[str] = None) -> Dict[str, Any]:
         """
-        Generate detailed feedback report for candidate assessment performance
-        
-        Returns:
-        {
-            "overall_tier": "Strong",  # Top, Strong, Developing, Growing
-            "final_score": 75,
-            "score_explanation": "Your score places you in the Strong tier...",
-            "category_breakdown": {
-                "resume": {"score": 78, "tier": "Strong", "insight": "..."},
-                "skills": {"score": 72, "tier": "Strong", "insight": "..."},
-                "behavioral": {"score": 68, "tier": "Developing", "insight": "..."},
-                "psychometric": {"score": 81, "tier": "Top", "insight": "..."}
-            },
-            "strengths": ["...", "..."],
-            "improvement_areas": ["...", "..."],
-            "recommendations": ["...", "..."],
-            "retake_eligibility": {"eligible": True, "eligible_after": "2024-01-20", "days_remaining": 28},
-            "visibility_impact": "Your score gives you 'Strong' tier visibility...",
-            "next_steps": ["...", "..."]
-        }
+        Generate and persist a detailed category-level feedback report.
         """
         profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == user_id).first()
         profile_score = db.query(ProfileScore).filter(ProfileScore.user_id == user_id).first()
         
         if not profile_score:
             return {"error": "No assessment completed yet"}
+
+        profile = profile or CandidateProfile(user_id=user_id)
+
+        latest_session = None
+        if session_id:
+            latest_session = db.query(AssessmentSession).filter(
+                AssessmentSession.candidate_id == user_id,
+                AssessmentSession.id == session_id,
+                AssessmentSession.status == "completed"
+            ).first()
+        if not latest_session:
+            latest_session = db.query(AssessmentSession).filter(
+                AssessmentSession.candidate_id == user_id,
+                AssessmentSession.status == "completed"
+            ).order_by(AssessmentSession.completed_at.desc()).first()
+
+        existing_feedback = None
+        if latest_session:
+            existing_feedback = db.query(AssessmentFeedback).filter(
+                AssessmentFeedback.candidate_id == user_id,
+                AssessmentFeedback.session_id == latest_session.id
+            ).order_by(AssessmentFeedback.generated_at.desc()).first()
         
         final_score = profile_score.final_score or 0
         
@@ -54,22 +107,40 @@ class AssessmentFeedbackService:
         
         # Get category breakdown with insights
         category_breakdown = self._analyze_category_performance(user_id, profile_score, db)
+        category_response_summary = self._build_category_response_summary(user_id, db)
+
+        llm_feedback = await self._generate_llm_feedback_report(
+            user_id=user_id,
+            final_score=final_score,
+            tier=tier,
+            category_breakdown=category_breakdown,
+            category_response_summary=category_response_summary,
+            profile=profile,
+            db=db,
+        )
+        if not llm_feedback:
+            llm_feedback = self._build_fallback_feedback_report(
+                user_id=user_id,
+                final_score=final_score,
+                tier=tier,
+                category_breakdown=category_breakdown,
+                profile=profile,
+                db=db,
+            )
         
-        # Generate AI-powered insights and recommendations
-        strengths = self._identify_strengths(user_id, category_breakdown, db)
-        improvement_areas = self._identify_improvements(user_id, category_breakdown, db)
-        recommendations = self._generate_recommendations(
-            user_id, 
-            tier, 
-            improvement_areas, 
+        strengths = llm_feedback.get("strengths") or self._identify_strengths(user_id, category_breakdown, db)
+        improvement_areas = llm_feedback.get("improvement_areas") or self._identify_improvements(user_id, category_breakdown, db)
+        recommendations = llm_feedback.get("recommendations") or self._generate_recommendations(
+            user_id,
+            tier,
+            improvement_areas,
             profile.years_of_experience or 0,
-            db
+            db,
         )
         
         # Check retake eligibility
         retake_status = self._check_retake_eligibility(user_id, db)
-        
-        return {
+        report = {
             "overall_tier": tier,
             "final_score": int(final_score),
             "score_explanation": self._get_tier_explanation(tier, final_score),
@@ -80,7 +151,177 @@ class AssessmentFeedbackService:
             "retake_eligibility": retake_status,
             "visibility_impact": self._get_visibility_impact(tier, final_score),
             "next_steps": self._get_next_steps(tier, final_score),
-            "generated_at": datetime.now().isoformat()
+            "generated_at": datetime.now().isoformat(),
+            "llm_feedback": llm_feedback,
+        }
+
+        if latest_session:
+            if existing_feedback:
+                existing_feedback.feedback_report = report
+                existing_feedback.strengths = strengths
+                existing_feedback.improvement_areas = improvement_areas
+                existing_feedback.recommendations = recommendations
+                existing_feedback.tier = tier
+                existing_feedback.final_score = int(final_score)
+                existing_feedback.generated_at = datetime.now()
+                db.add(existing_feedback)
+            else:
+                db.add(AssessmentFeedback(
+                    candidate_id=user_id,
+                    session_id=latest_session.id,
+                    feedback_report=report,
+                    strengths=strengths,
+                    improvement_areas=improvement_areas,
+                    recommendations=recommendations,
+                    tier=tier,
+                    final_score=int(final_score),
+                    generated_at=datetime.now(),
+                ))
+            db.commit()
+
+        return report
+
+    def generate_feedback_report(self, user_id: str, db: Session, session_id: Optional[str] = None) -> Dict[str, Any]:
+        report = self._run_coroutine_sync(self.generate_feedback_report_async(user_id, db, session_id=session_id))
+        if report:
+            return report
+        return {"error": "Failed to generate feedback report"}
+
+    def _build_category_response_summary(self, user_id: str, db: Session) -> Dict[str, Any]:
+        responses = db.query(AssessmentResponse).filter(AssessmentResponse.candidate_id == user_id).all()
+        summary: Dict[str, Any] = {}
+
+        for category in ["resume", "skill", "behavioral", "psychometric"]:
+            category_responses = [r for r in responses if (r.category or "").lower() == category]
+            scores = [int(r.score or 0) for r in category_responses if r.score is not None]
+            low_reasonings = []
+            high_reasonings = []
+            for response in category_responses:
+                meta = response.evaluation_metadata or {}
+                reason = meta.get("reasoning") or meta.get("rationale") or ""
+                if not reason:
+                    continue
+                if (response.score or 0) < 60 and len(low_reasonings) < 3:
+                    low_reasonings.append(reason)
+                elif (response.score or 0) >= 75 and len(high_reasonings) < 2:
+                    high_reasonings.append(reason)
+
+            summary[category] = {
+                "response_count": len(category_responses),
+                "avg_score": int(round(sum(scores) / len(scores))) if scores else None,
+                "min_score": min(scores) if scores else None,
+                "max_score": max(scores) if scores else None,
+                "low_reasonings": low_reasonings,
+                "high_reasonings": high_reasonings,
+            }
+
+        return summary
+
+    async def _generate_llm_feedback_report(
+        self,
+        user_id: str,
+        final_score: int,
+        tier: str,
+        category_breakdown: Dict[str, Any],
+        category_response_summary: Dict[str, Any],
+        profile: CandidateProfile,
+        db: Session,
+    ) -> Optional[Dict[str, Any]]:
+        prompt = f"""
+Create a category-level assessment feedback report for a Tech Sales candidate.
+
+Important constraints:
+- Focus on category patterns, not on individual question wording.
+- Do not mention exact question text.
+- Use the stored evaluation reasoning and category scores to give practical coaching.
+- Make the output engaging, concise, and action-oriented.
+- The retake window is 30 days, so include a useful 30-day improvement plan.
+
+Candidate context:
+- final_score: {final_score}
+- tier: {tier}
+- years_of_experience: {profile.years_of_experience or 0}
+- current_role: {profile.current_role or "unknown"}
+- target_role: {profile.target_role or "unknown"}
+
+Category breakdown:
+{json.dumps(category_breakdown, ensure_ascii=False)}
+
+Category response summary:
+{json.dumps(category_response_summary, ensure_ascii=False)}
+
+Return VALID JSON only with this shape:
+{{
+  "overall_summary": "short coaching summary",
+  "strengths": ["..."],
+  "improvement_areas": ["..."],
+  "recommendations": ["..."],
+  "category_feedback": {{
+    "resume": {{"summary": "...", "next_move": "...", "practice": "..."}},
+    "skill": {{"summary": "...", "next_move": "...", "practice": "..."}},
+    "behavioral": {{"summary": "...", "next_move": "...", "practice": "..."}},
+    "psychometric": {{"summary": "...", "next_move": "...", "practice": "..."}}
+  }},
+  "30_day_plan": ["week 1 ...", "week 2 ...", "week 3 ...", "week 4 ..."],
+  "retake_strategy": "...",
+  "engagement_hook": "short motivating line"
+}}
+"""
+
+        ai_out = await self._call_ai_robust(
+            prompt,
+            "You are an expert candidate coach. Return strict JSON only.",
+        )
+        if not ai_out:
+            return None
+
+        try:
+            cleaned = ai_out.replace("```json", "").replace("```", "").strip()
+            parsed = json.loads(cleaned)
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception as exc:
+            logger.debug("Failed to parse LLM feedback JSON: %s", exc)
+        return None
+
+    def _build_fallback_feedback_report(
+        self,
+        user_id: str,
+        final_score: int,
+        tier: str,
+        category_breakdown: Dict[str, Any],
+        profile: CandidateProfile,
+        db: Session,
+    ) -> Dict[str, Any]:
+        profile = profile or CandidateProfile(user_id=user_id)
+        improvements = self._identify_improvements(user_id, category_breakdown, db)
+        strengths = self._identify_strengths(user_id, category_breakdown, db)
+        recommendations = self._generate_recommendations(
+            user_id,
+            tier,
+            improvements,
+            profile.years_of_experience or 0,
+            db,
+        )
+        return {
+            "overall_summary": self._get_tier_explanation(tier, final_score),
+            "strengths": strengths,
+            "improvement_areas": improvements,
+            "recommendations": recommendations,
+            "category_feedback": {
+                "resume": {"summary": self._get_category_insight("resume", category_breakdown.get("resume", {}).get("score") or 0, category_breakdown.get("resume", {}).get("tier", tier)), "next_move": "Quantify achievements and clarify career progression.", "practice": "Rewrite 3 resume bullets with metrics."},
+                "skill": {"summary": self._get_category_insight("skills", category_breakdown.get("skills", {}).get("score") or 0, category_breakdown.get("skills", {}).get("tier", tier)), "next_move": "Explain trade-offs and decision steps more clearly.", "practice": "Practice 2 scenario answers out loud."},
+                "behavioral": {"summary": self._get_category_insight("behavioral", category_breakdown.get("behavioral", {}).get("score") or 0, category_breakdown.get("behavioral", {}).get("tier", tier)), "next_move": "Use STAR and show ownership.", "practice": "Draft 2 STAR stories for conflict and impact."},
+                "psychometric": {"summary": self._get_category_insight("psychometric", category_breakdown.get("psychometric", {}).get("score") or 0, category_breakdown.get("psychometric", {}).get("tier", tier)), "next_move": "Show consistency in your motivations and working style.", "practice": "Write a short self-profile of strengths and work style."},
+            },
+            "30_day_plan": [
+                "Week 1: Fix the weakest category with 3 focused drills.",
+                "Week 2: Rewrite or rehearse responses using the STAR structure.",
+                "Week 3: Do 2 timed practice sessions and review the reasoning.",
+                "Week 4: Revisit weak areas and prepare for the retake window.",
+            ],
+            "retake_strategy": "Use the 30-day window to improve the lowest category first; the retake should show clearer reasoning, stronger evidence, and better ownership.",
+            "engagement_hook": "Small improvements in the weakest category can move your overall score faster than trying to fix everything at once.",
         }
     
     def _get_score_tier(self, score: int) -> str:
@@ -341,13 +582,17 @@ class AssessmentFeedbackService:
             db.commit()
             db.refresh(retake_record)
         
-        now = datetime.now()
-        eligible = now >= retake_record.eligible_after
-        days_remaining = (retake_record.eligible_after - now).days if not eligible else 0
+        now = datetime.now(timezone.utc)
+        eligible_after = retake_record.eligible_after
+        if eligible_after and eligible_after.tzinfo is None:
+            eligible_after = eligible_after.replace(tzinfo=timezone.utc)
+
+        eligible = now >= eligible_after
+        days_remaining = (eligible_after - now).days if not eligible else 0
         
         return {
             "eligible": eligible,
-            "eligible_after": retake_record.eligible_after.isoformat(),
+            "eligible_after": eligible_after.isoformat(),
             "days_remaining": max(0, days_remaining),
             "retake_count": retake_record.retake_count,
             "reason": "Ready to retake!" if eligible else f"You can retake in {days_remaining} days"

@@ -296,7 +296,7 @@ async def sync_conversation_to_profile(session: ConversationalOnboardingSession,
         if profile.completion_score >= 80:
             new_strength = "Strong"
         elif profile.completion_score >= 60:
-            new_strength = "Medium"
+            new_strength = "Moderate"
         else:
             new_strength = "Low"
         

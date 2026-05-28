@@ -62,6 +62,21 @@ export default function EditJobPage({
   const [skillsInput, setSkillsInput] = useState("");
   const [positionsInput, setPositionsInput] = useState("1");
 
+  const getExperienceBandLabel = (band: string) => {
+    switch (band) {
+      case "fresher":
+        return "0-1 (Fresher)";
+      case "mid":
+        return "1-5 (Mid-level)";
+      case "senior":
+        return "5-10 (Senior)";
+      case "leadership":
+        return "10+ (Leadership)";
+      default:
+        return band;
+    }
+  };
+
   useEffect(() => {
     async function loadJob() {
       try {
@@ -226,10 +241,10 @@ export default function EditJobPage({
                   }
                   className="w-full bg-white border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none appearance-none cursor-pointer"
                 >
-                  <option value="fresher">Fresher (0-1y)</option>
-                  <option value="mid">Mid-Level (1-5y)</option>
-                  <option value="senior">Senior (5-10y)</option>
-                  <option value="leadership">Leadership (10y+)</option>
+                  <option value="fresher">0-1 (Fresher)</option>
+                  <option value="mid">1-5 (Mid-level)</option>
+                  <option value="senior">5-10 (Senior)</option>
+                  <option value="leadership">10+ (Leadership)</option>
                 </select>
               </Field>
               <Field label="Engagement Type" icon={Workflow}>

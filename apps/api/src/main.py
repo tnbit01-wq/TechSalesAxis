@@ -20,6 +20,7 @@ from src.api.admin import router as admin_router
 from src.api.admin_unified import router as admin_unified_router
 from src.api.bulk_upload import router as bulk_upload_router
 from src.api.career_readiness import router as career_readiness_router
+from src.routes.assessment_feedback_routes import router as assessment_feedback_router
 from src.routes.intelligence import router as intelligence_router
 import time
 
@@ -52,7 +53,11 @@ async def log_requests(request: Request, call_next):
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://10.215.202.91:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -64,6 +69,7 @@ app.include_router(auth_router, prefix="/auth")
 app.include_router(candidate_router)
 app.include_router(career_readiness_router, prefix="/api/v1/candidate")
 app.include_router(assessment_router, prefix="/assessment")
+app.include_router(assessment_feedback_router)
 app.include_router(recruiter_router)
 app.include_router(posts_router, prefix="/posts")
 app.include_router(notifications_router)

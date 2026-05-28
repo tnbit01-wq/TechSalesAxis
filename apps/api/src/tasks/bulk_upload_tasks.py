@@ -212,10 +212,23 @@ def parse_resume_file(self, file_id: str, file_path: str, file_name: str, bucket
         s3 = S3Service.get_client()
         target_bucket = bucket_name or os.getenv("MY_S3_BUCKET_NAME", "techsalesaxis-storage")
         
+        # Handle s3:// scheme (normalize to just key)
+        s3_key = file_path
+        if file_path.startswith("s3://"):
+            try:
+                # Extract bucket and key from s3://bucket/key format
+                parts = file_path[5:].split('/', 1)  # Remove "s3://" prefix and split
+                if len(parts) == 2:
+                    target_bucket = parts[0]
+                    s3_key = parts[1]
+                logger.info(f"Parsed s3:// URL: bucket={target_bucket}, key={s3_key}")
+            except Exception as e:
+                logger.warning(f"Failed to parse s3:// URL: {file_path}, error: {e}")
+        
         # Use tempfile to handle large files safely
         suffix = os.path.splitext(file_name)[1]
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            s3.download_fileobj(target_bucket, file_path, tmp)
+            s3.download_fileobj(target_bucket, s3_key, tmp)
             temp_file_path = tmp.name
 
         # 2. Extract raw text

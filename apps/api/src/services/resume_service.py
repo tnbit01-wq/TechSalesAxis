@@ -10,6 +10,7 @@ from sqlalchemy import func
 import json
 import os
 import re
+from urllib.parse import unquote
 from src.core.config import OPENAI_API_KEY, OPENROUTER_API_KEY
 from src.services.comprehensive_extractor import ComprehensiveResumeExtractor
 from src.services.enhanced_resume_extractor import EnhancedResumeExtractor, CandidateProfileMapper
@@ -434,6 +435,35 @@ class ResumeService:
             logger.warning(msg)
             # Continue anyway - S3 will fail gracefully below
 
+        # NORMALIZE S3 PATH: Handle s3:// URLs and presigned URLs
+        s3_bucket = S3_BUCKET_NAME
+        s3_key = resume_path
+        
+        # Handle s3:// scheme (from bulk uploads)
+        if resume_path.startswith("s3://"):
+            try:
+                # Extract bucket and key from s3://bucket/key format
+                parts = resume_path[5:].split('/', 1)  # Remove "s3://" prefix and split
+                if len(parts) == 2:
+                    s3_bucket = parts[0]
+                    s3_key = parts[1]
+            except Exception as e:
+                logger.warning(f"Failed to parse s3:// URL: {resume_path}, error: {e}")
+        
+        # Handle presigned URLs (extract key and URL-decode)
+        elif resume_path.startswith("http"):
+            try:
+                if ".com/" in resume_path:
+                    s3_key = resume_path.split(".com/")[1].split("?")[0]
+                elif f"{s3_bucket}/" in resume_path:
+                    s3_key = resume_path.split(f"{s3_bucket}/")[1].split("?")[0]
+                # URL-decode the extracted path to handle spaces and special characters
+                s3_key = unquote(s3_key)
+                logger.info(f"Extracted S3 key from presigned URL: {s3_key}")
+            except Exception as e:
+                logger.warning(f"Failed to extract key from presigned URL: {resume_path}, error: {e}")
+                s3_key = resume_path
+
         # 1. Download file from AWS S3
         file_res = None
         s3_error = None
@@ -444,9 +474,9 @@ class ResumeService:
                 aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
                 region_name=AWS_REGION
             )
-            response = s3_client.get_object(Bucket=S3_BUCKET_NAME, Key=resume_path)
+            response = s3_client.get_object(Bucket=s3_bucket, Key=s3_key)
             file_res = response['Body'].read()
-            logger.info(f"✅ Successfully downloaded resume from S3: {resume_path} ({len(file_res)} bytes)")
+            logger.info(f"✅ Successfully downloaded resume from S3: s3://{s3_bucket}/{s3_key} ({len(file_res)} bytes)")
         except ClientError as e:
             s3_error = f"S3 download error (ClientError): {str(e)}"
             logger.error(s3_error)

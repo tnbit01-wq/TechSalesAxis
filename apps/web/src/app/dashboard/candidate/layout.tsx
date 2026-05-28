@@ -66,7 +66,7 @@ export default function CandidateDashboardLayout({
         />
         <CandidateLayoutClient>
           <CandidateHeader />
-          <main className="w-full pt-16 h-screen overflow-hidden">{children}</main>
+          <main className="w-full pt-16 flex-1 min-h-0 overflow-y-auto overflow-x-hidden">{children}</main>
         </CandidateLayoutClient>
       </div>
     </SidebarProvider>

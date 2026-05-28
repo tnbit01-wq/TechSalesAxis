@@ -4,12 +4,14 @@ Endpoints for candidates to view feedback, recommendations, and manage retakes
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import datetime
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 from src.core.database import get_db
-from src.core.auth import get_current_user
+from src.core.dependencies import get_current_user
 from src.services.assessment_feedback_service import AssessmentFeedbackService, AssessmentRetakeManager
 from src.services.assessment_service import AssessmentService
-from src.core.models import User, AssessmentSession
+from src.core.models import AssessmentSession
 
 router = APIRouter(prefix="/assessment", tags=["Assessment Feedback & Retake"])
 
@@ -18,9 +20,58 @@ retake_manager = AssessmentRetakeManager()
 assessment_service = AssessmentService()
 
 
+def _build_offline_feedback_report(user_id: str) -> dict:
+    return {
+        "overall_tier": "Unknown",
+        "final_score": None,
+        "score_explanation": "Your latest feedback is temporarily unavailable because the database could not be reached.",
+        "category_breakdown": {
+            "resume": {"score": None, "tier": "Unknown", "label": "Resume/Background", "description": "Unavailable right now", "insight": "Unavailable right now", "comparison": None},
+            "skills": {"score": None, "tier": "Unknown", "label": "Technical Skills", "description": "Unavailable right now", "insight": "Unavailable right now", "comparison": None},
+            "behavioral": {"score": None, "tier": "Unknown", "label": "Behavioral", "description": "Unavailable right now", "insight": "Unavailable right now", "comparison": None},
+            "psychometric": {"score": None, "tier": "Unknown", "label": "Personality Fit", "description": "Unavailable right now", "insight": "Unavailable right now", "comparison": None},
+        },
+        "strengths": ["Feedback is temporarily unavailable due to a database connection issue."],
+        "improvement_areas": ["Please try again shortly once the backend database connection recovers."],
+        "recommendations": [
+            "Refresh the page and try again in a moment.",
+            "If the issue persists, complete another assessment attempt after the backend connection is restored.",
+            "Use the next 30 days to review your strongest and weakest areas from your previous attempt."
+        ],
+        "retake_eligibility": {
+            "eligible": False,
+            "reason": "Feedback is temporarily unavailable",
+            "retake_type": "offline-fallback",
+            "days_remaining": None,
+            "eligible_after": None,
+            "retake_count": None,
+        },
+        "visibility_impact": "Temporary fallback response while the database is unavailable.",
+        "next_steps": [
+            "Retry in a few minutes.",
+            "Check that the backend database connection has recovered.",
+            "If you need immediate guidance, review your last saved feedback or assessment notes."
+        ],
+        "generated_at": datetime.now().isoformat(),
+        "llm_feedback": {
+            "overall_summary": "We couldn't load your latest personalized feedback right now.",
+            "30_day_plan": [
+                "Week 1: Review your previous assessment notes.",
+                "Week 2: Rewrite or rehearse your weakest answers.",
+                "Week 3: Practice under time pressure.",
+                "Week 4: Retake the assessment once the backend is healthy.",
+            ],
+            "retake_strategy": "Try again after the database connection is restored so personalized feedback can be generated.",
+            "engagement_hook": "Your improvement path is still there; this is just a temporary loading issue.",
+        },
+        "fallback": True,
+        "user_id": user_id,
+    }
+
+
 @router.get("/feedback", summary="Get assessment feedback and recommendations")
 async def get_assessment_feedback(
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -35,29 +86,75 @@ async def get_assessment_feedback(
     - Next steps for career progression
     """
     try:
-        report = feedback_service.generate_feedback_report(str(current_user.id), db)
-        
+        user_id = str(current_user["sub"])
+        report = await feedback_service.generate_feedback_report_async(user_id, db)
+
         if "error" in report:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=report["error"]
             )
-        
+
         return {
             "status": "success",
             "data": report
         }
-    
+
+    except OperationalError as oe:
+        # Database connectivity issues - return a safe fallback payload so the UI can still render
+        return {
+            "status": "success",
+            "data": _build_offline_feedback_report(str(current_user["sub"])),
+            "warning": "Database connection error while generating feedback. Showing a fallback report.",
+        }
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate feedback: {str(e)}"
-        )
+        return {
+            "status": "success",
+            "data": _build_offline_feedback_report(str(current_user["sub"])),
+            "warning": f"Failed to generate personalized feedback. Showing a fallback report: {str(e)}",
+        }
+
+
+@router.post("/feedback/generate", summary="Generate or refresh assessment feedback")
+async def generate_assessment_feedback(
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Force a fresh LLM-backed feedback report and persist it in assessment_feedback.
+    """
+    try:
+        user_id = str(current_user["sub"])
+        report = await feedback_service.generate_feedback_report_async(user_id, db)
+        if "error" in report:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=report["error"]
+            )
+
+        return {
+            "status": "success",
+            "data": report
+        }
+    except OperationalError:
+        return {
+            "status": "success",
+            "data": _build_offline_feedback_report(str(current_user["sub"])),
+            "warning": "Database connection error while generating feedback. Showing a fallback report.",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {
+            "status": "success",
+            "data": _build_offline_feedback_report(str(current_user["sub"])),
+            "warning": f"Failed to generate personalized feedback. Showing a fallback report: {str(e)}",
+        }
 
 
 @router.get("/retake/eligibility", summary="Check if candidate can retake assessment")
 async def check_retake_eligibility(
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -70,7 +167,8 @@ async def check_retake_eligibility(
     - Message explaining status
     """
     try:
-        allowed, message = retake_manager.allow_retake(str(current_user.id), db)
+        user_id = str(current_user["sub"])
+        allowed, message = retake_manager.allow_retake(user_id, db)
         
         return {
             "status": "success",
@@ -90,7 +188,7 @@ async def check_retake_eligibility(
 
 @router.post("/retake/start", summary="Start a new assessment retake")
 async def start_retake(
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -102,7 +200,8 @@ async def start_retake(
     - Previous attempts are preserved for progress comparison
     """
     try:
-        allowed, message = retake_manager.allow_retake(str(current_user.id), db)
+        user_id = str(current_user["sub"])
+        allowed, message = retake_manager.allow_retake(user_id, db)
         
         if not allowed:
             raise HTTPException(
@@ -111,10 +210,10 @@ async def start_retake(
             )
         
         # Update retake eligibility
-        retake_manager.start_retake_session(str(current_user.id), db)
+        retake_manager.start_retake_session(user_id, db)
         
         # Create new assessment session (resets questions, keeps history)
-        session = assessment_service.get_or_create_session(str(current_user.id), db)
+        session = assessment_service.get_or_create_session(user_id, db)
         
         # Reset session for new attempt
         session.current_step = 0
@@ -144,7 +243,7 @@ async def start_retake(
 
 @router.get("/retake/progress", summary="Get retake history and improvement tracking")
 async def get_retake_progress(
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -158,7 +257,8 @@ async def get_retake_progress(
     - Next retake eligibility date
     """
     try:
-        progress = retake_manager.get_retake_progress(str(current_user.id), db)
+        user_id = str(current_user["sub"])
+        progress = retake_manager.get_retake_progress(user_id, db)
         
         return {
             "status": "success",
@@ -174,7 +274,7 @@ async def get_retake_progress(
 
 @router.post("/feedback/mark-viewed", summary="Mark feedback as viewed by candidate")
 async def mark_feedback_viewed(
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -184,8 +284,9 @@ async def mark_feedback_viewed(
         from src.core.models import AssessmentFeedback
         from datetime import datetime
         
+        user_id = str(current_user["sub"])
         feedback = db.query(AssessmentFeedback).filter(
-            AssessmentFeedback.candidate_id == current_user.id
+            AssessmentFeedback.candidate_id == user_id
         ).order_by(AssessmentFeedback.generated_at.desc()).first()
         
         if feedback:

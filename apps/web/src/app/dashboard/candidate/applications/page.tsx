@@ -106,12 +106,22 @@ export default function CandidateApplicationsPage() {
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(255,138,0,0.08),_transparent_42%),linear-gradient(180deg,#FFFCF8_0%,#FFFFFF_100%)] text-slate-900">
       <style>{`
         .apps-scroll {
-          scrollbar-width: none;
-          -ms-overflow-style: none;
+          scrollbar-width: thin;
+          scrollbar-color: #cbd5e1 transparent;
         }
         .apps-scroll::-webkit-scrollbar {
-          width: 0;
-          height: 0;
+          width: 4px;
+          height: 4px;
+        }
+        .apps-scroll::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .apps-scroll::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 999px;
+        }
+        .apps-scroll::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
         }
       `}</style>
 

@@ -174,7 +174,7 @@ export function RecommendedCompaniesCard() {
       {!loading && !error && recommendations.length > 0 && (
         <div className="mt-6 pt-6 border-t border-slate-100 relative z-10">
           <Link
-            href="/dashboard/candidate/company-matches"
+            href="/dashboard/candidate/recommendations"
             className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-50 text-blue-600 font-bold rounded-lg hover:bg-blue-100 transition-all text-sm"
           >
             Explore 10+ More <ExternalLink className="h-4 w-4" />

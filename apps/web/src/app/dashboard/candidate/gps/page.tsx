@@ -481,12 +481,22 @@ export default function CareerGPSPage() {
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(255,138,0,0.08),_transparent_42%),linear-gradient(180deg,#FFFCF8_0%,#FFFFFF_100%)] text-slate-900">
       <style>{`
         .gps-scroll {
-          scrollbar-width: none;
-          -ms-overflow-style: none;
+          scrollbar-width: thin;
+          scrollbar-color: #cbd5e1 transparent;
         }
         .gps-scroll::-webkit-scrollbar {
-          width: 0;
-          height: 0;
+          width: 4px;
+          height: 4px;
+        }
+        .gps-scroll::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .gps-scroll::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 999px;
+        }
+        .gps-scroll::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
         }
       `}</style>
 

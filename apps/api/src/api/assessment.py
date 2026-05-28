@@ -71,7 +71,8 @@ async def submit_answer(submission: AnswerSubmission, user: dict = Depends(get_c
         submission.question_id,
         submission.answer,
         db,
-        is_skipped=submission.is_skipped
+        is_skipped=submission.is_skipped,
+        metadata=submission.metadata
     )
     return result
 
@@ -122,12 +123,26 @@ async def retake_assessment(user: dict = Depends(get_current_user), db: Session 
     blocked = db.query(BlockedUser).filter(BlockedUser.user_id == user_id).first()
     if blocked:
         raise HTTPException(status_code=403, detail="Your account has been permanently blocked.")
-        
-    # delete current session and responses
+
+    from src.services.assessment_feedback_service import assessment_retake_manager
+
+    allowed, message = assessment_retake_manager.allow_retake(user_id, db)
+    if not allowed:
+        raise HTTPException(status_code=403, detail=message)
+
+    # Preserve history in the retake tracking table, but reset the active attempt.
+    assessment_retake_manager.start_retake_session(user_id, db)
+
+    # Delete current active session and its responses before creating the fresh attempt.
     db.query(AssessmentResponse).filter(AssessmentResponse.candidate_id == user_id).delete()
     db.query(AssessmentSession).filter(AssessmentSession.candidate_id == user_id).delete()
     db.commit()
-    
+
+    profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == user_id).first()
+    if profile:
+        profile.assessment_status = "not_started"
+        db.commit()
+
     return assessment_service.get_or_create_session(user_id, db)
 
 # ========== ASSESSMENT QUEUE MANAGEMENT ENDPOINTS ==========

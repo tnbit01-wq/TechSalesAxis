@@ -71,6 +71,8 @@ class CareerReadinessStep4Request(BaseModel):
     contract_preference: ContractPreference = Field(ContractPreference.FULLTIME)
     visa_sponsorship_needed: bool = Field(False)
     salary_flexibility: float = Field(0.5, ge=0.0, le=1.0, description="0=rigid (exact salary), 1.0=very flexible")
+    expected_salary: Optional[float] = Field(None, description="Expected salary in local currency, numeric")
+    current_salary: Optional[float] = Field(None, description="Current salary in local currency, numeric")
     target_market_segment: Optional[str] = Field(None, description="SMB, mid_market, enterprise, any")
     
     class Config:
@@ -81,17 +83,41 @@ class CareerReadinessSaveRequest(BaseModel):
     """Complete Career Readiness profile"""
     employment_status: EmploymentStatus
     job_search_mode: JobSearchMode
-    notice_period_days: int
+    notice_period_days: Optional[int] = None  # None for students; null means not applicable
     willing_to_relocate: bool
     contract_preference: ContractPreference = ContractPreference.FULLTIME
     visa_sponsorship_needed: bool = False
     salary_flexibility: float = 0.5
     exploration_trigger: Optional[str] = None
     target_market_segment: Optional[str] = None
+    expected_salary: Optional[float] = None
+    current_salary: Optional[float] = None
+    between_role_detail: Optional[str] = None  # laid_off | contract_ended | resigned | other
+    between_role_note: Optional[str] = None
     current_company_name: Optional[str] = None
+    # Additional optional promoted fields captured during onboarding
+    portfolio_url: Optional[str] = None
+    learning_links: Optional[List[str]] = None
+    learning_interests: Optional[List[str]] = None
+    social_links: Optional[Dict[str, Any]] = None
+    certifications: Optional[List[str]] = None
+    projects: Optional[List[Dict[str, Any]]] = None
+    gpa_score: Optional[float] = None
+    ai_extraction_confidence: Optional[float] = None
+    tech_sales_years: Optional[int] = None
+    tech_years: Optional[int] = None
+    sales_years: Optional[int] = None
+    total_relevant_years: Optional[int] = None
+    role_frequency: Optional[Dict[str, Any]] = None
+    dominant_role: Optional[str] = None
+    primary_career_pattern: Optional[str] = None
+    notice_period_required_days: Optional[int] = None
+    job_opportunity_type: Optional[List[str]] = None
     
     @field_validator('notice_period_days')
     def validate_notice_period(cls, v):
+        if v is None:  # None is valid for students/non-applicable
+            return v
         valid_values = [0, 7, 14, 30, 60, 90, 180]
         if v not in valid_values:
             raise ValueError(f"notice_period_days must be one of: {valid_values}")
@@ -117,9 +143,13 @@ class CareerReadinessResponse(BaseModel):
     contract_preference: str
     visa_sponsorship_needed: bool
     salary_flexibility: float
+    expected_salary: Optional[float]
+    current_salary: Optional[float]
     exploration_trigger: Optional[str]
     target_market_segment: Optional[str]
     current_company_name: Optional[str]
+    between_role_detail: Optional[str]
+    between_role_note: Optional[str]
     career_readiness_timestamp: datetime
     days_until_revertification: int  # Calculated field
     

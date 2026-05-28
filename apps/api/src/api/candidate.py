@@ -13,6 +13,7 @@ from src.utils.pdf_generator import PDFGenerator
 from src.schemas.candidate import CandidateProfileUpdate, CandidateStats, CandidateJobResponse, JobApplicationResponse, JobApplicationDetailResponse
 from src.core.config import GOOGLE_API_KEY, OPENAI_API_KEY
 from typing import List, Optional
+from urllib.parse import unquote
 
 router = APIRouter(prefix="/candidate", tags=["candidate"])
 
@@ -102,6 +103,10 @@ async def get_profile(
         
         # Convert to dict for response consistency
         profile_data = {c.name: getattr(profile, c.name) for c in profile.__table__.columns}
+
+        # Make sure stale status values are corrected if the user has a completed assessment session.
+        from src.services.candidate_service import CandidateService
+        profile_data["assessment_status"] = CandidateService.sync_assessment_status(user_id, db)
         
         # Add email from User table
         user_record = db.query(User).filter(User.id == user_id).first()
@@ -187,6 +192,30 @@ async def update_profile(
         completion_score = CandidateService.calculate_completion_score(profile_dict)
         
         profile.completion_score = completion_score
+        # Map completion_score to human-facing profile_strength
+        try:
+            cs = float(completion_score) if completion_score is not None else 0.0
+        except Exception:
+            cs = 0.0
+
+        try:
+            if cs >= 80:
+                profile.profile_strength = "Strong"
+            elif cs >= 60:
+                profile.profile_strength = "Moderate"
+            else:
+                profile.profile_strength = "Low"
+
+            # Employment readiness: consider ready when completion score is sufficiently high
+            if cs >= 75:
+                profile.employment_readiness_status = "ready"
+            else:
+                # If already set by user or other flows, don't override; otherwise keep existing or 'not_specified'
+                if not getattr(profile, 'employment_readiness_status', None):
+                    profile.employment_readiness_status = "not_specified"
+        except Exception:
+            # Defensive: do not break update flow
+            pass
         profile.updated_at = datetime.now()
         
         db.commit()
@@ -362,6 +391,11 @@ async def update_resume(
                 resume_path = resume_path.split(".com/")[1].split("?")[0]
             elif f"{S3_BUCKET_NAME}/" in resume_path:
                 resume_path = resume_path.split(f"{S3_BUCKET_NAME}/")[1].split("?")[0]
+            # FIX: URL-decode the extracted path to handle spaces and special characters
+            # Presigned URLs encode spaces as %20, slashes as %2F, etc.
+            # This ensures we get the actual S3 key that matches what's stored in S3
+            resume_path = unquote(resume_path)
+            print(f"DEBUG: URL-decoded resume path: {resume_path}")
         except Exception as e:
             print(f"DEBUG: Error extracting path from URL {resume_path}: {e}")
 

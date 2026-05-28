@@ -70,7 +70,7 @@ export default function RecruiterDashboardLayout({
         />
         <RecruiterLayoutClient>
           <RecruiterHeader />
-          <main className="w-full pt-16 h-screen overflow-hidden">{children}</main>
+          <main className="w-full flex-1 min-h-0 pt-16 overflow-y-auto overflow-x-hidden">{children}</main>
         </RecruiterLayoutClient>
       </div>
     </SidebarProvider>

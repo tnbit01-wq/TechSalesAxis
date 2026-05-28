@@ -90,6 +90,9 @@ SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", ZOHO_EMAIL).strip()
 SMTP_SENDER_NAME = os.getenv("SMTP_SENDER_NAME", "TalentFlow Team").strip()
 SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
 
+# ZeptoMail API key used by template API. Falls back to SMTP_PASSWORD for backward compatibility.
+ZEPTO_API_KEY = os.getenv("ZEPTO_API_KEY", SMTP_PASSWORD).strip()
+
 # ZeptoMail Template IDs
 ZEPTO_OTP_TEMPLATE_ID = os.getenv("ZEPTO_OTP_TEMPLATE_ID", "").strip()
 ZEPTO_PWD_RESET_TEMPLATE_ID = os.getenv("ZEPTO_PWD_RESET_TEMPLATE_ID", "").strip()

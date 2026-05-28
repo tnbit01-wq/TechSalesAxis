@@ -4,6 +4,8 @@ import asyncio
 import httpx
 import time
 import logging
+import os
+import statistics
 from typing import List, Dict, Optional, Any
 from datetime import datetime
 from sqlalchemy.orm import Session
@@ -19,6 +21,16 @@ class AssessmentService:
     def __init__(self):
         self._client = httpx.AsyncClient(timeout=30.0)
         self.openai_key = OPENAI_API_KEY
+        # Try to load calibration mapping if present
+        self.calibration = None
+        try:
+            workspace_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
+            cal_path = os.path.join(workspace_root, "calibration.json")
+            if os.path.exists(cal_path):
+                with open(cal_path, "r", encoding="utf-8") as f:
+                    self.calibration = json.load(f)
+        except Exception:
+            self.calibration = None
 
     async def _call_ai_robust(self, prompt: str, system_message: str = "You are a professional assessment auditor.") -> Optional[str]:
         """Call OpenAI GPT-4o for assessment evaluation."""
@@ -213,35 +225,37 @@ class AssessmentService:
         
         answered_count = {cat: count for cat, count in answered_responses}
         total_answered = sum(answered_count.values())
-        
-        # Determine which category needs more questions
+
+        # Stop when the planned number of questions has already been answered.
+        if total_answered >= session.total_budget:
+            return None
+
+        # Determine exact per-category targets using largest-remainder apportionment.
+        # This keeps total targets equal to total_budget and preserves configured weightage.
         target_dist = distribution.get(session.experience_band, distribution["mid"])
-        category_deficit = {}
+        target_counts = self._allocate_category_targets(session.total_budget, target_dist)
+
+        category_deficit = {
+            category: target_counts[category] - answered_count.get(category, 0)
+            for category in target_dist
+        }
+
+        # Resume is a required weighted category, so try it before any other category can
+        # consume the next turn. This prevents seeded behavioral/skill questions from
+        # starving resume questions when resume still has remaining quota.
+        if self._should_force_resume_question(category_deficit, target_counts, answered_count):
+            resume_q = self._try_generate_resume_question(user_id, db)
+            if resume_q:
+                resume_q["is_ai_evaluated"] = True
+                return resume_q
         
-        for category, percentage in target_dist.items():
-            target_count = int(session.total_budget * percentage)
-            current_count = answered_count.get(category, 0)
-            deficit = target_count - current_count
-            category_deficit[category] = deficit
-        
-        # Select from the category with the largest deficit
-        preferred_category = max(category_deficit, key=lambda k: category_deficit[k])
+        # Select from the category with the largest normalized deficit so smaller weighted
+        # categories like resume still get scheduled on time instead of being starved by raw counts.
+        preferred_category = self._pick_preferred_category(category_deficit, target_counts)
         
         # Get IDs of questions already answered
         answered_ids = db.query(AssessmentResponse.question_id).filter(AssessmentResponse.candidate_id == user_id).all()
         answered_ids = [str(r[0]) for r in answered_ids if r[0] is not None]  # Filter out None values from dynamic questions
-        
-        # Check current counts for resume questions specifically
-        resume_answered_count = answered_count.get("resume", 0)
-        
-        # TRY DYNAMIC GENERATION FIRST FOR RESUME AND SKILL (Interleaved logic)
-        # We prioritize Resume questions if the deficit is high and we haven't reached the 3-question cap
-        if preferred_category == "resume" and resume_answered_count < 3:
-            resume_q = self._try_generate_resume_question(user_id, db)
-            if resume_q:
-                # Add a flag to indicate this is an AI-evaluated dynamic question
-                resume_q["is_ai_evaluated"] = True
-                return resume_q
         
         if preferred_category == "skill":
             skill_q = self._try_generate_skill_question(user_id, session.experience_band, db)
@@ -275,7 +289,7 @@ class AssessmentService:
             remaining_cats = [cat for cat, deficit in category_deficit.items() if deficit > 0 and cat != preferred_category]
             for alt_cat in sorted(remaining_cats, key=lambda c: category_deficit[c], reverse=True):
                 # Try dynamic generation for alternate categories
-                if alt_cat == "resume" and resume_answered_count < 3:
+                if alt_cat == "resume" and resume_answered_count < resume_target_count:
                     resume_q = self._try_generate_resume_question(user_id, db)
                     if resume_q:
                         resume_q["is_ai_evaluated"] = True
@@ -324,98 +338,169 @@ class AssessmentService:
             "status": "active"
         }
 
+    def _allocate_category_targets(self, total_budget: int, target_dist: Dict[str, float]) -> Dict[str, int]:
+        """Convert fractional category weights into exact integer targets that sum to total_budget."""
+        if total_budget <= 0:
+            return {category: 0 for category in target_dist}
+
+        raw_targets = {
+            category: total_budget * percentage
+            for category, percentage in target_dist.items()
+        }
+        target_counts = {
+            category: int(raw_targets[category])
+            for category in target_dist
+        }
+        assigned = sum(target_counts.values())
+        remaining_slots = total_budget - assigned
+
+        if remaining_slots > 0:
+            ordered_remainders = sorted(
+                target_dist.keys(),
+                key=lambda c: (raw_targets[c] - target_counts[c]),
+                reverse=True,
+            )
+            for category in ordered_remainders[:remaining_slots]:
+                target_counts[category] += 1
+
+        return target_counts
+
+    def _pick_preferred_category(self, category_deficit: Dict[str, int], target_counts: Dict[str, int]) -> str:
+        """Choose the next category using normalized deficit so small weighted categories are not starved."""
+        return max(
+            category_deficit,
+            key=lambda category: (
+                category_deficit[category] / max(target_counts.get(category, 1), 1),
+                -target_counts.get(category, 1),
+            ),
+        )
+
+    def _should_force_resume_question(
+        self,
+        category_deficit: Dict[str, int],
+        target_counts: Dict[str, int],
+        answered_count: Dict[str, int],
+    ) -> bool:
+        """Return True when resume still has quota left and should be tried before other categories."""
+        resume_deficit = category_deficit.get("resume", 0)
+        resume_target_count = target_counts.get("resume", 0)
+        resume_answered_count = answered_count.get("resume", 0)
+        return resume_deficit > 0 and resume_answered_count < resume_target_count
+
     def _try_generate_resume_question(self, user_id: str, db: Session) -> Optional[Dict]:
-        """Generate dynamic resume-based questions about role consistency, career gaps, and achievements.
-        
-        FIXED Phase 4: Now uses ResumeParserV2 extracted data (dominant_role, tech_sales_years, etc.)
-        instead of basic current_role/years_of_experience which may be None.
-        """
+        """Generate a resume question from parsed resume data without relying on fixed sentence templates."""
         try:
             profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == user_id).first()
             resume = db.query(ResumeData).filter(ResumeData.user_id == user_id).first()
             
             if not profile and not resume:
                 return None
-            
-            # FIXED: Use new Phase 2/3 fields from ResumeParserV2 extraction
-            # These are more reliable than the basic current_role
+
             current_role = profile.dominant_role if profile and profile.dominant_role else profile.current_role if profile else None
             primary_pattern = profile.primary_career_pattern if profile and profile.primary_career_pattern else "Unknown"
-            
-            # Use total relevant years (tech+sales+general) instead of all experience
             yoe = profile.total_relevant_years if profile and profile.total_relevant_years > 0 else profile.years_of_experience if profile else 0
-            
-            # Get achievements and career info
             achievements = resume.achievements if resume and resume.achievements else []
             career_gaps = resume.career_gaps if resume and resume.career_gaps else {}
-            timeline = resume.timeline if resume and resume.timeline else {}
             experience_history = profile.experience_history if profile and profile.experience_history else {}
-            
-            # Build dynamic question based on resume data
-            questions_pool = []
-            
-            # Question 1: Role Consistency (use dominant role from V2 extraction)
+
+            resume_signals = {
+                "current_role": current_role or "unknown",
+                "primary_pattern": primary_pattern or "unknown",
+                "years_of_experience": yoe or 0,
+                "achievements": achievements[:3] if isinstance(achievements, list) else achievements,
+                "career_gaps": career_gaps,
+                "experience_history_size": len(experience_history) if isinstance(experience_history, (list, dict)) else 0
+            }
+
+            generation_prompt = f"""
+Generate ONE original resume-based interview question for a Tech Sales recruitment assessment.
+
+Resume signals:
+- current role: {resume_signals['current_role']}
+- primary career pattern: {resume_signals['primary_pattern']}
+- years of relevant experience: {resume_signals['years_of_experience']}
+- top achievements: {json.dumps(resume_signals['achievements'], ensure_ascii=False)}
+- career gaps: {json.dumps(resume_signals['career_gaps'], ensure_ascii=False)}
+- experience history size: {resume_signals['experience_history_size']}
+
+Requirements:
+- The question must be based on the resume signals above.
+- Do not reuse a fixed sentence template.
+- Do not ask the same kind of question every time.
+- Vary the angle naturally: growth, transition, impact, gap explanation, role depth, leadership, or execution.
+- Do not penalize candidates for writing style, grammar, or long resumes.
+- Make the question fair even if the resume data is sparse.
+- Keep it to 1 or 2 sentences.
+- It should feel like a real interview question, not a canned template.
+
+Return JSON only with these keys:
+{{
+  "question_text": "...",
+  "question_style": "...",
+  "driver": "...",
+  "focus_area": "..."
+}}
+"""
+
+            generated = self._run_coroutine_sync(
+                self._call_ai_robust(
+                    generation_prompt,
+                    "You generate original, resume-specific interview questions. Never reuse a fixed template."
+                )
+            )
+
+            if generated:
+                try:
+                    cleaned = generated.replace("```json", "").replace("```", "").strip()
+                    payload = json.loads(cleaned)
+                    question_text = str(payload.get("question_text", "")).strip()
+                    if question_text:
+                        return {
+                            "id": f"dynamic_resume_{user_id}_{int(time.time() * 1000)}",
+                            "text": question_text,
+                            "category": "resume",
+                            "driver": str(payload.get("driver", "resume_narrative")),
+                            "difficulty": "medium",
+                            "question_style": str(payload.get("question_style", "resume_dynamic")),
+                            "focus_area": payload.get("focus_area"),
+                            "resume_signals": resume_signals,
+                            "prompt_text": question_text,
+                            "template_id": "llm_dynamic"
+                        }
+                except Exception as parse_error:
+                    logger.debug(f"Dynamic resume generation parse failed: {parse_error}")
+
+            # Fallback synthesis when LLM is unavailable
+            rnd = random.Random(abs(hash(str(resume_signals))) + int(time.time()) % 997)
+            angles = []
             if current_role and current_role != "None":
-                questions_pool.append({
-                    "text": f"According to your resume, your most recent role has been {current_role}. Walk us through how you've evolved your responsibilities and impact in this role. Highlight specific milestones or transitions that shaped your expertise.",
-                    "driver": "role_continuity"
-                })
-            
-            # Question 1.5: Career Pattern Recognition (new with Phase 2/3)
+                angles.append(f"how you have grown from {current_role} into your current scope")
             if primary_pattern and primary_pattern != "Unknown":
-                role_count = len(experience_history) if isinstance(experience_history, (list, dict)) else 1
-                questions_pool.append({
-                    "text": f"Your career shows a strong pattern in {primary_pattern} ({role_count} roles). Can you describe your philosophy on this career track? What attracts you to this domain, and how do you see your expertise evolving?",
-                    "driver": "career_pattern"
-                })
-            
-            # Question 2: Years of Experience & Growth (using correct YOE)
-            if yoe and yoe > 0:
-                questions_pool.append({
-                    "text": f"With {yoe} years of relevant experience in {primary_pattern}, describe a major evolution in your skillset or responsibilities. What challenge drove this growth, and how has it shaped your approach to work?",
-                    "driver": "experience_growth"
-                })
-            
-            # Question 2.5: Career Gaps (if gaps detected)
+                angles.append(f"what draws you to the {primary_pattern} path and how it shows up in your work")
             if career_gaps and isinstance(career_gaps, dict) and career_gaps.get("gaps"):
-                questions_pool.append({
-                    "text": f"Your resume shows a career gap of {career_gaps.get('gap_duration', 'some time')}. Could you elaborate on what you did during this period and how you stayed current with industry trends?",
-                    "driver": "career_gap_narrative"
-                })
-            
-            # Question 3: Achievements Validation (if achievements exist)
+                angles.append("how you explain and use a career gap constructively")
             if achievements:
                 top_achievement = achievements[0] if isinstance(achievements, list) else achievements
-                questions_pool.append({
-                    "text": f"One of your key achievements listed is: '{top_achievement}'. Please describe the problem you identified, your approach, and the measurable impact this created for your organization.",
-                    "driver": "achievement_validation"
-                })
-            
-            # Question 4: Generic Role Deep Dive (fallback)
-            if current_role and current_role != "None":
-                questions_pool.append({
-                    "text": f"In your role as {current_role}, describe a complex technical or business challenge you faced. Walk us through your problem-solving approach and the outcome.",
-                    "driver": "role_deep_dive"
-                })
-            else:
-                # Fallback if no role captured
-                questions_pool.append({
-                    "text": f"Describe a complex professional challenge you've faced in your {yoe if yoe else ''} years of experience. Walk us through your problem-solving approach and the business impact.",
-                    "driver": "general_challenge"
-                })
-            
-            if not questions_pool:
-                return None
-            
-            # Select random question from pool
-            selected = random.choice(questions_pool)
-            
+                angles.append(f"the context, action, and impact behind {top_achievement}")
+            if not angles:
+                angles = ["a complex professional challenge that shows your judgment and impact"]
+
+            angle = rnd.choice(angles)
+            question_text = (
+                f"Tell us about {angle}. What was the context, what did you personally do, and what measurable result or learning followed?"
+            )
+
             return {
                 "id": f"dynamic_resume_{user_id}_{int(time.time() * 1000)}",
-                "text": selected["text"],
+                "text": question_text,
                 "category": "resume",
-                "driver": selected.get("driver", "role_narrative"),
-                "difficulty": "medium"
+                "driver": "resume_dynamic",
+                "difficulty": "medium",
+                "question_style": "resume_dynamic",
+                "focus_area": rnd.choice(["growth", "impact", "transition", "gap_explanation", "role_depth"]),
+                "resume_signals": resume_signals,
+                "prompt_text": question_text,
+                "template_id": "rule_based_fallback"
             }
         
         except Exception as e:
@@ -438,7 +523,18 @@ class AssessmentService:
                 skills.extend(resume.skills if isinstance(resume.skills, list) else [])
             
             # Deduplicate and clean
-            skills = list(set([str(s).strip() for s in skills if s]))
+            cleaned_skills = []
+            seen_skills = set()
+            for raw_skill in skills:
+                skill_name = str(raw_skill).strip()
+                if not skill_name:
+                    continue
+                normalized_skill = self._normalize_skill_key(skill_name)
+                if normalized_skill in seen_skills:
+                    continue
+                seen_skills.add(normalized_skill)
+                cleaned_skills.append(skill_name)
+            skills = cleaned_skills
             
             if not skills:
                 # Fallback to Skill Catalog to avoid blocking the assessment
@@ -447,7 +543,10 @@ class AssessmentService:
                     SkillCatalog.experience_band == experience_band
                 ).limit(10).all()
                 if catalog_skills:
-                    skills = [s.name for s in catalog_skills]
+                    for catalog_skill in catalog_skills:
+                        skill_name = str(catalog_skill.name).strip()
+                        if skill_name:
+                            skills.append(skill_name)
             
             if not skills:
                 return None
@@ -457,42 +556,421 @@ class AssessmentService:
                 AssessmentResponse.candidate_id == user_id,
                 AssessmentResponse.category == "skill"
             ).all()
-            tested_skills = [r.question_id for r in responses]
+            tested_skills = set()
+            for response in responses:
+                metadata = response.evaluation_metadata or {}
+                if isinstance(metadata, dict):
+                    stored_skill = metadata.get("skill_name")
+                    if stored_skill:
+                        tested_skills.add(self._normalize_skill_key(str(stored_skill)))
+                if response.driver and response.driver.startswith("skill_application_"):
+                    tested_skills.add(self._normalize_skill_key(response.driver.replace("skill_application_", "").replace("_", " ")))
             
             # Get untested skill (or random if all tested)
-            available_skills = [s for s in skills if s not in tested_skills]
+            available_skills = [s for s in skills if self._normalize_skill_key(s) not in tested_skills]
             skill = random.choice(available_skills if available_skills else skills)
-            
-            # Define difficulty modifiers by experience band
-            difficulty_context = {
-                "fresher": "You're new to this skill. Design a solution.",
-                "mid": "You're moderately experienced. Design a solution under time pressure.",
-                "senior": "You're an expert. Design an optimized solution addressing edge cases.",
-                "leadership": "You're a technical leader. Design and justify an architectural approach."
-            }
-            
-            context = difficulty_context.get(experience_band, "Design a solution.")
-            
-            # Build case study question
-            scenario = f"You're tasked with implementing a solution using {skill}. {context}"
-            question_text = f"{scenario}\n\nProvide your approach including:\n1. Architecture/Design\n2. Implementation considerations\n3. Potential challenges and solutions"
+
+            skill_type = self._infer_skill_question_type(skill)
+            skill_payload = self._build_skill_question_prompt(skill, skill_type, experience_band)
+            question_text = skill_payload["question_text"]
             
             return {
                 "id": f"dynamic_skill_{user_id}_{skill}_{int(asyncio.get_event_loop().time())}",
                 "text": question_text,
                 "category": "skill",
-                "driver": f"skill_application_{skill.lower().replace(' ', '_')}",
-                "difficulty": experience_band
+                "driver": skill_payload["driver"],
+                "difficulty": experience_band,
+                "skill_name": skill,
+                "skill_type": skill_type,
+                "question_style": skill_payload["question_style"],
+                "template_id": skill_payload.get("template_id"),
+                "slots": skill_payload.get("slots"),
+                "prompt_text": question_text
             }
         
         except Exception as e:
             logger.error(f"Skill question generation failed: {str(e)}")
             return None
 
-    async def submit_answer(self, user_id: str, question_id: str, answer: str, db: Session, is_skipped: bool = False):
+    def _normalize_skill_key(self, skill_name: str) -> str:
+        import re
+        normalized = re.sub(r"[^a-z0-9]+", " ", str(skill_name).lower()).strip()
+        return normalized
+
+    def _run_coroutine_sync(self, coroutine):
+        """Run an async coroutine from sync code when no event loop is active."""
+        try:
+            asyncio.get_running_loop()
+            return None
+        except RuntimeError:
+            try:
+                return asyncio.run(coroutine)
+            except Exception:
+                return None
+
+    def _compose_dynamic_skill_question_text(self, skill_name: str, skill_type: str, experience_band: str) -> Dict[str, str]:
+        """Fallback generator that composes a skill-specific question without a single static template."""
+        normalized = self._normalize_skill_key(skill_name)
+        skill_label = skill_name.strip()
+        level_map = {
+            "fresher": "basic execution and clear thinking",
+            "mid": "independent execution and trade-off handling",
+            "senior": "scale, risk, and decision quality",
+            "leadership": "strategy, stakeholder alignment, and business impact"
+        }
+        level_focus = level_map.get(experience_band, level_map["mid"])
+
+        skill_signals = {
+            "technical": {
+                "angles": [
+                    f"how you would apply {skill_label} to solve a live customer problem",
+                    f"how {skill_label} changes the design of a solution for a buyer-facing use case",
+                    f"how you would avoid failure modes while using {skill_label} in a production workflow"
+                ],
+                "drivers": ["implementation_depth", "decision_quality", "risk_awareness"]
+            },
+            "business": {
+                "angles": [
+                    f"how {skill_label} helps you move a deal, unblock a stakeholder, or influence a decision",
+                    f"how you use {skill_label} to create measurable pipeline or revenue impact",
+                    f"how {skill_label} changes your approach when a customer pushes back"
+                ],
+                "drivers": ["commercial_judgment", "stakeholder_handling", "outcome_orientation"]
+            },
+            "general": {
+                "angles": [
+                    f"how you would demonstrate {skill_label} through a real work situation",
+                    f"how {skill_label} affects the way you plan, communicate, or execute",
+                    f"how you would show evidence that {skill_label} is working in practice"
+                ],
+                "drivers": ["practical_application", "clarity", "evidence"]
+            }
+        }
+
+        profile = skill_signals.get(skill_type, skill_signals["general"])
+        rnd = random.Random(abs(hash(normalized)) + len(normalized) + int(time.time()) % 997)
+        angle = rnd.choice(profile["angles"])
+        driver = rnd.choice(profile["drivers"])
+
+        sentence_frames = {
+            "technical": [
+                f"Walk me through how you would use {skill_label} in a {level_focus} situation to solve a customer-facing problem.",
+                f"If {skill_label} were the deciding factor in a live implementation, how would you apply it and what would you watch out for?",
+                f"Describe a time or hypothetical case where {skill_label} would materially change the outcome of a technical sales decision."
+            ],
+            "business": [
+                f"How would you use {skill_label} to influence a customer, move a deal, or improve commercial results in a {level_focus} context?",
+                f"Give an example of how {skill_label} changes your approach when the business outcome matters more than the process itself.",
+                f"When {skill_label} is the key skill, what does good execution look like in a real sales or stakeholder situation?"
+            ],
+            "general": [
+                f"Tell me about a real work situation where {skill_label} would matter, and explain how you would handle it.",
+                f"How would you demonstrate {skill_label} when the pressure is on and the work needs a clear outcome?",
+                f"What would strong use of {skill_label} look like in a practical team or client scenario?"
+            ]
+        }
+        frame = rnd.choice(sentence_frames.get(skill_type, sentence_frames["general"]))
+
+        question_text = (
+            f"{frame} Why is that the best approach for a {level_focus} candidate, and what result would show it worked?"
+        )
+
+        return {
+            "question_text": question_text,
+            "driver": f"skill_application_{normalized.replace(' ', '_')}",
+            "question_style": f"dynamic_{skill_type}",
+            "template_id": "llm_dynamic_fallback",
+            "slots": {
+                "skill_focus": level_focus,
+                "driver": driver,
+                "angle": angle
+            }
+        }
+
+    def _infer_skill_question_type(self, skill_name: str) -> str:
+        normalized = self._normalize_skill_key(skill_name)
+
+        technical_terms = [
+            "python", "java", "javascript", "typescript", "react", "next js", "node", "sql",
+            "api", "backend", "frontend", "aws", "docker", "kubernetes", "linux", "data",
+            "analytics", "ml", "machine learning", "testing", "devops", "salesforce"
+        ]
+        business_terms = [
+            "sales", "marketing", "communication", "negotiation", "account", "customer",
+            "operations", "project", "product", "strategy", "leadership", "management",
+            "hiring", "recruitment", "stakeholder", "partnership"
+        ]
+
+        if any(term in normalized for term in technical_terms):
+            return "technical"
+        if any(term in normalized for term in business_terms):
+            return "business"
+        return "general"
+
+    def _build_skill_question_prompt(self, skill_name: str, skill_type: str, experience_band: str) -> Dict[str, str]:
+        """Generate a skill question dynamically instead of applying a fixed template."""
+        skill_label = skill_name.strip()
+        normalized_skill = self._normalize_skill_key(skill_name)
+
+        skill_context = {
+            "technical": "Apply the skill to a realistic technical or product-adjacent scenario.",
+            "business": "Apply the skill to a sales, customer, or commercial scenario.",
+            "general": "Apply the skill to a real workplace decision or execution scenario."
+        }.get(skill_type, "Apply the skill to a real workplace decision or execution scenario.")
+
+        experience_context = {
+            "fresher": "Keep it focused on fundamentals and clear reasoning.",
+            "mid": "Ask for practical execution and trade-offs.",
+            "senior": "Ask for decision quality, risk handling, and impact.",
+            "leadership": "Ask for strategy, stakeholder alignment, and business outcome."
+        }.get(experience_band, "Ask for practical execution and trade-offs.")
+
+        generation_prompt = f"""
+Generate ONE original interview question for a Tech Sales recruitment assessment.
+
+Skill: {skill_label}
+Skill category: {skill_type}
+Experience band: {experience_band}
+
+Requirements:
+- The question must be genuinely based on the skill above, not a reused generic template.
+- Do not start with a fixed phrase like 'Scenario:' or 'Describe a situation'.
+- Do not follow a repeated sentence structure.
+- Make the question specific to the skill, and vary the scenario naturally.
+- Keep it to 1 or 2 sentences.
+- It should fit a candidate with this experience level: {experience_context}
+- It should reflect this evaluation focus: {skill_context}
+- It should feel like a real interview question for a Tech Sales role.
+
+Return JSON only with these keys:
+{{
+  "question_text": "...",
+  "question_style": "...",
+  "driver": "...",
+  "scenario_type": "...",
+  "focus_area": "..."
+}}
+
+Question style should be short and practical, for example: technical_case, business_case, objection_handling, discovery, demo_execution, integration_reasoning.
+"""
+
+        generated = self._run_coroutine_sync(
+            self._call_ai_robust(
+                generation_prompt,
+                "You generate original, skill-specific interview questions. Never reuse a fixed template."
+            )
+        )
+
+        if generated:
+            try:
+                cleaned = generated.replace("```json", "").replace("```", "").strip()
+                payload = json.loads(cleaned)
+                question_text = str(payload.get("question_text", "")).strip()
+                if question_text:
+                    return {
+                        "question_text": question_text,
+                        "driver": str(payload.get("driver", f"skill_application_{normalized_skill.replace(' ', '_')}")),
+                        "question_style": str(payload.get("question_style", skill_type or "dynamic")),
+                        "template_id": "llm_dynamic",
+                        "slots": {
+                            "scenario_type": payload.get("scenario_type"),
+                            "focus_area": payload.get("focus_area"),
+                            "generation_mode": "llm"
+                        }
+                    }
+            except Exception as parse_error:
+                logger.debug(f"Dynamic skill generation parse failed: {parse_error}")
+
+        # Fallback to non-static synthesis if the model is unavailable or returns invalid JSON
+        fallback = self._compose_dynamic_skill_question_text(skill_label, skill_type, experience_band)
+        fallback["slots"] = {
+            **fallback.get("slots", {}),
+            "generation_mode": "rule_based"
+        }
+        return fallback
+
+    def _normalize_evaluation_score(self, raw_score: Any) -> int:
+        try:
+            score_val = float(raw_score)
+        except (ValueError, TypeError):
+            return 0
+
+        if score_val < 0:
+            score_val = 0
+
+        # If AI returns a 0-6 scale, normalize to 0-100
+        if score_val <= 6:
+            score_val = score_val * 16.6667
+
+        score_val = max(0, min(100, score_val))
+        return int(round(score_val))
+
+    def _calibrate_score(self, score: int) -> int:
+        """Apply calibration mapping if available."""
+        try:
+            if self.calibration and isinstance(self.calibration, dict):
+                # Support linear mapping: {"slope": x, "intercept": y}
+                slope = float(self.calibration.get("slope", 1.0))
+                intercept = float(self.calibration.get("intercept", 0.0))
+                calibrated = slope * float(score) + intercept
+                return int(max(0, min(100, round(calibrated))))
+        except Exception:
+            pass
+        return int(max(0, min(100, int(round(score)))))
+
+    async def _ensemble_evaluate(self, question, answer: str, attempts: int = 3) -> Dict[str, Any]:
+        """Run multiple prompt variants and aggregate numeric subscores by median."""
+        prompts = []
+        base_context = "You are a professional assessment auditor. Score answers on a 0-100 scale."
+
+        # Build three prompt variants with small wording differences
+        for i in range(attempts):
+            if i == 0:
+                variant = f"Variant 1 - standard.\n{base_context}"
+            elif i == 1:
+                variant = f"Variant 2 - emphasize evidence.\n{base_context} Please pay special attention to specific metrics or outcomes."
+            else:
+                variant = f"Variant 3 - emphasize ownership and clarity.\n{base_context} Prioritize personal ownership and clarity of steps."
+            prompts.append(variant)
+
+        collected = []
+        raws = []
+        for system_msg in prompts:
+            try:
+                # Use same user prompt structure as in submit_answer but with different system messages
+                user_prompt = f"Task: Score this candidate answer using an objective rubric. Provide numeric subscores.\nQuestion: {question.question_text}\nAnswer: {answer}"
+                ai_raw = await self._call_ai_robust(user_prompt, system_msg)
+                raws.append(ai_raw)
+                if not ai_raw:
+                    collected.append(None)
+                    continue
+
+                clean_json = ai_raw.replace('```json', '').replace('```', '').strip()
+                eval_data = json.loads(clean_json)
+
+                # Extract subscores if possible
+                subs = eval_data.get("subscores")
+                if isinstance(subs, dict):
+                    normalized_subs = {}
+                    for k in ["relevance", "evidence", "ownership", "clarity"]:
+                        try:
+                            v = subs.get(k, 0)
+                            v = float(v)
+                            v = max(0, min(100, v))
+                            normalized_subs[k] = int(round(v))
+                        except Exception:
+                            normalized_subs[k] = 0
+                    overall = int(round(sum(normalized_subs.values()) / len(normalized_subs)))
+                    collected.append({"subscores": normalized_subs, "score": overall, "driver_scores": eval_data.get("driver_scores", {question.driver: overall}), "raw": ai_raw, "rationale": eval_data.get("rationale", eval_data.get("reasoning", ""))})
+                else:
+                    # Try single score field
+                    sc = self._normalize_evaluation_score(eval_data.get("score", 0))
+                    collected.append({"subscores": None, "score": sc, "driver_scores": eval_data.get("driver_scores", {question.driver: sc}), "raw": ai_raw, "rationale": eval_data.get("rationale", eval_data.get("reasoning", ""))})
+            except Exception as e:
+                collected.append(None)
+
+        # Replace failed entries with fallback evaluations
+        for idx, item in enumerate(collected):
+            if not item:
+                fb = self._fallback_evaluation(answer, question.driver if question else "none")
+                collected[idx] = {"subscores": fb.get("subscores"), "score": fb.get("score"), "driver_scores": fb.get("driver_scores"), "raw": None, "rationale": fb.get("reasoning")}
+
+        # Aggregate by median for each subscore and overall
+        scores = [c["score"] for c in collected if c and isinstance(c.get("score"), (int, float))]
+        median_score = int(round(statistics.median(scores))) if scores else 0
+
+        # Aggregate subscores if available
+        subs_lists = {"relevance": [], "evidence": [], "ownership": [], "clarity": []}
+        for c in collected:
+            ss = c.get("subscores")
+            if isinstance(ss, dict):
+                for k in subs_lists.keys():
+                    subs_lists[k].append(int(ss.get(k, 0)))
+
+        final_subs = None
+        if any(subs_lists.values()):
+            final_subs = {k: int(round(statistics.median(v))) if v else 0 for k, v in subs_lists.items()}
+            median_score = int(round(sum(final_subs.values()) / len(final_subs)))
+
+        # Choose rationale from response closest to median
+        rationale = ""
+        best_raw = None
+        try:
+            closest = min(collected, key=lambda c: abs(c.get("score", 0) - median_score))
+            rationale = closest.get("rationale") or ""
+            best_raw = closest.get("raw")
+        except Exception:
+            pass
+
+        # Log high variance cases for audit
+        try:
+            if len(scores) >= 2 and (max(scores) - min(scores)) > 30:
+                logger.warning("High ensemble variance in evaluation", extra={"question_id": getattr(question, 'id', None), "scores": scores, "collected_raw": raws})
+        except Exception:
+            pass
+
+        # Apply calibration
+        median_score = self._calibrate_score(median_score)
+        if final_subs:
+            final_subs = {k: self._calibrate_score(v) for k, v in final_subs.items()}
+
+        return {"score": median_score, "subscores": final_subs, "reasoning": rationale, "driver_scores": collected[0].get("driver_scores") if collected else {question.driver: median_score}, "raw_responses": raws, "rubric_type": "ensemble"}
+
+    def _fallback_evaluation(self, answer: str, driver: str) -> Dict[str, Any]:
+        text = (answer or "").strip()
+        if not text:
+            return {
+                "score": 0,
+                "reasoning": "Empty response.",
+                "driver_scores": {driver: 0},
+                "rubric_type": "fallback",
+                "subscores": {"relevance": 0, "evidence": 0, "ownership": 0, "clarity": 0}
+            }
+
+        # Structural heuristics
+        sentences = [s for s in text.split('.') if s.strip()]
+        word_count = len(text.split())
+        has_numbers = any(char.isdigit() for char in text)
+        has_steps = any(tok in text.lower() for tok in ["1.", "2.", "first", "second", "step"]) or len(sentences) >= 3
+        ownership_signals = any(w in text.lower() for w in ["i ", "we ", "led ", "implemented", "owned "])
+        outcome_signals = any(w in text.lower() for w in ["result", "improved", "increased", "reduced", "saved", "%", "roi"]) or has_numbers
+
+        # Base scoring rules
+        relevance = 30 if word_count < 20 else 60 if word_count < 50 else 75
+        evidence = 50 if has_numbers or (word_count > 40 and has_steps) else 30
+        ownership = 50 if ownership_signals else 20
+        clarity = 60 if len(sentences) >= 2 and word_count > 20 else 35
+
+        # Boosts
+        if has_steps:
+            relevance = min(100, relevance + 10)
+            clarity = min(100, clarity + 10)
+        if outcome_signals:
+            evidence = min(100, evidence + 15)
+
+        # Compose final
+        subs = {
+            "relevance": int(relevance),
+            "evidence": int(evidence),
+            "ownership": int(ownership),
+            "clarity": int(clarity)
+        }
+        score = int(round(sum(subs.values()) / len(subs)))
+
+        return {
+            "score": score,
+            "reasoning": "Fallback structural heuristic applied.",
+            "driver_scores": {driver: score},
+            "rubric_type": "fallback",
+            "subscores": subs
+        }
+
+    async def submit_answer(self, user_id: str, question_id: str, answer: str, db: Session, is_skipped: bool = False, metadata: Optional[Dict[str, Any]] = None):
         session = db.query(AssessmentSession).filter(AssessmentSession.candidate_id == user_id).first()
         if not session:
             session = self.get_or_create_session(user_id, db)
+
+        submitted_metadata = metadata if isinstance(metadata, dict) else {}
 
         # Check if this is a dynamic question (not a real UUID in database)
         question = None
@@ -502,23 +980,33 @@ class AssessmentService:
             # This is a dynamically generated question, construct it without DB lookup
             is_dynamic_question = True
             if question_id.startswith("dynamic_resume_"):
+                question_text = submitted_metadata.get("prompt_text") or submitted_metadata.get("text") or submitted_metadata.get("question_text") or submitted_metadata.get("prompt") or "Dynamic resume question"
                 question = type('Question', (), {
                     'id': question_id,
-                    'question_text': answer[:100] + "..." if len(answer) > 100 else answer,  # Placeholder
+                    'question_text': question_text,
                     'category': 'resume',
-                    'driver': 'dynamic_resume',
-                    'difficulty': 'medium',
+                    'driver': submitted_metadata.get('driver', 'dynamic_resume'),
+                    'difficulty': submitted_metadata.get('difficulty', 'medium'),
                     'experience_band': session.experience_band,
+                    'skill_name': submitted_metadata.get('skill_name'),
+                    'skill_type': submitted_metadata.get('skill_type'),
+                    'focus_area': submitted_metadata.get('focus_area'),
+                    'resume_signals': submitted_metadata.get('resume_signals', {}),
                     'evaluation_rubric': None
                 })()
             elif question_id.startswith("dynamic_skill_"):
+                question_text = submitted_metadata.get("prompt_text") or submitted_metadata.get("text") or submitted_metadata.get("question_text") or submitted_metadata.get("prompt") or "Dynamic skill question"
                 question = type('Question', (), {
                     'id': question_id,
-                    'question_text': answer[:100] + "..." if len(answer) > 100 else answer,  # Placeholder
+                    'question_text': question_text,
                     'category': 'skill',
-                    'driver': 'dynamic_skill',
-                    'difficulty': session.experience_band,
+                    'driver': submitted_metadata.get('driver', 'dynamic_skill'),
+                    'difficulty': submitted_metadata.get('difficulty', session.experience_band),
                     'experience_band': session.experience_band,
+                    'skill_name': submitted_metadata.get('skill_name'),
+                    'skill_type': submitted_metadata.get('skill_type', 'general'),
+                    'template_id': submitted_metadata.get('template_id'),
+                    'slots': submitted_metadata.get('slots', {}),
                     'evaluation_rubric': None
                 })()
         else:
@@ -546,64 +1034,124 @@ class AssessmentService:
         }
 
         if question and not is_skipped:
-            # Build evaluation prompt - ALL categories are now AI evaluated
             category_context = {
                 "resume": "Validate claims and depth of experience.",
                 "skill": "Evaluate technical application and problem-solving.",
                 "behavioral": "Evaluate soft skills, transparency, and accountability.",
                 "psychometric": "Evaluate logical reasoning and decision-making patterns."
             }
-            
+
+            skill_focus = ""
+            resume_focus = ""
+            resume_style_guardrails = ""
+            if question.category == "resume":
+                resume_signals = getattr(question, "resume_signals", {}) or {}
+                focus_area = getattr(question, "focus_area", None)
+                if focus_area:
+                    resume_focus = f"Focus Area: {focus_area}\n"
+                if resume_signals:
+                    resume_focus += f"Resume Signals: {json.dumps(resume_signals, ensure_ascii=False)}\n"
+                resume_style_guardrails = (
+                    "Resume scoring rules: prioritize factual grounding, chronology, ownership, and impact. "
+                    "Do not penalize the candidate for writing style, grammar, verbosity, or resume formatting. "
+                    "If the question is about a gap, assess the explanation and context, not the mere existence of the gap.\n"
+                )
+            if question.category == "skill":
+                skill_name = getattr(question, "skill_name", None)
+                skill_type = getattr(question, "skill_type", None)
+                if skill_name:
+                    skill_focus = f"Skill Focus: {skill_name}\n"
+                if skill_type:
+                    skill_focus += f"Question Type: {skill_type}\n"
+
             prompt = f"""
-            Task: Evaluate the candidate's answer for this {question.category} question.
-            Context: {category_context.get(question.category, "Professional assessment.")}
-            Question: {question.question_text}
-            Candidate Answer: {answer}
-            Experience Band: {question.experience_band}
-            Difficulty: {question.difficulty}
-            
-            Criteria:
-            1. Relevance: { "Addresses technical constraints" if question.category == 'skill' else "Directly answers the prompt" }
-            2. Specificity: { "Includes metrics or clear steps" if question.category in ['resume', 'skill'] else "Clear context provided" }
-            3. Ownership: Shows personal accountability.
-            
-            Return a JSON object with:
-            1. "score": integer 0-100 (0 for non-answers or nonsensical text)
-            2. "reasoning": concise explanation
-            3. "driver_scores": {{ "{question.driver}": score }}
-            """
-            
+Task: Score this candidate answer using an objective rubric.
+Question: {question.question_text}
+Answer: {answer}
+
+Context: {category_context.get(question.category, "Professional assessment.")}
+{skill_focus}Experience Band: {question.experience_band}
+Difficulty: {question.difficulty}
+
+Use the following evaluation dimensions:
+1. Relevance: directly answers the prompt.
+2. Evidence: provides examples, metrics, or clear reasoning.
+3. Ownership: shows personal accountability.
+4. Clarity: answer is coherent and well-structured.
+
+Return exactly one JSON object with the keys:
+{{"score": integer 0-100, "reasoning": "short explanation", "driver_scores": {{"{question.driver}": integer}}}}
+
+Important:
+- Use a 0-100 scoring scale.
+- Do not use 0-6, 1-6, or 1-10 scales.
+- Do not include markdown fences or extra text outside the JSON object.
+"""
+
+            # Stronger: require subscores for auditability and compute overall from them.
+            prompt = f"""
+Task: Score this candidate answer using an objective rubric. Provide numeric subscores.
+Question: {question.question_text}
+Answer: {answer}
+
+Context: {category_context.get(question.category, "Professional assessment.")}
+{resume_focus}{skill_focus}{resume_style_guardrails}Experience Band: {question.experience_band}
+Difficulty: {question.difficulty}
+
+Use the following evaluation dimensions and return numeric subscores 0-100:
+1. Relevance: directly answers the prompt.
+2. Evidence: provides examples, metrics, or clear reasoning.
+3. Ownership: shows personal accountability.
+4. Clarity: answer is coherent and well-structured.
+
+Return exactly one JSON object with these keys:
+{{"score": integer 0-100, "subscores": {{"relevance": int, "evidence": int, "ownership": int, "clarity": int}}, "rationale": "short explanation", "driver_scores": {{"{question.driver}": integer}}}}
+
+Notes:
+- The overall "score" should be the average of the four subscores (0-100).
+- If you provide both "score" and "subscores", ensure "score" equals the mean of subscores.
+- Do not include any text outside the JSON object.
+"""
+
             try:
-                ai_raw = await self._call_ai_robust(prompt, "You are a strict professional auditor. Use 0 for empty, evasive, or low-quality answers.")
+                ai_raw = await self._call_ai_robust(
+                    prompt,
+                    "You are a professional assessment auditor. Score answers on a 0-100 scale."
+                )
                 if ai_raw:
                     clean_json = ai_raw.replace('```json', '').replace('```', '').strip()
                     eval_data = json.loads(clean_json)
-                    score_val = eval_data.get("score", 0)
-                    
-                    try:
-                        score_val = int(float(score_val))
-                        score_val = max(0, min(100, score_val))
-                    except:
-                        score_val = 0
-                        
+                    score_val = self._normalize_evaluation_score(eval_data.get("score", 0))
+
                     evaluation_result["score"] = score_val
                     evaluation_result["reasoning"] = eval_data.get("reasoning", "No reasoning provided.")
                     evaluation_result["driver_scores"] = eval_data.get("driver_scores", {question.driver: score_val})
                     evaluation_result["rubric_type"] = "ai_standard"
+                    if question.category == "skill":
+                        evaluation_result["skill_name"] = getattr(question, "skill_name", None)
+                        evaluation_result["skill_type"] = getattr(question, "skill_type", None)
+                        # Include template metadata for auditing
+                        evaluation_result["template_id"] = getattr(question, "template_id", None)
+                        evaluation_result["slots"] = getattr(question, "slots", {})
+
+                    if score_val <= 10:
+                        logger.debug(
+                            "Low AI evaluation score",
+                            extra={
+                                "question_id": question_id,
+                                "category": question.category,
+                                "raw_response": ai_raw,
+                                "normalized_score": score_val
+                            }
+                        )
             except Exception as e:
-                # Same strict fallback as before
-                word_count = len(answer.split())
-                if word_count > 40: evaluation_result["score"] = 70
-                elif word_count > 25: evaluation_result["score"] = 50
-                elif word_count > 10: evaluation_result["score"] = 25
-                else: evaluation_result["score"] = 0
-                evaluation_result["reasoning"] = f"Fallback scoring (AI error): {word_count} words."
-                evaluation_result["driver_scores"] = {question.driver: evaluation_result["score"]}
-                evaluation_result["rubric_type"] = "fallback"
+                logger.error(f"AI evaluation failed for question {question_id}: {str(e)}")
+                evaluation_result = self._fallback_evaluation(answer, question.driver if question else "none")
         elif is_skipped:
             evaluation_result["score"] = 0
-            evaluation_result["reasoning"] = f"Candidate skipped a {question.difficulty if question else 'medium'} question. Penalty applied to behavioral score."
-            evaluation_result["driver_scores"] = {question.driver: 0, "grit": -skip_penalty}
+            evaluation_result["reasoning"] = f"Candidate skipped a {question.difficulty if question else 'medium'} question. Penalty applied."
+            evaluation_result["driver_scores"] = {question.driver if question else "none": 0, "grit": -skip_penalty}
+            evaluation_result["subscores"] = {"relevance": 0, "evidence": 0, "ownership": 0, "clarity": 0}
         
         # Final safety check
         evaluation_result["score"] = max(0, min(100, int(evaluation_result["score"])))
@@ -626,8 +1174,9 @@ class AssessmentService:
         # Update session progress
         session.current_step += 1
         
-        # Auto-complete session if budget reached
-        if session.current_step >= session.total_budget:
+        # Auto-complete session after the last planned question has been answered.
+        # current_step starts at 1, so completion should happen only after it advances past the budget.
+        if session.current_step > session.total_budget:
             session.status = "completed"
             session.completed_at = datetime.now()
             
@@ -640,10 +1189,17 @@ class AssessmentService:
                 # Update candidate profile status
                 profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == user_id).first()
                 if profile:
+                    profile.final_profile_score = int(avg_score)
                     profile.assessment_status = "completed"
-                    profile.final_profile_score = int(avg_score)  # Use assessment score as final profile score
-                
-                # Calculate category-wise scores for ProfileScore breakdown
+                    if avg_score >= 90:
+                        profile.profile_strength = "Elite"
+                    elif avg_score >= 75:
+                        profile.profile_strength = "Strong"
+                    elif avg_score >= 50:
+                        profile.profile_strength = "Moderate"
+                    else:
+                        profile.profile_strength = "Low"
+
                 from sqlalchemy import func
                 category_scores = db.query(
                     AssessmentResponse.category,
@@ -651,7 +1207,7 @@ class AssessmentService:
                 ).filter(
                     AssessmentResponse.candidate_id == user_id
                 ).group_by(AssessmentResponse.category).all()
-                
+
                 # Map database category names to ProfileScore fields
                 category_score_map = {
                     "resume": "resume_score",
@@ -660,7 +1216,7 @@ class AssessmentService:
                     "psychometric": "psychometric_score",
                     "reference": "reference_score"
                 }
-                
+
                 score_data = {
                     'resume_score': None,
                     'behavioral_score': None,

@@ -601,12 +601,22 @@ export default function TalentPoolPage() {
     <div className="h-[calc(100vh-64px)] bg-[#F8F9FC] overflow-hidden flex gap-4 p-4">
       <style>{`
         .pool-invisible-scroll {
-          scrollbar-width: none;
-          -ms-overflow-style: none;
+          scrollbar-width: thin;
+          scrollbar-color: #cbd5e1 transparent;
         }
         .pool-invisible-scroll::-webkit-scrollbar {
-          width: 0;
-          height: 0;
+          width: 4px;
+          height: 4px;
+        }
+        .pool-invisible-scroll::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .pool-invisible-scroll::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 999px;
+        }
+        .pool-invisible-scroll::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
         }
       `}</style>
 

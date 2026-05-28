@@ -6,8 +6,6 @@ ALTER TABLE public.candidate_profiles
 DROP COLUMN IF EXISTS resume_uploaded,
 DROP COLUMN IF EXISTS qualifications_held,
 DROP COLUMN IF EXISTS university,
-DROP COLUMN IF EXISTS current_company_name,
-DROP COLUMN IF EXISTS previous_companies,
 DROP COLUMN IF EXISTS resume_url,
 DROP COLUMN IF EXISTS sales_metrics,
 DROP COLUMN IF EXISTS crm_tools,

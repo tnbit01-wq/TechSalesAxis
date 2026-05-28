@@ -52,20 +52,56 @@ interface RecruiterProfile {
   };
 }
 
+interface PostedJobContext {
+  job_id: string;
+  title: string;
+  location?: string;
+  experience_band?: string;
+  skills_required?: string[];
+}
+
+const READINESS_OPTIONS = [
+  { value: "immediate", label: "Immediate joiner", group: "Availability" },
+  { value: "short_notice", label: "Notice period <= 30 days", group: "Availability" },
+  { value: "long_notice", label: "Notice period >= 60 days", group: "Availability" },
+  { value: "active_job_seeker", label: "Actively looking", group: "Intent" },
+  { value: "passive_candidate", label: "Passive / open to move", group: "Intent" },
+  { value: "between_roles", label: "Currently between jobs", group: "Employment status" },
+  { value: "laid_off_recently", label: "Recently laid off", group: "Employment status" },
+  { value: "recent_graduate_student", label: "Student / recent graduate", group: "Employment status" },
+  { value: "willing_to_relocate", label: "Willing to relocate", group: "Work setup" },
+  { value: "remote_only", label: "Remote only", group: "Work setup" },
+  { value: "contract_preferred", label: "Contract preferred", group: "Work setup" },
+  { value: "flexible", label: "Flexible work type", group: "Work setup" },
+  { value: "salary_seeking_raise", label: "Seeking >=20% raise", group: "Compensation" },
+  { value: "high_fit_by_compensation", label: "Within role budget", group: "Compensation" },
+  { value: "needs_salary_clarification", label: "Missing salary expectation", group: "Compensation" },
+  { value: "requires_visa_sponsorship", label: "Needs visa sponsorship", group: "Mobility" },
+];
+
 export default function RecommendationsPage() {
   const router = useRouter();
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeFilters, setActiveFilters] = useState<string[]>(["understanding_and_assessment"]);
+  const [activeFilters, setActiveFilters] = useState<string[]>(["culture_fit"]);
+  const [appliedFilters, setAppliedFilters] = useState<string[]>(["culture_fit"]);
   const [recruiterProfile, setRecruiterProfile] =
     useState<RecruiterProfile | null>(null);
   const [jobs, setJobs] = useState<any[]>([]);
+  const [selectedJobId, setSelectedJobId] = useState<string>("");
+  const [appliedSelectedJobId, setAppliedSelectedJobId] = useState<string>("");
+  const [postedJob, setPostedJob] = useState<PostedJobContext | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [appliedSearchTerm, setAppliedSearchTerm] = useState("");
   const [isFetchingProfile, setIsFetchingProfile] = useState(false);
   const [filterExperience, setFilterExperience] = useState<string>("all");
+  const [appliedFilterExperience, setAppliedFilterExperience] = useState<string>("all");
   const [filterLocation, setFilterLocation] = useState<string>("");
+  const [appliedFilterLocation, setAppliedFilterLocation] = useState<string>("");
   const [filterMaxSalary, setFilterMaxSalary] = useState<string>("");
-  const [filterCareerReadiness, setFilterCareerReadiness] = useState<string>("");
+  const [appliedFilterMaxSalary, setAppliedFilterMaxSalary] = useState<string>("");
+  const [selectedReadinessFilters, setSelectedReadinessFilters] = useState<string[]>([]);
+  const [appliedReadinessFilters, setAppliedReadinessFilters] = useState<string[]>([]);
 
   const [currencySymbol, setCurrencySymbol] = useState<string>("$");
   const [isSyncing, setIsSyncing] = useState(false);
@@ -100,14 +136,42 @@ export default function RecommendationsPage() {
 
   const toggleFilter = (mode: string) => {
     setActiveFilters([mode]);
+    if (mode === "skill_match") {
+      // Skills Match already enforces target experience (match or adjacent).
+      setFilterExperience("all");
+    }
   };
 
   const toggleExperienceFilter = (band: string) => {
     setFilterExperience(band);
   };
 
+  const toggleReadinessFilter = (value: string) => {
+    setSelectedReadinessFilters((current) =>
+      current.includes(value)
+        ? current.filter((item) => item !== value)
+        : [...current, value],
+    );
+  };
+
+  const normalizeRecommendationList = (response: any): Candidate[] => {
+    if (Array.isArray(response)) return response;
+    if (Array.isArray(response?.data)) return response.data;
+    return [];
+  };
+
+  const selectedReadinessLabels = READINESS_OPTIONS
+    .filter((option) => selectedReadinessFilters.includes(option.value))
+    .map((option) => option.label);
+
   const handleApplyFilters = () => {
-    fetchRecommendations();
+    setAppliedFilters(activeFilters);
+    setAppliedSelectedJobId(selectedJobId);
+    setAppliedSearchTerm(searchTerm);
+    setAppliedFilterExperience(filterExperience);
+    setAppliedFilterLocation(filterLocation);
+    setAppliedFilterMaxSalary(filterMaxSalary);
+    setAppliedReadinessFilters(selectedReadinessFilters);
   };
 
   const [profileModal, setProfileModal] = useState<{
@@ -141,33 +205,68 @@ export default function RecommendationsPage() {
       // Handle search params for skill matching
       const params = new URLSearchParams(window.location.search);
       const initialSkills = params.get("skills");
-      
-      let modesStr = activeFilters.join(",");
-      let url = `/recruiter/recommended-candidates?filter_type=${modesStr}`;
-      
-      if (activeFilters.includes("skill_match") && initialSkills) {
-        url += `&skills=${initialSkills}`;
-      }
-      
-      // Add Location & Salary & Career Readiness filters
-      if (filterLocation) url += `&location=${encodeURIComponent(filterLocation)}`;
-      if (filterMaxSalary) url += `&max_salary=${encodeURIComponent(filterMaxSalary)}`;
-      if (filterCareerReadiness) url += `&career_readiness=${encodeURIComponent(filterCareerReadiness)}`;
-      if (filterExperience !== "all") url += `&experience_band=${encodeURIComponent(filterExperience)}`;
-      if (searchTerm) url += `&skills=${encodeURIComponent(searchTerm)}`;
+      const jobIdFromUrl = params.get("job_id");
 
-      const [recData, profileData, jobsData, pipelineResponse] = await Promise.all([
-        apiClient.get(url, token),
+      const [profileData, jobsData, pipelineResponse] = await Promise.all([
         apiClient.get("/recruiter/profile", token),
         apiClient.get("/recruiter/jobs", token),
         apiClient.get("/recruiter/applications/pipeline", token),
       ]);
 
-      setCandidates(recData || []);
+      const jobList = Array.isArray(jobsData) ? jobsData : [];
+      const preferredJobId = String(jobIdFromUrl || appliedSelectedJobId || selectedJobId || jobList.find((job) => job.status === "active")?.id || jobList[0]?.id || "");
+      const selectedJob = jobList.find((job) => String(job.id) === preferredJobId) || null;
+
+      if (preferredJobId && preferredJobId !== selectedJobId) {
+        setSelectedJobId(preferredJobId);
+      }
+      if (preferredJobId && preferredJobId !== appliedSelectedJobId) {
+        setAppliedSelectedJobId(preferredJobId);
+      }
+
+      const modesStr = appliedFilters.join(",");
+      const isSkillMatch = appliedFilters.includes("skill_match");
+      const baseUrl = isSkillMatch && preferredJobId
+        ? `/recruiter/jobs/${encodeURIComponent(preferredJobId)}/recommended-candidates?filter_type=${modesStr}`
+        : `/recruiter/recommended-candidates?filter_type=${modesStr}`;
+
+      let url = baseUrl;
+
+      if (!isSkillMatch && jobIdFromUrl) {
+        url += `&job_id=${encodeURIComponent(jobIdFromUrl)}`;
+      }
+      if (appliedFilters.includes("skill_match") && initialSkills) {
+        url += `&skills=${encodeURIComponent(initialSkills)}`;
+      }
+      if (appliedFilterLocation) url += `&location=${encodeURIComponent(appliedFilterLocation)}`;
+      if (appliedFilterMaxSalary) url += `&max_salary=${encodeURIComponent(appliedFilterMaxSalary)}`;
+      if (appliedReadinessFilters.length > 0) {
+        url += `&career_readiness=${encodeURIComponent(appliedReadinessFilters.join(","))}`;
+      }
+      if (!isSkillMatch && appliedFilterExperience !== "all") {
+        url += `&experience_band=${encodeURIComponent(appliedFilterExperience)}`;
+      }
+      if (appliedSearchTerm) url += `&skills=${encodeURIComponent(appliedSearchTerm)}`;
+
+      const recData = await apiClient.get(url, token);
+
+      setCandidates(normalizeRecommendationList(recData));
+      setPostedJob(selectedJob ? {
+        job_id: selectedJob.id,
+        title: selectedJob.title,
+        location: selectedJob.location,
+        experience_band: selectedJob.experience_band,
+        skills_required: selectedJob.skills_required || [],
+      } : recData?.job ? {
+        job_id: recData.job.job_id,
+        title: recData.job.title,
+        location: recData.job.location,
+        experience_band: recData.job.experience_band,
+        skills_required: recData.job.skills_required || [],
+      } : null);
       setRecruiterProfile(profileData);
-      setJobs(jobsData || []);
+      setJobs(jobList);
       setPipelineData(pipelineResponse || []);
-      setJobs(jobsData || []);
     } catch (err) {
       console.error("Failed to fetch recommendations:", err);
       toast.error("Algorithmic Sync Failed: Could not load recommendations");
@@ -175,13 +274,20 @@ export default function RecommendationsPage() {
       setLoading(false);
       setIsSyncing(false);
     }
-  }, [activeFilters, filterExperience, filterLocation, filterMaxSalary, filterCareerReadiness, searchTerm, router]);
+  }, [appliedFilters, appliedFilterExperience, appliedFilterLocation, appliedFilterMaxSalary, appliedReadinessFilters, appliedSearchTerm, router, appliedSelectedJobId, selectedJobId]);
+
+  useEffect(() => {
+    if (!selectedJobId && jobs.length > 0) {
+      const firstActiveJob = jobs.find((job) => job.status === "active");
+      setSelectedJobId(firstActiveJob?.id || jobs[0].id);
+    }
+  }, [jobs, selectedJobId]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const initialFilter = params.get("filter") as any;
-    if (initialFilter && (initialFilter === "skill_match" || initialFilter === "understanding_and_assessment")) {
-      setActiveFilters([initialFilter]);
+    if (initialFilter && (initialFilter === "skill_match" || initialFilter === "understanding_and_assessment" || initialFilter === "culture_fit")) {
+      setActiveFilters([initialFilter === "understanding_and_assessment" ? "culture_fit" : initialFilter]);
     }
   }, []);
 
@@ -200,10 +306,8 @@ export default function RecommendationsPage() {
   }, [filterLocation]);
 
   useEffect(() => {
-    // Initial fetch on mount only
     fetchRecommendations();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchRecommendations]);
 
   const handleInviteCandidate = async (
     jobId: string,
@@ -288,14 +392,14 @@ export default function RecommendationsPage() {
 
   const filteredCandidates = candidates.filter((c) => {
     const matchesSearch =
-      (c.full_name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (c.current_role || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (c.full_name || "").toLowerCase().includes(appliedSearchTerm.toLowerCase()) ||
+      (c.current_role || "").toLowerCase().includes(appliedSearchTerm.toLowerCase()) ||
       c.skills?.some((s) =>
-        (s || "").toLowerCase().includes(searchTerm.toLowerCase()),
+        (s || "").toLowerCase().includes(appliedSearchTerm.toLowerCase()),
       );
 
     const matchesFilter =
-      filterExperience === "all" || c.experience === filterExperience;
+      appliedFilters.includes("skill_match") || appliedFilterExperience === "all" || c.experience === appliedFilterExperience;
     return matchesSearch && matchesFilter;
   });
 
@@ -327,41 +431,56 @@ export default function RecommendationsPage() {
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(255,138,0,0.08),_transparent_34%),linear-gradient(180deg,#FFFCF8_0%,#FFFFFF_100%)] text-slate-900">
       <style>{`
         .reco-scroll {
-          scrollbar-width: none;
-          -ms-overflow-style: none;
+          scrollbar-width: thin;
+          scrollbar-color: #cbd5e1 transparent;
         }
         .reco-scroll::-webkit-scrollbar {
-          width: 0;
-          height: 0;
+          width: 4px;
+          height: 4px;
+        }
+        .reco-scroll::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .reco-scroll::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 999px;
+        }
+        .reco-scroll::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
         }
       `}</style>
-      <main className="mx-auto flex h-[calc(100vh-64px)] max-w-[1600px] flex-col gap-4 overflow-hidden px-4 py-4">
+      <main className="mx-auto flex min-h-screen max-w-[1600px] flex-col gap-4 px-4 py-3">
         {isLocked ? (
           <LockedView featureName="Recommended Talent" />
         ) : (
           <>
-            <header className="rounded-[28px] border border-orange-100/80 bg-white/80 backdrop-blur-xl px-6 py-5 shadow-[0_8px_30px_rgba(255,138,0,0.08)]">
-              <div className="space-y-2">
-                <h1 className="text-2xl font-black tracking-tight text-slate-900">
-                  AI <span className="text-[#FF8A00]">Recommendations</span>
-                </h1>
-                <p className="text-sm text-slate-500">
-                  Discover the best-matched candidates for your open roles.
-                </p>
-              </div>
-            </header>
-
-            <section
-              className="grid min-h-0 grid-cols-1 gap-4 sm:grid-cols-[30%_70%]"
-              style={{ height: "calc(100dvh - 220px)" }}
-            >
-              <aside className="flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border border-orange-100/80 bg-white/90 shadow-[0_8px_28px_rgba(255,138,0,0.07)]">
+            <section className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+              <aside className="sticky top-3 flex max-h-[calc(100vh-1.5rem)] flex-col overflow-hidden rounded-[28px] border border-orange-100/80 bg-white/90 shadow-[0_8px_28px_rgba(255,138,0,0.07)]">
                 <div className="flex-shrink-0 border-b border-orange-100/70 bg-gradient-to-r from-[#FFF6ED] to-white px-4 py-3">
                   <p className="text-xs font-black uppercase tracking-[0.22em] text-[#FF8A00]">Filters</p>
-                  <p className="mt-1 text-xs text-slate-500">Keep the full set visible in this viewport.</p>
+                  <p className="mt-1 text-xs text-slate-500">Pick the posted role first, then narrow the candidate pool.</p>
                 </div>
 
-                <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-4">
+                <div className="reco-scroll flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
+                  {activeFilters.includes("skill_match") && (
+                    <div>
+                      <label className="mb-1.5 block text-xs font-bold text-slate-600">Posted role</label>
+                      <select
+                        value={selectedJobId}
+                        onChange={(e) => setSelectedJobId(e.target.value)}
+                        className="w-full cursor-pointer rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-medium text-slate-900 outline-none transition-all focus:border-[#FF8A00]/60 focus:ring-2 focus:ring-[#FF8A00]/15"
+                      >
+                        <option value="">Select a posted role</option>
+                        {jobs.map((job) => (
+                          <option key={String(job.id)} value={String(job.id)}>
+                            {job.title}{job.location ? ` • ${job.location}` : ""}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="mt-1 text-[11px] text-slate-500">Skills Match uses the selected job description skills only.</p>
+                    </div>
+                  )}
+
                   <div className="relative">
                     <label className="mb-1.5 block text-xs font-bold text-slate-600">Search</label>
                     <Search className="absolute left-3.5 top-[2rem] w-4 h-4 text-slate-400" />
@@ -374,120 +493,172 @@ export default function RecommendationsPage() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="mb-1.5 block text-xs font-bold text-slate-600">Focus</label>
-                      <div className="flex flex-col gap-2">
-                      {[
-                        { id: "understanding_and_assessment", label: "Fit First" },
-                        { id: "skill_match", label: "Skills First" },
-                      ].map((f) => (
-                        <button
-                          key={f.id}
-                          onClick={() => toggleFilter(f.id)}
-                          className={`rounded-full px-3 py-2 text-xs font-medium transition-all ${
-                            activeFilters.includes(f.id)
-                              ? "bg-[#FF8A00] text-white shadow-md"
-                              : "border border-slate-200 bg-slate-50 text-slate-600 hover:border-orange-200 hover:bg-[#FFF6ED] hover:text-[#FF8A00]"
-                          }`}
+                  <div className="grid gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1.5 block text-xs font-bold text-slate-600">Match type</label>
+                        <select
+                          value={activeFilters[0]}
+                          onChange={(e) => toggleFilter(e.target.value)}
+                          className="w-full cursor-pointer rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-medium text-slate-900 outline-none transition-all focus:border-[#FF8A00]/60 focus:ring-2 focus:ring-[#FF8A00]/15"
                         >
-                          {f.label}
-                        </button>
-                      ))}
+                          <option value="culture_fit">Culture Fit</option>
+                          <option value="skill_match">Skills Match</option>
+                        </select>
+                      </div>
+
+                      {!activeFilters.includes("skill_match") ? (
+                        <div>
+                          <label className="mb-1.5 block text-xs font-bold text-slate-600">Experience</label>
+                          <select
+                            value={filterExperience}
+                            onChange={(e) => toggleExperienceFilter(e.target.value)}
+                            className="w-full cursor-pointer rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-medium text-slate-900 outline-none transition-all focus:border-[#FF8A00]/60 focus:ring-2 focus:ring-[#FF8A00]/15"
+                          >
+                            <option value="all">All</option>
+                            <option value="fresher">0-1 yrs</option>
+                            <option value="mid">1-5 yrs</option>
+                            <option value="senior">5-10 yrs</option>
+                            <option value="leadership">10+ yrs</option>
+                          </select>
+                        </div>
+                      ) : (
+                        <div className="rounded-2xl border border-blue-100 bg-blue-50 px-3 py-2.5 sm:col-span-2">
+                          <p className="text-[11px] font-semibold text-blue-700">
+                            Skills Match already applies role-level experience matching (same band or adjacent).
+                          </p>
+                        </div>
+                      )}
+
+                      <div>
+                        <label className="mb-1.5 block text-xs font-bold text-slate-600">Location</label>
+                        <div className="relative">
+                          <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                          <input
+                            type="text"
+                            placeholder="Location"
+                            value={filterLocation}
+                            onChange={(e) => setFilterLocation(e.target.value)}
+                            className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-xs text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-[#FF8A00]/60 focus:ring-2 focus:ring-[#FF8A00]/15"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="mb-1.5 block text-xs font-bold text-slate-600">Budget</label>
+                        <div className="relative">
+                          <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                          <input
+                            type="number"
+                            placeholder="Max salary"
+                            value={filterMaxSalary}
+                            onChange={(e) => setFilterMaxSalary(e.target.value)}
+                            className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-xs text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-[#FF8A00]/60 focus:ring-2 focus:ring-[#FF8A00]/15"
+                          />
+                        </div>
                       </div>
                     </div>
 
-                    <div>
-                      <label className="mb-1.5 block text-xs font-bold text-slate-600">Experience</label>
-                      <select
-                        value={filterExperience}
-                        onChange={(e) => toggleExperienceFilter(e.target.value)}
-                        className="w-full cursor-pointer rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-medium text-slate-900 outline-none transition-all focus:border-[#FF8A00]/60 focus:ring-2 focus:ring-[#FF8A00]/15"
-                      >
-                        <option value="all">All</option>
-                        <option value="fresher">0-1 yrs</option>
-                        <option value="mid">2-4 yrs</option>
-                        <option value="senior">5-8 yrs</option>
-                        <option value="leadership">8+ yrs</option>
-                      </select>
-                    </div>
+                    <details className="overflow-hidden rounded-2xl border border-orange-100 bg-[#FFF8F1]">
+                      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-left">
+                        <div>
+                          <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#C96B00]">
+                            Availability and readiness
+                          </p>
+                          <p className="mt-1 text-[11px] text-slate-500">
+                            {selectedReadinessFilters.length > 0
+                              ? `${selectedReadinessFilters.length} selected`
+                              : "Tap to choose readiness filters"}
+                          </p>
+                        </div>
+                        <div className="flex flex-shrink-0 items-center gap-2">
+                          <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                            Advanced
+                          </span>
+                          <span className="rounded-full bg-[#FF8A00] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-white">
+                            {selectedReadinessFilters.length}
+                          </span>
+                        </div>
+                      </summary>
+                      <div className="px-4 pb-4">
+                        {selectedReadinessLabels.length > 0 && (
+                          <div className="mb-3 flex flex-wrap gap-2">
+                            {selectedReadinessLabels.slice(0, 4).map((label) => (
+                              <span key={label} className="rounded-full border border-orange-100 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700">
+                                {label}
+                              </span>
+                            ))}
+                            {selectedReadinessLabels.length > 4 && (
+                              <span className="rounded-full border border-orange-100 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-500">
+                                +{selectedReadinessLabels.length - 4} more
+                              </span>
+                            )}
+                          </div>
+                        )}
 
-                    <div>
-                      <label className="mb-1.5 block text-xs font-bold text-slate-600">Location</label>
-                      <div className="relative">
-                        <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <input
-                          type="text"
-                          placeholder="Location"
-                          value={filterLocation}
-                          onChange={(e) => setFilterLocation(e.target.value)}
-                          className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-xs text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-[#FF8A00]/60 focus:ring-2 focus:ring-[#FF8A00]/15"
-                        />
+                        <div className="space-y-3">
+                          {Array.from(new Set(READINESS_OPTIONS.map((option) => option.group))).map((group) => (
+                            <div key={group}>
+                              <p className="mb-2 text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">{group}</p>
+                              <div className="flex flex-wrap gap-2">
+                                {READINESS_OPTIONS.filter((option) => option.group === group).map((option) => {
+                                  const active = selectedReadinessFilters.includes(option.value);
+                                  return (
+                                    <button
+                                      key={option.value}
+                                      type="button"
+                                      onClick={() => toggleReadinessFilter(option.value)}
+                                      className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${active ? "border-[#FF8A00] bg-[#FF8A00] text-white" : "border-orange-100 bg-white text-slate-700 hover:border-[#FF8A00]/40 hover:text-[#C96B00]"}`}
+                                    >
+                                      {option.label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-
-                    <div>
-                      <label className="mb-1.5 block text-xs font-bold text-slate-600">Budget</label>
-                      <div className="relative">
-                        <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <input
-                          type="number"
-                          placeholder="Max salary"
-                          value={filterMaxSalary}
-                          onChange={(e) => setFilterMaxSalary(e.target.value)}
-                          className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-xs text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-[#FF8A00]/60 focus:ring-2 focus:ring-[#FF8A00]/15"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="mb-1.5 block text-xs font-bold text-slate-600">Ready</label>
-                      <select
-                        value={filterCareerReadiness}
-                        onChange={(e) => setFilterCareerReadiness(e.target.value)}
-                        className="w-full cursor-pointer rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-medium text-slate-900 outline-none transition-all focus:border-[#FF8A00]/60 focus:ring-2 focus:ring-[#FF8A00]/15"
-                      >
-                        <option value="">Any</option>
-                        <option value="immediate">Ready now</option>
-                        <option value="actively_looking">Open to roles</option>
-                        <option value="exploring">Exploring options</option>
-                        <option value="passive">Not urgent</option>
-                      </select>
-                    </div>
+                    </details>
                   </div>
 
-                  <button
-                    onClick={handleApplyFilters}
-                    disabled={isSyncing}
-                    className="mt-auto inline-flex items-center justify-center gap-2 rounded-2xl bg-[#FF8A00] px-4 py-3 text-xs font-bold uppercase tracking-widest text-white transition-all hover:bg-[#E67A00] disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.98]"
-                  >
-                    {isSyncing ? (
-                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                    ) : (
-                      <Filter className="w-4 h-4" />
-                    )}
-                    {isSyncing ? "Searching..." : "Apply Filters"}
-                  </button>
+                  <div className="sticky bottom-0 pt-3 bg-gradient-to-t from-white via-white to-white/70">
+                    <button
+                      onClick={handleApplyFilters}
+                      disabled={isSyncing}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#FF8A00] px-4 py-3 text-xs font-bold uppercase tracking-widest text-white transition-all hover:bg-[#E67A00] disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.98]"
+                    >
+                      {isSyncing ? (
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                      ) : (
+                        <Filter className="w-4 h-4" />
+                      )}
+                      {isSyncing ? "Searching..." : "Apply Filters"}
+                    </button>
+                  </div>
                 </div>
               </aside>
 
-              <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border border-orange-100/70 bg-white/85 shadow-[0_8px_28px_rgba(255,138,0,0.07)]">
+              <section className="flex min-h-0 flex-col rounded-[28px] border border-orange-100/70 bg-white/85 shadow-[0_8px_28px_rgba(255,138,0,0.07)]">
                 <div className="flex-shrink-0 border-b border-orange-100/70 px-5 py-4">
                   <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                     <div>
                       <p className="text-sm font-bold text-slate-700">
                         {filteredCandidates.length} candidate{filteredCandidates.length !== 1 ? "s" : ""} found
                       </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Culture Fit uses recruiter and candidate assessment signals. Skills Match uses only the selected role's posted skills.
+                      </p>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex-1 min-h-0 overflow-y-auto reco-scroll p-5">
+                <div className="min-h-0 p-5">
                   {loading ? (
                     <div className="flex items-center justify-center py-20">
                       <div className="flex flex-col items-center gap-4">
                         <div className="h-9 w-9 animate-spin rounded-full border-[3px] border-[#FFE3BF] border-t-[#FF8A00]" />
-                        <p className="text-sm font-bold text-slate-400">Calculating best matches...</p>
+                        <p className="text-sm font-bold text-slate-400">Finding the best matches...</p>
                       </div>
                     </div>
                   ) : candidates.length > 0 && tiers.elite.length === 0 && tiers.strong.length === 0 && tiers.potential.length === 0 ? (
@@ -507,7 +678,7 @@ export default function RecommendationsPage() {
                               <div className="flex items-center gap-3 border-l-4 border-[#FF8A00] pl-3">
                                 <div>
                                   <h2 className="font-bold text-slate-900">
-                                    {tier === "elite" ? "Top Matches" : tier === "strong" ? "Strong Matches" : "More Matches"}
+                                    {tier === "elite" ? "Top Matches" : tier === "strong" ? "Strong Matches" : "Additional Matches"}
                                   </h2>
                                   <p className="text-xs text-slate-500">
                                     {list.length} candidate{list.length !== 1 ? "s" : ""}
@@ -520,6 +691,7 @@ export default function RecommendationsPage() {
                                   <RecommendedCard
                                     key={candidate.user_id}
                                     candidate={candidate}
+                                    postedJobTitle={postedJob?.title}
                                     onViewProfile={() => handleViewProfile(candidate, "resume")}
                                     onInvite={() => setInviteModal({ isOpen: true, candidate })}
                                     getDisplayName={getDisplayName}
@@ -586,11 +758,13 @@ export default function RecommendationsPage() {
 
 function RecommendedCard({
   candidate,
+  postedJobTitle,
   onViewProfile,
   onInvite,
   getDisplayName,
 }: {
   candidate: Candidate;
+  postedJobTitle?: string | null;
   onViewProfile: () => void;
   onInvite: () => void;
   getDisplayName: (name: string, id: string) => string;
@@ -624,26 +798,35 @@ function RecommendedCard({
         </div>
 
         <div className="flex flex-shrink-0 flex-col items-end gap-1 rounded-2xl bg-[#FFF8F1] px-3 py-2 text-right">
-          <span className="text-[10px] font-black uppercase tracking-[0.18em] text-[#C96B00]">Fit</span>
+          <span className="text-[10px] font-black uppercase tracking-[0.18em] text-[#C96B00]">Match</span>
           <span className="text-2xl font-black tracking-tight text-[#FF8A00]">{candidate.culture_match_score}%</span>
         </div>
       </div>
 
+      {postedJobTitle && (
+        <div className="px-5 pb-2">
+          <div className="rounded-2xl border border-orange-100 bg-[#FFF8F1] px-3 py-2">
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#C96B00]">Matched to</p>
+            <p className="mt-1 text-sm font-semibold text-slate-800">{postedJobTitle}</p>
+          </div>
+        </div>
+      )}
+
       <div className="px-5 pb-4">
         <div className="grid grid-cols-2 gap-2 text-xs">
           <div className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2">
-            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Timeline</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Experience</p>
             <p className="mt-1 font-semibold text-slate-800">{candidate.years_of_experience} years</p>
           </div>
           <div className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2">
-            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Track</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Career stage</p>
             <p className="mt-1 font-semibold text-slate-800 capitalize">{candidate.experience}</p>
           </div>
         </div>
 
         {candidate.match_reasoning && (
           <div className="mt-3 rounded-2xl border border-orange-100 bg-[#FFF8F1] px-3 py-2">
-            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#C96B00]">Fit note</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#C96B00]">Why this match</p>
             <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-600">{candidate.match_reasoning}</p>
           </div>
         )}
@@ -672,7 +855,7 @@ function RecommendedCard({
           onClick={onViewProfile}
           className="flex-1 rounded-xl bg-slate-900 px-3 py-2.5 text-sm font-bold text-white transition-all hover:bg-slate-800 active:scale-95"
         >
-          Open profile
+          View profile
         </button>
         <button
           onClick={onInvite}

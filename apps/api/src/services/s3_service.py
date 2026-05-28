@@ -3,6 +3,7 @@ from botocore.config import Config
 from src.core.config import AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, S3_BUCKET_NAME
 from typing import Optional
 import logging
+from urllib.parse import unquote
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,18 @@ class S3Service:
         is_pdf = file_path.lower().endswith('.pdf')
         content_type = 'application/pdf' if is_pdf else None
         
+        # Handle s3:// scheme (from bulk uploads)
+        if file_path.startswith("s3://"):
+            try:
+                # Extract bucket and key from s3://bucket/key format
+                parts = file_path[5:].split('/', 1)  # Remove "s3://" prefix and split
+                if len(parts) == 2:
+                    s3_bucket = parts[0]
+                    file_path = parts[1]
+                    target_bucket = s3_bucket
+            except:
+                pass
+        
         # If it's a full URL, we need to extract the key to sign it
         if file_path.startswith("http"):
             if target_bucket in file_path:
@@ -57,6 +70,8 @@ class S3Service:
                         parts = file_path.split(f"{target_bucket}/")
                         if len(parts) > 1:
                             file_path = parts[1].split('?')[0]
+                    # FIX: URL-decode the extracted path to handle spaces and special characters
+                    file_path = unquote(file_path)
                 except:
                     pass
             else:

@@ -15,7 +15,7 @@ import httpx
 import asyncio
 from bs4 import BeautifulSoup
 from typing import List, Dict, Optional, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 import re
 from src.core.config import OPENAI_API_KEY
 import uuid
@@ -39,6 +39,7 @@ def get_s3_url_with_fallback(file_path: Optional[str]) -> Optional[str]:
 # --- Utility for City Tiering ---
 TIER_1_CITIES = ['bangalore', 'bengaluru', 'mumbai', 'delhi', 'hyderabad', 'chennai', 'kolkata', 'pune', 'ahmedabad']
 TIER_2_CITIES = ['jaipur', 'lucknow', 'nagpur', 'indore', 'thiruvananthapuram', 'kochi', 'coimbatore', 'madurai', 'mysore', 'chandigarh', 'bhopal', 'surat', 'patna', 'ranchi']
+CULTURE_FIT_BENCHMARK = 75
 
 def getCityTier(location: str | None) -> str:
     if not location: return "Tier 3"
@@ -606,9 +607,84 @@ Respond with ONLY the domain in format: domain.com (no https://, no www., just t
     async def evaluate_recruiter_answer(self, user_id: str, question_text: str, answer: str, category: str):
         db = SessionLocal()
         try:
-            prompt = f"Evaluate this recruiter response for category {category}:\nQ: {question_text}\nA: {answer}\nReturn score 0-6 and reasoning in JSON format: {{'score': integer, 'reasoning': string}}"
-            res = await self._call_ai_json(prompt)
-            score = res.get("score", 3)
+            # Multi-grader ensemble: call the AI multiple times with slight prompt/system variations
+            graders = [
+                "You are an objective evaluator. Ignore promotional/company-bragging language and focus on concrete examples, metrics, timelines, and named processes. Do not penalize non-native phrasing. Return ONLY a single JSON object as specified.",
+                "You are an unbiased rubric grader. Prioritize factual evidence and ownership over marketing language. Provide numeric subscores and brief reasoning. Return ONLY JSON.",
+                "You are a recruitment assessment auditor. Evaluate on relevance, specificity, clarity, ownership, and fairness. Focus on concrete examples. Return a single JSON object with those fields and optional confidence."
+            ]
+
+            retry_schedule = [0, 1, 2]
+
+            prompt_template = (
+                "Evaluate this recruiter response for category {category}:\nQ: {q}\nA: {a}\n\n"
+                "Return a JSON object with integer subscores 0-100 for: relevance, specificity, clarity, ownership, fairness. "
+                "Also include a short 'reasoning' string and optional 'confidence' (0-1).\n"
+                "Example output: {\"relevance\":85, \"specificity\":70, \"clarity\":90, \"ownership\":60, \"fairness\":80, \"reasoning\":\"Concrete examples and timelines provided.\", \"confidence\":0.87}"
+            )
+
+            async def _grade_once(system_message: str, attempt: int):
+                prompt = prompt_template.format(category=category, q=question_text, a=answer)
+                result = await self._call_ai_json(prompt, system_message)
+                if isinstance(result, dict) and result:
+                    return result
+                return None
+
+            async def _grade_with_retries(system_message: str):
+                last_result = None
+                for attempt in retry_schedule:
+                    try:
+                        result = await _grade_once(system_message, attempt)
+                        if result:
+                            return result
+                        last_result = result
+                    except Exception:
+                        last_result = None
+                return last_result
+
+            grading_tasks = [asyncio.create_task(_grade_with_retries(sys_msg)) for sys_msg in graders]
+            raw_results = [result for result in await asyncio.gather(*grading_tasks) if isinstance(result, dict) and result]
+
+            # If no grader returned usable JSON, fall back to conservative defaults
+            if not raw_results:
+                raw_results = [{
+                    "relevance": 50,
+                    "specificity": 50,
+                    "clarity": 50,
+                    "ownership": 50,
+                    "fairness": 50,
+                    "reasoning": "Fallback default due to AI failure.",
+                    "confidence": 0.0
+                }]
+
+            # Helper to compute median safely
+            def median(values):
+                vals = sorted([v for v in values if v is not None])
+                if not vals:
+                    return None
+                n = len(vals)
+                mid = n // 2
+                if n % 2 == 1:
+                    return vals[mid]
+                return int(round((vals[mid - 1] + vals[mid]) / 2.0))
+
+            # Collect numeric subscores
+            relevance = median([int(r.get("relevance", 50)) for r in raw_results]) or 50
+            specificity = median([int(r.get("specificity", 50)) for r in raw_results]) or 50
+            clarity = median([int(r.get("clarity", 50)) for r in raw_results]) or 50
+            ownership = median([int(r.get("ownership", 50)) for r in raw_results]) or 50
+            fairness = median([int(r.get("fairness", 50)) for r in raw_results]) or 50
+            # Combine reasoning entries
+            reasoning_texts = [r.get("reasoning") for r in raw_results if r.get("reasoning")]
+            reasoning = reasoning_texts[0] if reasoning_texts else ""
+            # Confidence: median of provided confidences (scaled 0-1)
+            confidences = [float(r.get("confidence", 0.0)) for r in raw_results if r.get("confidence") is not None]
+            confidence = (median([int(c * 100) for c in confidences]) / 100.0) if confidences else None
+
+            # Composite average (0-100)
+            score = int(round((relevance + specificity + clarity + ownership + fairness) / 5.0))
+
+            best_raw = raw_results[0] if raw_results else {}
             
             # Using table column names: answer_text, average_score, evaluation_metadata
             from src.core.models import RecruiterAssessmentResponse
@@ -622,11 +698,11 @@ Respond with ONLY the domain in format: domain.com (no https://, no www., just t
                 question_text=question_text,
                 answer_text=answer,
                 average_score=score,
-                relevance_score=score,
-                specificity_score=score,
-                clarity_score=score,
-                ownership_score=score,
-                evaluation_metadata={"reasoning": res.get("reasoning", "")}
+                relevance_score=relevance,
+                specificity_score=specificity,
+                clarity_score=clarity,
+                ownership_score=ownership,
+                evaluation_metadata={"reasoning": reasoning, "fairness": fairness, "confidence": confidence, "raw_ai": best_raw, "ensemble_size": len(raw_results)}
             )
             db.add(new_res)
             db.commit()
@@ -644,9 +720,9 @@ Respond with ONLY the domain in format: domain.com (no https://, no www., just t
             from src.core.models import RecruiterAssessmentResponse, RecruiterProfile, Company
             responses = db.query(RecruiterAssessmentResponse).filter(RecruiterAssessmentResponse.user_id == user_id).all()
             if not responses: return {"score": 0, "status": "incomplete"}
-            
+            # average_score is stored on a 0-100 scale (composite of subscores)
             avg = sum([getattr(r, "average_score", 0) or 0 for r in responses]) / len(responses)
-            normalized = int((avg / 6) * 100)
+            normalized = int(round(avg))
             
             profile = db.query(RecruiterProfile).filter(RecruiterProfile.user_id == user_id).first()
             if profile:
@@ -654,7 +730,9 @@ Respond with ONLY the domain in format: domain.com (no https://, no www., just t
                 profile.assessment_status = "completed"
                 if profile.company_id:
                     company = db.query(Company).filter(Company.id == profile.company_id).first()
-                    if company: company.profile_score = normalized
+                    if company:
+                        # store normalized 0-100 company profile score
+                        company.profile_score = normalized
                 db.commit()
             return {"score": normalized, "status": "completed"}
         finally:
@@ -780,18 +858,149 @@ Respond with ONLY the domain in format: domain.com (no https://, no www., just t
                 ).all()
                 if recruiter_assessments:
                     recruiter_icp = " | ".join([f"{r.question_text}: {r.answer_text}" for r in recruiter_assessments])
+
+            if filter_type == "culture_fit" and not recruiter_assessments:
+                return []
+
+            if filter_type != "skill_match":
+                target_job = None
             
-            # 2. Base query: Include verified candidates and shadow profiles
-            query = db.query(CandidateProfile).filter(
-                or_(
-                    CandidateProfile.assessment_status == 'completed',
-                    CandidateProfile.is_shadow_profile == True
-                )
-            )
+            # 2. Base query: include every candidate profile in the pool
+            # Verified, not-yet-verified, and shadow profiles all participate in matching.
+            query = db.query(CandidateProfile)
             
             # 3. Dynamic Filters
+            def _extract_max_salary(value: Any) -> float:
+                if value is None:
+                    return 0.0
+                if isinstance(value, (int, float)):
+                    return float(value)
+                nums = re.findall(r"\d+(?:\.\d+)?", str(value).replace(",", ""))
+                if not nums:
+                    return 0.0
+                parsed = [float(n) for n in nums]
+                return max(parsed)
+
+            def _parse_salary_floor(value: Any) -> float:
+                if value is None:
+                    return 0.0
+                if isinstance(value, (int, float)):
+                    return float(value)
+                nums = re.findall(r"\d+(?:\.\d+)?", str(value).replace(",", ""))
+                if not nums:
+                    return 0.0
+                parsed = [float(n) for n in nums]
+                return min(parsed)
+
+            def _parse_salary_ceiling(value: Any) -> float:
+                if value is None:
+                    return 0.0
+                if isinstance(value, (int, float)):
+                    return float(value)
+                nums = re.findall(r"\d+(?:\.\d+)?", str(value).replace(",", ""))
+                if not nums:
+                    return 0.0
+                parsed = [float(n) for n in nums]
+                return max(parsed)
+
+            def _job_budget_range(value: Any) -> tuple[float, float]:
+                return _parse_salary_floor(value), _parse_salary_ceiling(value)
+
+            def _candidate_matches_readiness(candidate: CandidateProfile, readiness: str, role_budget: Any = None) -> bool:
+                employment_status = (candidate.current_employment_status or "").strip().lower()
+                job_search_mode = (candidate.job_search_mode or "").strip().lower()
+                between_detail = (candidate.between_role_detail or "").strip().lower()
+                contract_preference = (candidate.contract_preference or "").strip().lower()
+                target_segment = (candidate.target_market_segment or "any").strip().lower()
+                preference_type = (candidate.job_type or "").strip().lower()
+                expected_salary = float(candidate.expected_salary) if candidate.expected_salary is not None else None
+                current_salary = float(candidate.current_salary) if candidate.current_salary is not None else None
+                visa_needed = bool(candidate.visa_sponsorship_needed)
+                willing_relocate = bool(candidate.willing_to_relocate)
+                readiness_meta = candidate.career_readiness_metadata or {}
+                work_location_preference = str(readiness_meta.get("work_location_preference") or "").strip().lower()
+
+                readiness = (readiness or "").strip().lower()
+                if not readiness:
+                    return True
+
+                if readiness == "immediate":
+                    return job_search_mode == "active" or (candidate.notice_period_days == 0)
+                if readiness == "short_notice":
+                    return candidate.notice_period_days is not None and 0 < candidate.notice_period_days <= 30
+                if readiness == "long_notice":
+                    return candidate.notice_period_days is not None and candidate.notice_period_days >= 60
+                if readiness == "active_job_seeker":
+                    return job_search_mode == "active"
+                if readiness == "passive_candidate":
+                    return job_search_mode == "passive"
+                if readiness == "between_roles":
+                    return employment_status in {"between", "between_roles"}
+                if readiness == "laid_off_recently":
+                    return between_detail == "laid_off"
+                if readiness == "requires_visa_sponsorship":
+                    return visa_needed is True
+                if readiness == "willing_to_relocate":
+                    return willing_relocate is True
+                if readiness == "remote_only":
+                    return willing_relocate is False and work_location_preference == "remote"
+                if readiness == "contract_preferred":
+                    return contract_preference == "contract"
+                if readiness == "flexible":
+                    return contract_preference == "both"
+                if readiness == "salary_seeking_raise":
+                    if expected_salary is None or current_salary is None:
+                        return False
+                    return expected_salary >= (current_salary * 1.2)
+                if readiness == "recent_graduate_student":
+                    return employment_status == "student"
+                if readiness == "high_fit_by_compensation":
+                    if expected_salary is None or not role_budget:
+                        return False
+                    budget_min, budget_max = _job_budget_range(role_budget)
+                    if budget_max <= 0:
+                        return False
+                    return budget_min <= expected_salary <= budget_max
+                if readiness == "needs_salary_clarification":
+                    return expected_salary is None and job_search_mode == "active"
+
+                # Backward-compatible aliases from the prior UI
+                if readiness == "actively_looking":
+                    return job_search_mode == "active"
+                if readiness == "exploring":
+                    return job_search_mode == "exploring"
+                if readiness == "passive":
+                    return job_search_mode == "passive"
+
+                return True
+
             if params.get("location"):
-                query = query.filter(CandidateProfile.location.ilike(f"%{params['location']}%"))
+                requested_location = str(params["location"]).strip().lower()
+                query = query.filter(
+                    and_(
+                        CandidateProfile.location.isnot(None),
+                        or_(
+                            func.lower(CandidateProfile.location) == requested_location,
+                            func.lower(CandidateProfile.location).ilike(f"{requested_location},%"),
+                            func.lower(CandidateProfile.location).ilike(f"{requested_location} %"),
+                        )
+                    )
+                )
+
+            max_salary_cap = _extract_max_salary(params.get("max_salary"))
+            if max_salary_cap > 0:
+                query = query.filter(
+                    and_(
+                        CandidateProfile.expected_salary.isnot(None),
+                        CandidateProfile.expected_salary <= max_salary_cap
+                    )
+                )
+
+            career_readiness_values = [
+                value.strip().lower()
+                for value in str(params.get("career_readiness") or "").split(",")
+                if value and value.strip()
+            ]
             
             if params.get("experience_band") and params["experience_band"] != "all":
                 if params["experience_band"] == "fresher":
@@ -805,20 +1014,11 @@ Respond with ONLY the domain in format: domain.com (no https://, no www., just t
 
             candidates = query.limit(200).all()
             
-            # 4. Build target skills from job or active jobs
-            target_skills = set(target_job.skills_required if target_job and target_job.skills_required else (params.get("required_skills") or []))
-            
-            if not target_skills:
-                active_jobs = db.query(Job).filter(Job.recruiter_id == user_id, Job.status == "active").all()
-                if active_jobs:
-                    for job in active_jobs:
-                        if job.skills_required:
-                            target_skills.update([s.lower() for s in job.skills_required])
-                
-                if not target_skills:
-                    latest_job = db.query(Job).filter(Job.recruiter_id == user_id).order_by(Job.created_at.desc()).first()
-                    if latest_job and latest_job.skills_required:
-                        target_skills = set([s.lower() for s in latest_job.skills_required])
+            # 4. Build target skills from the posted role.
+            # Skills Match must stay anchored to the job that was posted for this recommendation.
+            target_skills = set()
+            if filter_type == "skill_match" and target_job and target_job.skills_required:
+                target_skills = set([s.lower() for s in target_job.skills_required if s])
 
             target_exp_band = target_job.experience_band if target_job else params.get("experience_band")
             
@@ -832,9 +1032,48 @@ Respond with ONLY the domain in format: domain.com (no https://, no www., just t
 
             # 5. Score candidates according to filter_type
             results = []
+
+            if filter_type == "skill_match" and not target_job:
+                return []
             
             for c in candidates:
                 is_shadow = getattr(c, 'is_shadow_profile', False)
+                c_skills = set([s.lower() for s in (c.skills or [])])
+                target_skills_lower = set([s.lower() for s in target_skills]) if target_skills else set()
+                skill_overlap = c_skills.intersection(target_skills_lower)
+                exp_label = self._get_exp_label(c.years_of_experience or 0)
+                target_exp_match = bool(target_exp_band and target_exp_band.lower() == exp_label)
+                target_exp_adjacent = False
+                if target_exp_band and target_exp_band.lower() != exp_label:
+                    exp_order = ["fresher", "mid", "senior", "leadership"]
+                    if target_exp_band.lower() in exp_order and exp_label in exp_order:
+                        target_exp_adjacent = abs(exp_order.index(target_exp_band.lower()) - exp_order.index(exp_label)) == 1
+
+                if filter_type == "skill_match":
+                    if not target_skills_lower:
+                        continue
+                    if not skill_overlap:
+                        continue
+                    if not (target_exp_match or target_exp_adjacent):
+                        continue
+                elif target_job and target_skills_lower:
+                    if not skill_overlap:
+                        continue
+                elif target_job and not (target_exp_match or target_exp_adjacent):
+                    continue
+
+                if career_readiness_values:
+                    matched_all_readiness = True
+                    for readiness_value in career_readiness_values:
+                        if not _candidate_matches_readiness(
+                            c,
+                            readiness_value,
+                            params.get("role_budget_range") or params.get("max_salary"),
+                        ):
+                            matched_all_readiness = False
+                            break
+                    if not matched_all_readiness:
+                        continue
                 
                 if filter_type == "profile_matching":
                     # **EXPERT VIEW: Master Match Algorithm**
@@ -852,6 +1091,10 @@ Respond with ONLY the domain in format: domain.com (no https://, no www., just t
                         )
                 elif filter_type == "skill_match":
                     # **SKILLS FOCUS**
+                    if not target_job or not target_skills_lower:
+                        continue
+                    if len(skill_overlap) / len(target_skills_lower) < 0.75:
+                        continue
                     score, reasoning = self._score_skill_match(c, target_skills, target_exp_band, target_max_salary, is_shadow)
                 else:
                     # **CULTURE FIT (Default)**
@@ -859,9 +1102,13 @@ Respond with ONLY the domain in format: domain.com (no https://, no www., just t
                         c, target_skills, target_exp_band, target_max_salary,
                         is_shadow=is_shadow,
                         recruiter_icp=recruiter_icp,
+                        recruiter_assessments=recruiter_assessments,
                         db=db
                     )
-                
+
+                    if score < CULTURE_FIT_BENCHMARK:
+                        continue
+
                 results.append({
                     "user_id": str(c.user_id),
                     "full_name": c.full_name or ("Potential Lead" if is_shadow else "Anonymous Talent"),
@@ -874,7 +1121,7 @@ Respond with ONLY the domain in format: domain.com (no https://, no www., just t
                     "profile_photo_url": get_s3_url_with_fallback(c.profile_photo_url) or f"https://api.dicebear.com/7.x/avataaars/svg?seed={(c.full_name or 'User').replace(' ', '%20')}",
                     "resume_path": S3Service.get_signed_url(c.resume_path) if c.resume_path else None,
                     "identity_verified": c.identity_verified or False,
-                    "profile_strength": "Lead" if is_shadow else (c.profile_strength or "Medium"),
+                    "profile_strength": "Lead" if is_shadow else (c.profile_strength or "Moderate"),
                     "expected_salary": float(c.expected_salary or 0),
                     "is_shadow": is_shadow,
                     "assessment_status": "verified" if not is_shadow else "passive_lead"
@@ -1035,67 +1282,141 @@ Rate ICP alignment on 0-100. Output format: SCORE: [number] | REASON: [one sente
         return match_score, reasoning
 
     async def _score_culture_fit(self, candidate, target_skills, target_exp_band, target_max_salary, 
-                                  is_shadow=False, recruiter_icp="", db=None):
-        """Culture Fit Scoring - Behavioral + ICP Focus"""
-        base_score = 50
-        reasoning_steps = []
-        
-        if not is_shadow:
-            # Behavioral scoring for verified candidates
-            profile_score = db.query(ProfileScore).filter(ProfileScore.user_id == candidate.user_id).first() if db else None
-            behavioral_score = getattr(profile_score, 'behavioral_score', 0) or 0
-            
-            if behavioral_score > 80:
-                base_score += 20
-                reasoning_steps.append("Elite Behavioral Score")
-            elif behavioral_score > 60:
-                base_score += 10
-                reasoning_steps.append("Strong Team Player")
-        
-        # Skills matching (30% for culture fit)
-        c_skills = set([s.lower() for s in (candidate.skills or [])])
-        if target_skills:
-            target_skills_lower = set([s.lower() for s in target_skills])
-            overlap = c_skills.intersection(target_skills_lower)
-            match_ratio = len(overlap) / len(target_skills_lower) if target_skills_lower else 0
-            skill_bonus = int(match_ratio * 20)
-            base_score += skill_bonus
-            if overlap:
-                reasoning_steps.append(f"Matched {len(overlap)} core skills")
-        
-        # Experience alignment
-        years = candidate.years_of_experience or 0
-        exp_status = self._get_exp_label(years)
-        if target_exp_band and target_exp_band.lower() == exp_status:
-            base_score += 10
-            reasoning_steps.append("Experience band matches")
-        
-        match_score = min(99, base_score)
-        reasoning = " | ".join(reasoning_steps) if reasoning_steps else "Good culture alignment."
-        return match_score, reasoning
+                                  is_shadow=False, recruiter_icp="", recruiter_assessments=None, db=None):
+        """Culture fit is recruiter-vector to candidate-vector alignment."""
+
+        def _clamp(value: float) -> int:
+            return int(max(0, min(100, round(value))))
+
+        def _avg(values: list[float], default: float = 50.0) -> float:
+            usable = [float(value) for value in values if value is not None]
+            return float(sum(usable) / len(usable)) if usable else default
+
+        def _recruiter_response_score(response) -> float:
+            subscores = [
+                float(getattr(response, "relevance_score", 0) or 50),
+                float(getattr(response, "specificity_score", 0) or 50),
+                float(getattr(response, "clarity_score", 0) or 50),
+                float(getattr(response, "ownership_score", 0) or 50),
+            ]
+            fairness = 50.0
+            metadata = getattr(response, "evaluation_metadata", None) or {}
+            try:
+                fairness = float(metadata.get("fairness", 50) or 50)
+            except Exception:
+                fairness = 50.0
+            return _avg(subscores + [fairness], default=50.0)
+
+        recruiter_category_map = {
+            "recruiter_intent": "intent",
+            "recruiter_icp": "icp",
+            "recruiter_ethics": "ethics",
+            "recruiter_cvp": "cvp",
+            "recruiter_ownership": "ownership",
+        }
+
+        profile_score = db.query(ProfileScore).filter(ProfileScore.user_id == candidate.user_id).first() if db else None
+        if not profile_score or (str(getattr(candidate, "assessment_status", "") or "").strip().lower() != "completed"):
+            return 0, "Candidate does not have a completed assessment profile for culture-fit matching."
+
+        behavioral_score = float(getattr(profile_score, "behavioral_score", 0) or 0)
+        psychometric_score = float(getattr(profile_score, "psychometric_score", 0) or 0)
+        skills_score = float(getattr(profile_score, "skills_score", 0) or 0)
+        reference_score = float(getattr(profile_score, "reference_score", 0) or 0)
+        final_score = float(getattr(profile_score, "final_score", 0) or getattr(candidate, "final_profile_score", 0) or 0)
+        readiness_score = float(getattr(candidate, "career_readiness_score", 0) or 0)
+        years = float(candidate.years_of_experience or 0)
+
+        recruiter_vectors: Dict[str, list[float]] = {
+            "intent": [],
+            "icp": [],
+            "ethics": [],
+            "cvp": [],
+            "ownership": [],
+        }
+
+        if recruiter_assessments:
+            for response in recruiter_assessments:
+                mapped_dimension = recruiter_category_map.get((response.category or "").strip().lower())
+                if mapped_dimension:
+                    recruiter_vectors[mapped_dimension].append(_recruiter_response_score(response))
+
+        recruiter_vector = {
+            "intent": _avg(recruiter_vectors["intent"], default=50.0),
+            "icp": _avg(recruiter_vectors["icp"], default=50.0),
+            "ethics": _avg(recruiter_vectors["ethics"], default=50.0),
+            "cvp": _avg(recruiter_vectors["cvp"], default=50.0),
+            "ownership": _avg(recruiter_vectors["ownership"], default=50.0),
+        }
+
+        candidate_vector = {
+            "intent": _avg([psychometric_score, readiness_score], default=50.0),
+            "icp": _avg([skills_score * 0.55, min(100.0, years * 10.0), final_score * 0.20], default=50.0),
+            "ethics": _avg([behavioral_score * 0.50, reference_score * 0.20, final_score * 0.30], default=50.0),
+            "cvp": _avg([psychometric_score * 0.50, readiness_score * 0.20, final_score * 0.30], default=50.0),
+            "ownership": _avg([behavioral_score * 0.60, psychometric_score * 0.20, final_score * 0.20], default=50.0),
+        }
+
+        # Ethics is a fairness gate, not just another soft preference.
+        if recruiter_vector["ethics"] < 55:
+            return 0, "Recruiter ethics/fair hiring responses are not strong enough for culture-fit matching."
+        if candidate_vector["ethics"] < 50:
+            return 0, "Candidate trust and fairness signals are too weak for culture-fit matching."
+
+        def _alignment(recruiter_value: float, candidate_value: float) -> int:
+            return _clamp(100 - abs(float(recruiter_value) - float(candidate_value)))
+
+        intent_alignment = _alignment(recruiter_vector["intent"], candidate_vector["intent"])
+        icp_alignment = _alignment(recruiter_vector["icp"], candidate_vector["icp"])
+        ethics_alignment = _alignment(recruiter_vector["ethics"], candidate_vector["ethics"])
+        cvp_alignment = _alignment(recruiter_vector["cvp"], candidate_vector["cvp"])
+        ownership_alignment = _alignment(recruiter_vector["ownership"], candidate_vector["ownership"])
+
+        weighted_score = (
+            intent_alignment * 0.16
+            + icp_alignment * 0.22
+            + ethics_alignment * 0.26
+            + cvp_alignment * 0.14
+            + ownership_alignment * 0.22
+        )
+
+        if weighted_score < CULTURE_FIT_BENCHMARK:
+            return _clamp(weighted_score), (
+                f"Below culture-fit benchmark. Intent {intent_alignment}% | ICP {icp_alignment}% | "
+                f"Ethics {ethics_alignment}% | CVP {cvp_alignment}% | Ownership {ownership_alignment}%"
+            )
+
+        reasoning_steps = [
+            f"Intent {intent_alignment}%",
+            f"ICP {icp_alignment}%",
+            f"Ethics {ethics_alignment}%",
+            f"CVP {cvp_alignment}%",
+            f"Ownership {ownership_alignment}%",
+        ]
+
+        if weighted_score >= 90:
+            reasoning_steps.insert(0, "Excellent culture-fit alignment")
+        elif weighted_score >= 80:
+            reasoning_steps.insert(0, "Strong culture-fit alignment")
+        else:
+            reasoning_steps.insert(0, "Acceptable culture-fit alignment")
+
+        return _clamp(weighted_score), " | ".join(reasoning_steps)
 
     def _score_skill_match(self, candidate, target_skills, target_exp_band, target_max_salary, is_shadow=False):
         """Skills-focused matching"""
-        base_score = 50
-        reasoning_steps = []
-        
+        target_skills_lower = set([s.lower() for s in target_skills or []])
         c_skills = set([s.lower() for s in (candidate.skills or [])])
-        if target_skills:
-            target_skills_lower = set([s.lower() for s in target_skills])
-            overlap = c_skills.intersection(target_skills_lower)
-            match_ratio = len(overlap) / len(target_skills_lower) if target_skills_lower else 0
-            skill_bonus = int(match_ratio * 40)
-            base_score += skill_bonus
-            if overlap:
-                reasoning_steps.append(f"Matched {len(overlap)} core skills")
-        
-        years = candidate.years_of_experience or 0
-        exp_status = self._get_exp_label(years)
-        if target_exp_band and target_exp_band.lower() == exp_status:
-            base_score += 10
-            reasoning_steps.append("Experience matches")
-        
-        match_score = min(99, base_score)
+        overlap = c_skills.intersection(target_skills_lower)
+        match_ratio = len(overlap) / len(target_skills_lower) if target_skills_lower else 0
+        match_score = int(match_ratio * 100)
+        reasoning_steps = []
+        if overlap:
+            reasoning_steps.append(f"Matched {len(overlap)} of {len(target_skills_lower)} required skills")
+        if target_skills_lower and len(overlap) < len(target_skills_lower):
+            missing = sorted(target_skills_lower - overlap)
+            if missing:
+                reasoning_steps.append(f"Missing: {', '.join(missing[:4])}")
         reasoning = " | ".join(reasoning_steps) if reasoning_steps else "Skills aligned with requirements."
         return match_score, reasoning
 

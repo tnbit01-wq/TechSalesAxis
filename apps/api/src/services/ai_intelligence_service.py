@@ -18,6 +18,7 @@ from typing import Dict, List, Optional, Any
 import httpx
 import os
 from datetime import datetime
+from decimal import Decimal
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,19 @@ class AIIntelligenceService:
         self.api_key = OPENAI_API_KEY
         self.model = "gpt-4o-mini"  # Using mini for cost-efficiency
         self.model_full = "gpt-4o"  # Full model for complex analysis
+
+    def _json_safe_value(self, value: Any) -> Any:
+        if isinstance(value, Decimal):
+            return float(value)
+        if isinstance(value, datetime):
+            return value.isoformat()
+        if isinstance(value, dict):
+            return {key: self._json_safe_value(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [self._json_safe_value(item) for item in value]
+        if isinstance(value, tuple):
+            return [self._json_safe_value(item) for item in value]
+        return value
     
     async def generate_adaptive_followup_question(
         self,
@@ -305,13 +319,15 @@ Return ONLY valid JSON:
             }
         """
         print(f"\n[AI INTELLIGENCE] Calculating career fit (role: {target_role})...")
+
+        safe_candidate_profile = self._json_safe_value(candidate_profile)
         
         prompt = f"""{PLATFORM_CONTEXT}
 
 Analyze this IT Tech Sales candidate's profile and provide detailed fit assessment for IT Sales roles.
 
 Profile:
-{json.dumps(candidate_profile, indent=2)}
+    {json.dumps(safe_candidate_profile, indent=2)}
 
 Target Role: {target_role or 'IT Tech Sales position'}
 
@@ -364,11 +380,11 @@ Return ONLY valid JSON:
                     return result
                 else:
                     print(f"[AI INTELLIGENCE] ❌ Career fit analysis failed: {response.status_code}")
-                    return self._fallback_career_fit(candidate_profile)
+                    return self._fallback_career_fit(safe_candidate_profile)
                     
         except Exception as e:
             print(f"[AI INTELLIGENCE] ❌ Exception in career fit: {str(e)}")
-            return self._fallback_career_fit(candidate_profile)
+            return self._fallback_career_fit(safe_candidate_profile)
     
     async def generate_personalized_recommendations(
         self,

@@ -130,7 +130,7 @@ export default function RecruiterDashboard() {
                   </div>
                 ) : jobs.map((job, i) => (
                   <div key={job.id} className={`flex items-center gap-4 px-5 py-3.5 hover:bg-[#FAFBFC] transition-all group ${i < jobs.length - 1 ? "border-b border-slate-100/70" : ""}`}>
-                    <Link href={`/dashboard/recruiter/hiring/jobs/${job.id}`} className="flex-1 min-w-0 cursor-pointer">
+                    <Link href={`/dashboard/recruiter/hiring/jobs/${job.id}/edit`} className="flex-1 min-w-0 cursor-pointer">
                       <div className="flex items-center gap-2 mb-0.5">
                         <h3 className="text-[13px] font-semibold text-[#0F172A] truncate group-hover:text-[#FF8A00] transition-colors">{job.title}</h3>
                         <span className={`px-1.5 py-0.5 text-[9px] font-bold rounded uppercase tracking-wider flex-shrink-0 ring-1 ${(job.status || "active") === "active" ? "bg-emerald-50 text-emerald-600 ring-emerald-100" : "bg-slate-50 text-slate-500 ring-slate-200"}`}>{job.status || "Active"}</span>
@@ -216,7 +216,7 @@ export default function RecruiterDashboard() {
                 </div>
                 {profile.completion_score < 100 && (
                   <div className="flex-shrink-0 pt-3 border-t border-slate-100">
-                    <Link href="/assessment/recruiter"><span className="text-[11px] font-bold text-[#FF8A00] hover:underline flex items-center gap-0.5">Complete assessment ({profile.completion_score}%) <ChevronRight className="h-3 w-3" /></span></Link>
+                    <Link href="/onboarding/recruiter"><span className="text-[11px] font-bold text-[#FF8A00] hover:underline flex items-center gap-0.5">Complete assessment ({profile.completion_score}%) <ChevronRight className="h-3 w-3" /></span></Link>
                   </div>
                 )}
               </div>

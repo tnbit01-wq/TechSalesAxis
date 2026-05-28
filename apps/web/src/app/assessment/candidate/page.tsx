@@ -740,6 +740,14 @@ export default function AssessmentExam() {
               disabled={isLoading || !currentQuestion}
               value={answer}
               onChange={(e) => setAnswer(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  if (answer.trim() && !isLoading && currentQuestion) {
+                    handleNext(false);
+                  }
+                }
+              }}
               placeholder="Type your strategic response..."
               className="w-full h-32 bg-transparent p-6 pr-44 text-base md:text-lg font-medium text-white placeholder:text-gray-700 focus:outline-none resize-none transition-all"
             />

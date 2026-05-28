@@ -522,6 +522,14 @@ async def post_login(user: dict = Depends(get_current_user), db: Session = Depen
         if profile:
             status = getattr(profile, "assessment_status", "not_started")
             print(f"HANDSHAKE: Assessment status is '{status}'")
+
+        if role == "candidate":
+            try:
+                from src.services.candidate_service import CandidateService
+                status = CandidateService.sync_assessment_status(user_id, db)
+                print(f"HANDSHAKE: Synced assessment status is '{status}'")
+            except Exception as sync_err:
+                print(f"HANDSHAKE: Status sync skipped due to error: {sync_err}")
         
         # 3. Determine next step
         if role == "candidate":

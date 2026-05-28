@@ -4,12 +4,82 @@ import asyncio
 from datetime import date, datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import func, text
-from src.core.models import CandidateProfile, JobApplication, Post, SavedJob, Job, Company, ProfileScore
+from src.core.models import CandidateProfile, JobApplication, Post, SavedJob, Job, Company, ProfileScore, AssessmentSession, AssessmentResponse
 from src.services.notification_service import NotificationService
 from difflib import SequenceMatcher
 import math
+from src.services.recommendation_matcher import benchmark_for_mode, score_candidate_company_match
 
 class CandidateService:
+    @staticmethod
+    def _normalize_skills(skills: Optional[List[str]]) -> set:
+        return {
+            str(skill).lower().strip()
+            for skill in (skills or [])
+            if str(skill).strip()
+        }
+
+    @staticmethod
+    def _clamp_score(value: float) -> int:
+        return int(max(0, min(99, round(value))))
+
+    @staticmethod
+    def _min_company_recommendation_threshold(filter_type: str) -> int:
+        return {
+            "culture_fit": 64,
+            "hiring_intent": 60,
+            "growth_hub": 62,
+        }.get((filter_type or "").strip().lower(), 62)
+
+    @staticmethod
+    def sync_assessment_status(user_id: str, db: Session) -> str:
+        """Return a normalized assessment status and repair stale profile values when needed."""
+        profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == user_id).first()
+        if not profile:
+            return "not_started"
+
+        normalized_status = (profile.assessment_status or "not_started").strip().lower()
+        valid_statuses = {"not_started", "started", "completed", "disqualified"}
+
+        if normalized_status not in valid_statuses:
+            normalized_status = "not_started"
+
+        latest_session = db.query(AssessmentSession).filter(
+            AssessmentSession.candidate_id == user_id
+        ).order_by(AssessmentSession.started_at.desc()).first()
+
+        if latest_session:
+            session_status = (latest_session.status or "").strip().lower()
+
+            if session_status == "completed":
+                if normalized_status != "completed":
+                    profile.assessment_status = "completed"
+                    normalized_status = "completed"
+                if latest_session.overall_score is not None and not profile.final_profile_score:
+                    profile.final_profile_score = int(latest_session.overall_score)
+                return normalized_status
+
+            if session_status in {"started", "in_progress", "in-progress", "active"}:
+                if normalized_status not in {"completed", "disqualified"}:
+                    profile.assessment_status = "started"
+                    normalized_status = "started"
+                return normalized_status
+
+            if session_status in {"disqualified", "failed"}:
+                profile.assessment_status = "disqualified"
+                return "disqualified"
+
+        if normalized_status == "not_started":
+            response_exists = db.query(AssessmentResponse.id).filter(
+                AssessmentResponse.candidate_id == user_id
+            ).first()
+            if response_exists:
+                profile.assessment_status = "started"
+                return "started"
+
+        profile.assessment_status = normalized_status
+        return normalized_status
+
     @staticmethod
     def calculate_completion_score(profile: Dict[str, Any]) -> int:
         """
@@ -505,6 +575,37 @@ class CandidateService:
         return abs(bands.index(band1) - bands.index(band2)) == 1
 
     @staticmethod
+    def _has_relevant_skill_overlap(candidate_skills: List[str], job_skills: List[str]) -> bool:
+        candidate_skill_set = CandidateService._normalize_skills(candidate_skills)
+        job_skill_set = CandidateService._normalize_skills(job_skills)
+        return bool(candidate_skill_set.intersection(job_skill_set))
+
+    @staticmethod
+    def _score_job_skill_overlap(candidate_skills: List[str], job_skills: List[str]) -> Tuple[int, str]:
+        candidate_skill_set = CandidateService._normalize_skills(candidate_skills)
+        job_skill_set = CandidateService._normalize_skills(job_skills)
+
+        if not job_skill_set:
+            return 0, "No skills were listed for this role."
+
+        overlap = candidate_skill_set & job_skill_set
+        if not overlap:
+            return 0, "No skill overlap yet."
+
+        overlap_ratio = len(overlap) / len(job_skill_set)
+        score = int(round(overlap_ratio * 100))
+        overlap_list = ", ".join(sorted(list(overlap))[:3])
+
+        if score >= 85:
+            reasoning = f"Excellent skills match. You match {len(overlap)}/{len(job_skill_set)} required skills: {overlap_list}."
+        elif score >= 75:
+            reasoning = f"Strong skills match. You match {len(overlap)}/{len(job_skill_set)} required skills: {overlap_list}."
+        else:
+            reasoning = f"Partial skills match. You match {len(overlap)}/{len(job_skill_set)} required skills: {overlap_list}."
+
+        return min(100, score), reasoning
+
+    @staticmethod
     def _score_job_role_match(
         candidate: CandidateProfile,
         job: Job,
@@ -514,56 +615,56 @@ class CandidateService:
         Score job for Role Match mode (default).
         Best for: Finding lateral moves or promotions.
         """
-        base_score = 50
+        base_score = 0
         reasoning_parts = []
 
-        # 1. Role Similarity (30%) ============================================
+        candidate_skills = CandidateService._normalize_skills(candidate.skills)
+        job_skills = CandidateService._normalize_skills(job.skills_required)
+        skill_overlap = candidate_skills & job_skills
+
+        # 1. Role Similarity (15%) ============================================
         role_similarity = CandidateService._calculate_string_similarity(
             candidate.current_role or "", job.title or ""
         )
         if role_similarity > 0.8:
-            base_score += 20
+            base_score += 15
             reasoning_parts.append("Perfect role match")
         elif role_similarity > 0.5:
-            base_score += 10
+            base_score += 8
             reasoning_parts.append("Similar role")
         else:
             reasoning_parts.append("Different role")
 
-        # 2. Experience Band (25%) ============================================
+        # 2. Experience Band (35%) ============================================
         candidate_exp_band = CandidateService._get_experience_band_label(
             candidate.years_of_experience or 0
         )
         job_exp_band = job.experience_band or "mid"
 
         if candidate_exp_band == job_exp_band:
-            base_score += 15
+            base_score += 35
             reasoning_parts.append("Right seniority")
         elif CandidateService._is_adjacent_band(candidate_exp_band, job_exp_band):
-            base_score += 8
+            base_score += 18
             reasoning_parts.append("Adjacent level")
 
-        # 3. Skills Match (20%) ===============================================
-        candidate_skills = set((candidate.skills or []))
-        job_skills = set((job.skills_required or []))
-        
+        # 3. Skills Match (40%) ===============================================
         if job_skills:
-            skill_overlap = candidate_skills & job_skills
             skill_ratio = len(skill_overlap) / len(job_skills)
-            skill_bonus = int(skill_ratio * 15)
+            skill_bonus = int(skill_ratio * 40)
             base_score += skill_bonus
             reasoning_parts.append(f"Matched {len(skill_overlap)}/{len(job_skills)} skills")
         else:
             reasoning_parts.append("N/A skills")
 
-        # 4. Salary Alignment (15%) ===========================================
+        # 4. Salary Alignment (10%) ===========================================
         try:
             if candidate.expected_salary and job.salary_range:
                 salary_parts = str(job.salary_range).split("-")
                 if len(salary_parts) >= 1:
                     job_salary_max = float(salary_parts[-1].strip())
                     if candidate.expected_salary <= job_salary_max:
-                        base_score += 10
+                        base_score += 7
                         reasoning_parts.append("Within budget")
                     else:
                         reasoning_parts.append("Above budget")
@@ -573,10 +674,10 @@ class CandidateService:
         # 5. Location Preference (10%) ========================================
         if candidate.location and job.location:
             if candidate.location.lower() in job.location.lower():
-                base_score += 8
+                base_score += 5
                 reasoning_parts.append("Preferred location")
 
-        final_score = min(99, base_score)
+        final_score = min(100, base_score)
         reasoning = " | ".join(reasoning_parts)
         return final_score, reasoning
 
@@ -589,17 +690,17 @@ class CandidateService:
         Score job for Skills Focus mode.
         Best for: Leveraging specialized skills at premium compensation.
         """
-        base_score = 40
+        base_score = 0
         reasoning_parts = []
 
-        # 1. Core Skills Match (45%) ==========================================
-        candidate_skills = set((candidate.skills or []))
-        job_skills = set((job.skills_required or []))
+        candidate_skills = CandidateService._normalize_skills(candidate.skills)
+        job_skills = CandidateService._normalize_skills(job.skills_required)
 
+        # 1. Core Skills Match (60%) ==========================================
         if job_skills:
             skill_overlap = candidate_skills & job_skills
             skill_ratio = len(skill_overlap) / len(job_skills) if job_skills else 0
-            skill_bonus = int(skill_ratio * 35)
+            skill_bonus = int(skill_ratio * 60)
             base_score += skill_bonus
             reasoning_parts.append(f"Core skills: {len(skill_overlap)}/{len(job_skills)}")
         else:
@@ -640,16 +741,16 @@ class CandidateService:
         except Exception:
             pass
 
-        # 4. Experience with Skills (15%) =====================================
+        # 4. Experience with Skills (20%) =====================================
         years_exp = candidate.years_of_experience or 0
         if years_exp >= 5:
-            base_score += 12
+            base_score += 15
             reasoning_parts.append("Expert level (5+ years)")
         elif years_exp >= 1:
-            base_score += 8
+            base_score += 10
             reasoning_parts.append("Intermediate level")
 
-        # 5. Growth Opportunity (10%) =========================================
+        # 5. Growth Opportunity (5%) ==========================================
         growth_keywords = [
             "senior", "lead", "architect", "principal",
             "manager", "director", "vp", "head"
@@ -658,10 +759,10 @@ class CandidateService:
             keyword in (job.title or "").lower() for keyword in growth_keywords
         )
         if is_growth_role:
-            base_score += 8
+            base_score += 5
             reasoning_parts.append("Growth opportunity")
 
-        final_score = min(99, base_score)
+        final_score = min(100, base_score)
         reasoning = " | ".join(reasoning_parts)
         return final_score, reasoning
 
@@ -677,10 +778,13 @@ class CandidateService:
         Best for: Career pivots and discovering unexpected opportunities.
         Simplified implementation without external AI calls.
         """
-        base_score = 40
+        base_score = 0
         reasoning_parts = []
 
-        # 1. Career Path Fit (35%) ============================================
+        candidate_skills = CandidateService._normalize_skills(candidate.skills)
+        job_skills = CandidateService._normalize_skills(job.skills_required)
+
+        # 1. Career Path Fit (25%) ============================================
         role_similarity = CandidateService._calculate_string_similarity(
             candidate.current_role or "", job.title or ""
         )
@@ -688,7 +792,7 @@ class CandidateService:
             career_bonus = 25
             reasoning_parts.append("Career progression fit")
         else:
-            career_bonus = 15
+            career_bonus = 12
             reasoning_parts.append("Adjacent role exploration")
         base_score += career_bonus
 
@@ -708,13 +812,11 @@ class CandidateService:
         except Exception:
             pass
 
-        # 3. Skill Transferability (20%) ======================================
-        candidate_skills = set((candidate.skills or []))
-        job_skills = set((job.skills_required or []))
+        # 3. Skill Transferability (30%) =====================================
         if job_skills:
             transferable = candidate_skills & job_skills
             transfer_ratio = len(transferable) / len(job_skills)
-            transfer_bonus = int(transfer_ratio * 16)
+            transfer_bonus = int(transfer_ratio * 30)
             base_score += transfer_bonus
             reasoning_parts.append(f"Transferable: {transfer_ratio:.0%}")
 
@@ -749,12 +851,12 @@ class CandidateService:
                         1 for word in growth_words
                         if word in focus_areas
                     )
-                    base_score += min(8, culture_match * 2)
+                    base_score += min(10, culture_match * 2)
                     reasoning_parts.append("Culture fit")
         except Exception:
             pass
 
-        final_score = min(99, base_score)
+        final_score = min(100, base_score)
         reasoning = " | ".join(reasoning_parts)
         return final_score, reasoning
 
@@ -772,8 +874,7 @@ class CandidateService:
         limit: int = 150
     ) -> Dict[str, Any]:
         """
-        AI-powered job recommendation engine for candidates.
-        Three distinct matching modes based on discovery strategy.
+        Skills-first job recommendation engine for candidates.
         """
         db = SessionLocal()
         try:
@@ -788,11 +889,6 @@ class CandidateService:
                     "message": "Candidate profile not found",
                     "data": []
                 }
-
-            # 2. Get behavioral profile
-            profile_score = db.query(ProfileScore).filter(
-                ProfileScore.user_id == user_id
-            ).first()
 
             # 3. Build base query: Active jobs
             query = db.query(Job, Company).join(
@@ -829,22 +925,18 @@ class CandidateService:
             # 6. Fetch jobs
             jobs = query.order_by(Job.created_at.desc()).limit(limit).all()
 
-            # 7. Score jobs based on filter_type
+            # 7. Score jobs based on skills overlap only
             results = []
             for job_obj, company_obj in jobs:
                 try:
-                    if filter_type == "role_match":
-                        score, reasoning = CandidateService._score_job_role_match(
-                            candidate, job_obj, profile_score
-                        )
-                    elif filter_type == "skills_focus":
-                        score, reasoning = CandidateService._score_job_skills(
-                            candidate, job_obj
-                        )
-                    else:  # opportunity_explorer
-                        score, reasoning = await CandidateService._score_job_opportunity(
-                            candidate, job_obj, user_id, db
-                        )
+                    candidate_skills = CandidateService._normalize_skills(candidate.skills)
+                    job_skills = CandidateService._normalize_skills(job_obj.skills_required)
+                    score, reasoning = CandidateService._score_job_skill_overlap(
+                        list(candidate_skills), list(job_skills)
+                    )
+
+                    if score < 75:
+                        continue
 
                     # Check if already applied/saved
                     is_applied = db.query(JobApplication).filter(
@@ -886,9 +978,9 @@ class CandidateService:
                 "total_count": len(results),
                 "filter_applied": filter_type,
                 "recommendation_mode": {
-                    "role_match": "Role Match",
-                    "skills_focus": "Skills Focus",
-                    "opportunity_explorer": "Opportunity Explorer"
+                    "role_match": "Skills Match",
+                    "skills_focus": "Skills Match",
+                    "opportunity_explorer": "Skills Explorer"
                 }.get(filter_type, filter_type),
                 "timestamp": datetime.now().isoformat()
             }
@@ -905,67 +997,99 @@ class CandidateService:
     @staticmethod
     def _score_company_culture(
         candidate: CandidateProfile,
-        company: Company
+        company: Company,
+        profile_score: Optional[ProfileScore] = None
     ) -> Tuple[int, str]:
         """
         Score company for Culture Fit mode.
         Best for: Work-life balance and values-driven candidates.
         """
-        base_score = 50
-        reasoning_parts = []
+        behavioral = float(getattr(profile_score, "behavioral_score", 0) or 50)
+        psychometric = float(getattr(profile_score, "psychometric_score", 0) or 50)
 
-        # 1. Behavioral Alignment (30%) =======================================
-        behavioral_bonus = 15
-        reasoning_parts.append("Behavioral compatibility")
-        base_score += behavioral_bonus
+        company_text = " ".join([
+            company.description or "",
+            " ".join(company.hiring_focus_areas or []),
+            company.industry_category or "",
+        ]).lower()
+        candidate_text = " ".join([
+            candidate.bio or "",
+            candidate.long_term_goal or "",
+            " ".join(candidate.career_interests or []),
+            " ".join(candidate.learning_interests or []),
+        ]).lower()
 
-        # 2. Values Alignment (25%) ===========================================
-        company_keywords = " ".join(company.hiring_focus_areas or []).lower()
-        values_keywords = ["learning", "growth", "innovation", "collaborative",
-                          "transparency", "autonomy", "impact"]
-        keyword_matches = sum(
-            1 for keyword in values_keywords if keyword in company_keywords
+        value_terms = [
+            "growth", "learning", "ownership", "transparency", "autonomy",
+            "collaboration", "fairness", "impact", "mentorship", "innovation"
+        ]
+        value_hits = sum(1 for term in value_terms if term in company_text and term in candidate_text)
+        values_alignment = min(100.0, value_hits * 12.0)
+
+        work_preference = 55.0
+        job_type = (candidate.job_type or "").lower()
+        contract_pref = (candidate.contract_preference or "").lower()
+        if "remote" in company_text and (candidate.willing_to_relocate is False or "remote" in job_type):
+            work_preference += 14
+        if "hybrid" in company_text:
+            work_preference += 8
+        if contract_pref == "both":
+            work_preference += 8
+        elif contract_pref == "contract" and "contract" in company_text:
+            work_preference += 8
+
+        growth_orientation = 52.0
+        growth_terms = ["mentorship", "development", "training", "leadership", "career path"]
+        growth_hits = sum(1 for term in growth_terms if term in company_text)
+        growth_orientation += min(24.0, growth_hits * 6.0)
+
+        final_score = (
+            behavioral * 0.34 +
+            psychometric * 0.28 +
+            values_alignment * 0.22 +
+            max(0.0, min(100.0, work_preference)) * 0.10 +
+            max(0.0, min(100.0, growth_orientation)) * 0.06
         )
-        values_bonus = min(16, keyword_matches * 3)
-        base_score += values_bonus
-        reasoning_parts.append(f"Values alignment: {keyword_matches} matches")
 
-        # 3. Work Environment (20%) ===========================================
-        if "remote" in company_keywords or "flexible" in company_keywords:
-            base_score += 14
-            reasoning_parts.append("Flexible work environment")
+        note_parts: List[str] = []
+        score_value = CandidateService._clamp_score(final_score)
+
+        if score_value >= 85:
+            note_parts.append("This company looks like a very strong overall match for your work style.")
+        elif score_value >= 72:
+            note_parts.append("This company is a strong match for your profile and preferences.")
         else:
-            reasoning_parts.append("Office-based")
+            note_parts.append("This company is a decent match with room to validate during conversations.")
 
-        # 4. Growth Culture (15%) =============================================
-        growth_keywords = ["mentorship", "learning", "development", "training"]
-        growth_matches = sum(
-            1 for keyword in growth_keywords if keyword in company_keywords
-        )
-        growth_bonus = min(12, growth_matches * 4)
-        base_score += growth_bonus
-        reasoning_parts.append(f"Growth culture: {growth_bonus} points")
+        if values_alignment >= 55:
+            note_parts.append("Their team values and growth focus align well with yours.")
+        elif values_alignment >= 30:
+            note_parts.append("There is partial values alignment based on current signals.")
+        else:
+            note_parts.append("Values alignment appears limited from currently available information.")
 
-        # 5. Compensation (10%) ===============================================
-        base_score += 8
-        reasoning_parts.append("Fair compensation expected")
+        if max(0.0, min(100.0, work_preference)) >= 70:
+            note_parts.append("The work setup seems to fit your preferred way of working.")
 
-        final_score = min(99, base_score)
-        reasoning = " | ".join(reasoning_parts)
-        return final_score, reasoning
+        reasoning = " ".join(note_parts[:3])
+        return score_value, reasoning
 
     @staticmethod
     def _score_company_hiring_intent(
         candidate: CandidateProfile,
         company: Company,
-        db: Session
+        db: Session,
+        profile_score: Optional[ProfileScore] = None
     ) -> Tuple[int, str]:
         """
         Score company for Hiring Intent mode.
         Best for: High-intent match-making and ready-to-move candidates.
         """
-        base_score = 45
         reasoning_parts = []
+        urgency_score = 35.0
+        role_fit_score = 35.0
+        compensation_score = 45.0
+        process_score = float(company.profile_score or 45)
 
         # 1. Hiring Urgency (30%) =============================================
         try:
@@ -976,13 +1100,13 @@ class CandidateService:
             ).scalar() or 0
 
             if recent_jobs >= 5:
-                base_score += 22
+                urgency_score = 92
                 reasoning_parts.append(f"Aggressively hiring ({recent_jobs} roles)")
             elif recent_jobs >= 2:
-                base_score += 15
+                urgency_score = 78
                 reasoning_parts.append(f"Actively hiring ({recent_jobs} roles)")
             elif recent_jobs >= 1:
-                base_score += 10
+                urgency_score = 66
                 reasoning_parts.append("Recently posted")
         except Exception:
             pass
@@ -1003,10 +1127,10 @@ class CandidateService:
                     role_matches += 1
 
             if role_matches >= 3:
-                base_score += 18
+                role_fit_score = 90
                 reasoning_parts.append(f"Multiple roles match your profile")
             elif role_matches >= 1:
-                base_score += 12
+                role_fit_score = 74
                 reasoning_parts.append(f"{role_matches} matching role(s)")
         except Exception:
             pass
@@ -1029,14 +1153,19 @@ class CandidateService:
             if job_count > 0:
                 avg_salary = avg_salary_sum / job_count
                 if candidate.expected_salary and avg_salary >= candidate.expected_salary * 0.95:
-                    base_score += 14
+                    compensation_score = 86
                     reasoning_parts.append("Budget available for you")
+                elif candidate.expected_salary and avg_salary >= candidate.expected_salary * 0.80:
+                    compensation_score = 65
+                    reasoning_parts.append("Budget likely viable")
         except Exception:
             pass
 
-        # 4. Interview Velocity (15%) =========================================
-        base_score += 10
-        reasoning_parts.append("Standard hiring timeline")
+        # 4. Interview Velocity / Process Confidence (15%) ====================
+        if process_score >= 75:
+            reasoning_parts.append("Structured hiring process")
+        else:
+            reasoning_parts.append("Hiring process still maturing")
 
         # 5. Hiring for Your Profile (10%) ===================================
         exact_matches = 0
@@ -1048,18 +1177,45 @@ class CandidateService:
             pass
 
         if exact_matches > 0:
-            base_score += 10
+            role_fit_score = min(98, role_fit_score + 10)
             reasoning_parts.append(f"Hiring for your exact role")
 
-        final_score = min(99, base_score)
-        reasoning = " | ".join(reasoning_parts)
-        return final_score, reasoning
+        motivation_signal = float(getattr(profile_score, "psychometric_score", 0) or 55)
+        final_score = (
+            urgency_score * 0.34 +
+            role_fit_score * 0.30 +
+            compensation_score * 0.20 +
+            process_score * 0.10 +
+            motivation_signal * 0.06
+        )
+        score_value = CandidateService._clamp_score(final_score)
+        note_parts: List[str] = []
+
+        if score_value >= 85:
+            note_parts.append("This company shows strong hiring momentum for profiles like yours.")
+        elif score_value >= 72:
+            note_parts.append("This company is actively hiring and has good role alignment for you.")
+        else:
+            note_parts.append("This company has moderate hiring intent for your profile right now.")
+
+        if any("Aggressively hiring" in r or "Actively hiring" in r for r in reasoning_parts):
+            note_parts.append("They are hiring actively, which can improve interview turnaround.")
+
+        if any("Budget" in r for r in reasoning_parts):
+            note_parts.append("Compensation signals suggest a workable range for your expectations.")
+
+        if any("exact role" in r.lower() for r in reasoning_parts):
+            note_parts.append("There are openings closely matching your current role.")
+
+        reasoning = " ".join(note_parts[:3])
+        return score_value, reasoning
 
     @staticmethod
     async def _score_company_growth(
         candidate: CandidateProfile,
         company: Company,
-        db: Session
+        db: Session,
+        profile_score: Optional[ProfileScore] = None
     ) -> Tuple[int, str]:
         """
         Score company for Growth Hub mode (future-focused).
@@ -1122,9 +1278,23 @@ class CandidateService:
                 base_score += 6
                 reasoning_parts.append("Aligned with your interests")
 
-        final_score = min(99, base_score)
-        reasoning = " | ".join(reasoning_parts)
-        return final_score, reasoning
+        growth_readiness = float(getattr(profile_score, "psychometric_score", 0) or 50)
+        final_score = min(99, base_score * 0.82 + growth_readiness * 0.18)
+        score_value = CandidateService._clamp_score(final_score)
+        note_parts: List[str] = []
+
+        if score_value >= 85:
+            note_parts.append("This company looks like a high-upside growth opportunity.")
+        elif score_value >= 72:
+            note_parts.append("This company shows healthy growth momentum and good long-term upside.")
+        else:
+            note_parts.append("This company shows some growth potential worth exploring.")
+
+        if any("Hypergrowth" in r or "Rapid growth" in r for r in reasoning_parts):
+            note_parts.append("Hiring activity suggests strong expansion momentum.")
+
+        reasoning = " ".join(note_parts[:2])
+        return score_value, reasoning
 
     @staticmethod
     async def get_recommended_companies(
@@ -1161,6 +1331,10 @@ class CandidateService:
                 Job.status == "active"
             )
 
+            candidate_profile_score = db.query(ProfileScore).filter(
+                ProfileScore.user_id == user_id
+            ).first()
+
             # 3. Apply filters
             if industry:
                 query = query.filter(Company.industry_category.in_(industry))
@@ -1192,18 +1366,16 @@ class CandidateService:
             results = []
             for company in companies:
                 try:
-                    if filter_type == "culture_fit":
-                        score, reasoning = CandidateService._score_company_culture(
-                            candidate, company
-                        )
-                    elif filter_type == "hiring_intent":
-                        score, reasoning = CandidateService._score_company_hiring_intent(
-                            candidate, company, db
-                        )
+                    if filter_type in {"culture_fit", "hiring_intent"}:
+                        score, reasoning = score_candidate_company_match(candidate, company, db, mode=filter_type)
                     else:  # growth_hub
                         score, reasoning = await CandidateService._score_company_growth(
-                            candidate, company, db
+                            candidate, company, db, candidate_profile_score
                         )
+
+                    min_score = benchmark_for_mode(filter_type)
+                    if score < min_score:
+                        continue
 
                     # Get opening count
                     openings = db.query(func.count(Job.id)).filter(

@@ -147,7 +147,7 @@ export default function CandidateNotificationsPage() {
       setSelectedInterviewId(notif.metadata?.interview_id as string);
       setIsModalOpen(true);
     } else if (notif.type === "ASSESSMENT_REMINDER") {
-      router.push("/dashboard/candidate/assessments");
+      router.push("/assessment/candidate");
     }
   };
 

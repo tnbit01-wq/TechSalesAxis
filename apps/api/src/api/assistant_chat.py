@@ -18,6 +18,7 @@ import json
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -25,7 +26,7 @@ from sqlalchemy import func, desc, text
 
 from src.core.dependencies import get_current_user
 from src.core.database import SessionLocal
-from src.core.models import Job
+from src.core.models import CandidateProfile, Job
 from src.services.recruiter_service import recruiter_service
 from src.services.candidate_service import CandidateService
 
@@ -280,18 +281,19 @@ Classify and return ONLY valid JSON — no markdown, no prose:
 
 Redirect paths to use (use most relevant 1-3):
   Recruiter:
-    /recruiter/candidates          – browse candidates
-    /recruiter/candidates/<id>     – specific candidate profile
-    /recruiter/jobs/create         – post a new job
-    /recruiter/jobs                – manage jobs
-    /recruiter/applications        – view all applications
-    /recruiter/dashboard           – dashboard overview
+        /dashboard/recruiter/talent-pool                – browse candidates
+        /dashboard/recruiter/candidate/<id>?tab=resume   – candidate profile view
+        /dashboard/recruiter/candidate/<id>?tab=original_resume – original resume PDF
+        /dashboard/recruiter/hiring/jobs/new             – post a new job
+        /dashboard/recruiter/hiring/jobs                 – manage jobs
+        /dashboard/recruiter/hiring/applications         – view all applications
+        /dashboard/recruiter                             – dashboard overview
   Candidate:
-    /candidate/jobs                – browse jobs
-    /candidate/jobs/<id>           – specific job detail
-    /candidate/applications        – my applications
-    /candidate/profile             – my profile
-    /candidate/dashboard           – dashboard
+        /dashboard/candidate/jobs                – browse jobs
+        /dashboard/candidate/jobs/<id>           – specific job detail
+        /dashboard/candidate/applications        – my applications
+        /dashboard/candidate/profile             – my profile
+        /dashboard/candidate                     – dashboard
 
 next_steps: 2-3 natural-language strings describing what the user might do next.
 is_followup: true if this query references something from the history.
@@ -310,6 +312,52 @@ async def _extract_limit(prompt: str) -> int:
         "Limit Extractor",
     )
     return min(int(result.get("limit", 10)), 20) if result else 10
+
+
+def _infer_time_label(client_context: Optional[Dict[str, Any]] = None) -> str:
+    context = client_context or {}
+
+    local_hour = context.get("local_hour")
+    if isinstance(local_hour, (int, float)) and 0 <= int(local_hour) <= 23:
+        hour = int(local_hour)
+    else:
+        tz_name = context.get("timezone")
+        if isinstance(tz_name, str) and tz_name.strip():
+            try:
+                hour = datetime.now(ZoneInfo(tz_name.strip())).hour
+            except Exception:
+                hour = datetime.now().hour
+        else:
+            hour = datetime.now().hour
+
+    if hour < 12:
+        return "morning"
+    if hour < 16:
+        return "afternoon"
+    return "evening"
+
+
+def _search_candidates_by_name(candidate_name: str, limit: int = 5) -> List[Dict[str, Any]]:
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(CandidateProfile)
+            .filter(CandidateProfile.full_name.ilike(f"%{candidate_name}%"))
+            .limit(limit)
+            .all()
+        )
+        return [
+            {
+                "user_id": str(row.user_id),
+                "full_name": row.full_name,
+                "current_role": row.current_role,
+                "location": row.location,
+                "resume_path": row.resume_path,
+            }
+            for row in rows
+        ]
+    finally:
+        db.close()
 
 
 # ────────────────────────────────────────────────────────────────
@@ -347,6 +395,16 @@ async def _execute_tool(intent: str, filters: Dict, user_id: str, role: str) -> 
         elif intent == "market_insights":
             return _get_live_market_demand(limit=6)
 
+        elif intent in ("profile_view", "resume_view") and role == "recruiter":
+            candidate_name = (filters.get("candidate_name") or "").strip()
+            if candidate_name:
+                return _search_candidates_by_name(candidate_name, limit=5)
+            return await recruiter_service.get_recommended_candidates(
+                user_id=user_id,
+                filter_type="skill_match",
+                params={},
+            )
+
     except Exception as exc:
         log.error("_execute_tool[%s] error: %s", intent, exc)
 
@@ -357,9 +415,13 @@ async def _execute_tool(intent: str, filters: Dict, user_id: str, role: str) -> 
 # Greeting Generator
 # ────────────────────────────────────────────────────────────────
 
-async def _generate_greeting(user_context: Dict, role: str, prev_summary: Optional[str]) -> str:
-    hour = datetime.now().hour
-    time_label = "morning" if hour < 12 else "afternoon" if hour < 17 else "evening"
+async def _generate_greeting(
+    user_context: Dict,
+    role: str,
+    prev_summary: Optional[str],
+    client_context: Optional[Dict[str, Any]] = None,
+) -> str:
+    time_label = _infer_time_label(client_context)
     first_name = (user_context.get("full_name") or "").split()[0] or ""
 
     prev_ref = f'Previously: "{prev_summary}".' if prev_summary else ""
@@ -394,7 +456,7 @@ Rules:
 - Natural tone, not robotic
 - End with a soft open question or offer
 """
-    greeting = await _call_ai("".join(prompt.split()), "Warm professional AI greeter")
+    greeting = await _call_ai(prompt, "Warm professional AI greeter")
     return greeting or f"Good {time_label}{', ' + first_name if first_name else ''}! What can I help you with today?"
 
 
@@ -459,48 +521,66 @@ def _build_action_cards(
 ) -> List[Dict]:
     cards: List[Dict] = []
 
-    first_id = data_results[0].get("id", "") if data_results else ""
+    first_item = data_results[0] if data_results else {}
+    first_id = (
+        first_item.get("id")
+        or first_item.get("user_id")
+        or first_item.get("candidate_id")
+        or first_item.get("job_id")
+        or ""
+    )
+
+    recruiter_profile_url = (
+        f"/dashboard/recruiter/candidate/{first_id}?tab=resume"
+        if first_id
+        else "/dashboard/recruiter/talent-pool"
+    )
+    recruiter_resume_url = (
+        f"/dashboard/recruiter/candidate/{first_id}?tab=original_resume"
+        if first_id
+        else "/dashboard/recruiter/talent-pool"
+    )
 
     routing: Dict[str, List[Dict]] = {
         "candidate_search": [
-            {"label": "View Full Profile", "url": f"/recruiter/candidates/{first_id}", "icon": "user"},
-            {"label": "View Resume",        "url": f"/recruiter/candidates/{first_id}/resume", "icon": "file"},
-            {"label": "Browse All",         "url": "/recruiter/candidates", "icon": "users"},
+            {"label": "View Full Profile", "url": recruiter_profile_url, "icon": "user"},
+            {"label": "View Resume",        "url": recruiter_resume_url, "icon": "file"},
+            {"label": "Browse All",         "url": "/dashboard/recruiter/talent-pool", "icon": "users"},
         ],
         "job_search": [
-            {"label": "View Job Details",   "url": f"/candidate/jobs/{first_id}", "icon": "briefcase"},
-            {"label": "Apply Now",          "url": f"/candidate/jobs/{first_id}/apply", "icon": "send"},
-            {"label": "Browse All Jobs",    "url": "/candidate/jobs", "icon": "search"},
+            {"label": "View Job Details",   "url": f"/dashboard/candidate/jobs/{first_id}" if first_id else "/dashboard/candidate/jobs", "icon": "briefcase"},
+            {"label": "Apply Now",          "url": f"/dashboard/candidate/jobs/{first_id}" if first_id else "/dashboard/candidate/jobs", "icon": "send"},
+            {"label": "Browse All Jobs",    "url": "/dashboard/candidate/jobs", "icon": "search"},
         ],
         "company_search": [
-            {"label": "View Company",       "url": f"/candidate/companies/{first_id}", "icon": "building"},
-            {"label": "Browse Companies",   "url": "/candidate/companies", "icon": "building2"},
+            {"label": "View Company",       "url": "/dashboard/candidate/jobs", "icon": "building"},
+            {"label": "Browse Companies",   "url": "/dashboard/candidate/jobs", "icon": "building2"},
         ],
         "market_insights": [
-            {"label": "Post a Job",         "url": "/recruiter/jobs/create", "icon": "plus"},
-            {"label": "View Market Trends", "url": "/recruiter/dashboard", "icon": "chart"},
+            {"label": "Post a Job",         "url": "/dashboard/recruiter/hiring/jobs/new", "icon": "plus"},
+            {"label": "View Market Trends", "url": "/dashboard/recruiter", "icon": "chart"},
         ],
         "application_status": [
-            {"label": "View Applications",  "url": f"/{'recruiter' if role == 'recruiter' else 'candidate'}/applications", "icon": "clipboard"},
+            {"label": "View Applications",  "url": "/dashboard/recruiter/hiring/applications" if role == "recruiter" else "/dashboard/candidate/applications", "icon": "clipboard"},
         ],
         "post_job": [
-            {"label": "Post a Job Now",     "url": "/recruiter/jobs/create", "icon": "plus"},
+            {"label": "Post a Job Now",     "url": "/dashboard/recruiter/hiring/jobs/new", "icon": "plus"},
         ],
         "profile_view": [
-            {"label": "View My Profile",    "url": "/candidate/profile", "icon": "user"},
+            {"label": "View Candidate Profile", "url": recruiter_profile_url if role == "recruiter" else "/dashboard/candidate/profile", "icon": "user"},
+        ],
+        "resume_view": [
+            {"label": "Open Resume", "url": recruiter_resume_url if role == "recruiter" else "/dashboard/candidate/profile", "icon": "file"},
         ],
     }
 
-    if intent in routing and data_results:
+    always_show_intents = {"application_status", "post_job", "profile_view", "resume_view", "market_insights"}
+    if intent in routing and (data_results or intent in always_show_intents):
         cards.extend(routing[intent])
 
-    # Add AI-suggested redirects (deduplicated)
-    existing_urls = {c["url"] for c in cards}
-    for url in suggested_redirects[:2]:
-        if url not in existing_urls:
-            label = url.rstrip("/").split("/")[-1].replace("-", " ").title()
-            cards.append({"label": label, "url": url, "icon": "link"})
-            existing_urls.add(url)
+    # NOTE: suggested_redirects suppressed — we prefer only deterministic action cards
+    # (suggested_redirects often include query strings or noisy links that create
+    # transient buttons in the chat UI; removing keeps action cards stable)
 
     return cards[:4]  # Cap at 4 cards
 
@@ -514,6 +594,8 @@ _INTENT_TYPE: Dict[str, str] = {
     "job_search":       "job_list",
     "company_search":   "company_list",
     "market_insights":  "market_data",
+    "profile_view":     "candidate_profile",
+    "resume_view":      "resume_info",
 }
 
 
@@ -599,7 +681,12 @@ async def assistant_chat(
 
         # ── 8. Greeting prefix for new sessions ─────────────────
         if is_new_session:
-            greeting = await _generate_greeting(user_context, role, prev_summary)
+            greeting = await _generate_greeting(
+                user_context,
+                role,
+                prev_summary,
+                payload.client_context,
+            )
             final_text = f"{greeting}\n\n{final_text}"
 
         # ── 9. Action Cards ─────────────────────────────────────
@@ -617,8 +704,24 @@ async def assistant_chat(
         # Auto-title: use first user message as session title
         session_title = session.get("session_title") or prompt[:60]
 
-        messages.append({"role": "user",      "content": prompt,     "timestamp": datetime.now().isoformat()})
-        messages.append({"role": "assistant",  "content": final_text, "timestamp": datetime.now().isoformat()})
+        messages.append({
+            "role": "user",
+            "content": prompt,
+            "timestamp": datetime.now().isoformat(),
+        })
+
+        # Persist assistant reply with rich metadata so UI can rehydrate cards after reload
+        messages.append({
+            "role": "assistant",
+            "content": final_text,
+            "timestamp": datetime.now().isoformat(),
+            "intent": intent,
+            "data_type": data_type,
+            "data_results": data_results,
+            "action_cards": action_cards,
+            "feature_prompts": next_steps if next_steps else [],
+            "next_steps": next_steps,
+        })
         messages = messages[-30:]  # keep rolling window of 30 messages
 
         _update_session(

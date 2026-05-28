@@ -39,6 +39,7 @@ from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_
 from src.core.config import S3_BUCKET_NAME, AWS_REGION
+import re
 
 router = APIRouter(prefix="/recruiter", tags=["recruiter"])
 
@@ -64,6 +65,36 @@ def get_s3_url_with_fallback(file_path: Optional[str]) -> Optional[str]:
         return f"https://{S3_BUCKET_NAME}.s3.{AWS_REGION}.amazonaws.com/{file_path}"
     
     return file_path
+
+
+def infer_experience_band_from_prompt(prompt: str, fallback: str) -> str:
+    text = (prompt or "").lower()
+    if not text:
+        return fallback
+
+    explicit_years = [int(value) for value in re.findall(r"(\d+)\+?\s*(?:years?|yrs?)", text)]
+    if explicit_years:
+        max_years = max(explicit_years)
+        if max_years <= 1:
+            return "fresher"
+        if max_years <= 4:
+            return "mid"
+        if max_years <= 9:
+            return "senior"
+        return "leadership"
+
+    band_keywords = [
+        ("leadership", ["leadership", "director", "vp", "vice president", "head of", "principal", "10+ years", "10 years", "12 years"]),
+        ("senior", ["senior", "sr.", "sr ", "7 years", "8 years", "9 years", "5 years", "5+ years"]),
+        ("mid", ["mid", "intermediate", "experienced", "3 years", "4 years", "2 years", "2+ years"]),
+        ("fresher", ["fresher", "entry level", "junior", "intern", "0 years", "1 year", "1+ years"]),
+    ]
+
+    for band, keywords in band_keywords:
+        if any(keyword in text for keyword in keywords):
+            return band
+
+    return fallback
 
 class RegistrationUpdate(BaseModel):
     registration_number: str
@@ -211,6 +242,7 @@ async def get_recommended_candidates(
     location: Optional[str] = None,
     max_salary: Optional[str] = None,
     skills: Optional[str] = None,
+    career_readiness: Optional[str] = None,
     sales_model: Optional[str] = None,
     target_market: Optional[str] = None,
     experience_band: Optional[str] = None,
@@ -220,9 +252,42 @@ async def get_recommended_candidates(
         "location": location,
         "max_salary": max_salary,
         "required_skills": skills.split(",") if skills else [],
+        "career_readiness": career_readiness,
         "sales_model": sales_model,
         "target_market": target_market,
         "experience_band": experience_band
+    }
+    return await recruiter_service.get_recommended_candidates(user["sub"], filter_type, params)
+
+
+@router.get("/jobs/{job_id}/recommended-candidates")
+async def get_recommended_candidates_for_job(
+    job_id: str,
+    filter_type: str = "culture_fit",
+    location: Optional[str] = None,
+    max_salary: Optional[str] = None,
+    skills: Optional[str] = None,
+    career_readiness: Optional[str] = None,
+    sales_model: Optional[str] = None,
+    target_market: Optional[str] = None,
+    experience_band: Optional[str] = None,
+    user: dict = Depends(get_current_user)
+):
+    """Backward-compatible route: recommendations scoped to a specific job id.
+
+    Frontend sometimes calls `/recruiter/jobs/{job_id}/recommended-candidates` for
+    `skill_match` flows — forward these requests to the shared service and
+    inject `job_id` into the params map so the service can load the job.
+    """
+    params = {
+        "location": location,
+        "max_salary": max_salary,
+        "required_skills": skills.split(",") if skills else [],
+        "career_readiness": career_readiness,
+        "sales_model": sales_model,
+        "target_market": target_market,
+        "experience_band": experience_band,
+        "job_id": job_id,
     }
     return await recruiter_service.get_recommended_candidates(user["sub"], filter_type, params)
 
@@ -796,12 +861,13 @@ async def generate_job_ai(data: JobAIPrompt):
     try:
         ai_data = await recruiter_service._call_ai_json(prompt, "You are an elite Tech Sales Recruiter AI specialized in market-accurate job generation.")
         if ai_data and ai_data.get("title"):
+            inferred_experience_band = infer_experience_band_from_prompt(data.prompt, data.experience_band)
             return {
                 "title": ai_data.get("title"),
                 "description": ai_data.get("description"),
                 "requirements": ai_data.get("requirements") or [],
                 "skills_required": ai_data.get("skills_required") or [],
-                "experience_band": data.experience_band,
+                "experience_band": inferred_experience_band,
                 "job_type": ai_data.get("job_type") or "onsite",
                 "location": ai_data.get("location") or data.location,
                 "salary_range": ai_data.get("salary_range") or "Market Standard",
@@ -812,12 +878,13 @@ async def generate_job_ai(data: JobAIPrompt):
 
     # Fallback to template if AI fails
     title = data.prompt.strip()[:80] or "Generated Role"
+    inferred_experience_band = infer_experience_band_from_prompt(data.prompt, data.experience_band)
     return {
         "title": title,
         "description": f"Professional job brief for {title} in {data.location or 'the target market'}.",
         "requirements": ["Strong communication", "Proven track record", "Strategic thinking"],
         "skills_required": ["Sales", "Communication", "Problem Solving"],
-        "experience_band": data.experience_band,
+        "experience_band": inferred_experience_band,
         "job_type": "onsite",
         "location": data.location,
         "salary_range": "Competitive",

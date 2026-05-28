@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from src.core.dependencies import get_current_user
 from src.core.database import get_db
 from src.core.models import CandidateProfile, CareerReadinessHistory
+from src.services.candidate_service import CandidateService
 from src.schemas.career_readiness import (
     CareerReadinessSaveRequest,
     CareerReadinessResponse,
@@ -62,7 +63,11 @@ async def save_career_readiness(
             "contract_preference": request.contract_preference,
             "visa_sponsorship_needed": request.visa_sponsorship_needed,
             "salary_flexibility": request.salary_flexibility,
-            "target_market_segment": request.target_market_segment or "any"
+            "expected_salary": request.expected_salary,
+            "current_salary": request.current_salary,
+            "target_market_segment": request.target_market_segment or "any",
+            "between_role_detail": getattr(request, 'between_role_detail', None),
+            "between_role_note": getattr(request, 'between_role_note', None),
         }
         
         # Update candidate profile with correct field names
@@ -73,13 +78,101 @@ async def save_career_readiness(
         profile.willing_to_relocate = request.willing_to_relocate
         profile.career_readiness_timestamp = datetime.now(timezone.utc)
         profile.career_readiness_metadata = metadata
+        # Persist numeric salary fields to dedicated columns if provided
+        if getattr(request, 'expected_salary', None) is not None:
+            profile.expected_salary = request.expected_salary
+        if getattr(request, 'current_salary', None) is not None:
+            profile.current_salary = request.current_salary
+        # Persist other promoted fields to dedicated columns
+        profile.contract_preference = request.contract_preference
+        profile.visa_sponsorship_needed = request.visa_sponsorship_needed
+        profile.target_market_segment = request.target_market_segment or "any"
+        if getattr(request, 'between_role_detail', None) is not None:
+            profile.between_role_detail = request.between_role_detail
+        if getattr(request, 'between_role_note', None) is not None:
+            profile.between_role_note = request.between_role_note
         profile.onboarding_step = "AWAITING_RESUME"  # Move to next step after career readiness
         
+        # Persist promoted / optional onboarding fields when provided
         if request.current_company_name:
             profile.current_company_name = request.current_company_name
+        if getattr(request, 'portfolio_url', None) is not None:
+            profile.portfolio_url = request.portfolio_url
+        if getattr(request, 'learning_links', None) is not None:
+            profile.learning_links = request.learning_links
+        if getattr(request, 'learning_interests', None) is not None:
+            profile.learning_interests = request.learning_interests
+        if getattr(request, 'social_links', None) is not None:
+            profile.social_links = request.social_links
+        if getattr(request, 'certifications', None) is not None:
+            profile.certifications = request.certifications
+        if getattr(request, 'projects', None) is not None:
+            profile.projects = request.projects
+        if getattr(request, 'gpa_score', None) is not None:
+            profile.gpa_score = request.gpa_score
+        if getattr(request, 'ai_extraction_confidence', None) is not None:
+            profile.ai_extraction_confidence = request.ai_extraction_confidence
+        # Experience / derived numeric fields
+        if getattr(request, 'tech_sales_years', None) is not None:
+            profile.tech_sales_years = request.tech_sales_years
+        if getattr(request, 'tech_years', None) is not None:
+            profile.tech_years = request.tech_years
+        if getattr(request, 'sales_years', None) is not None:
+            profile.sales_years = request.sales_years
+        if getattr(request, 'total_relevant_years', None) is not None:
+            profile.total_relevant_years = request.total_relevant_years
+        if getattr(request, 'role_frequency', None) is not None:
+            profile.role_frequency = request.role_frequency
+        if getattr(request, 'dominant_role', None) is not None:
+            profile.dominant_role = request.dominant_role
+        if getattr(request, 'primary_career_pattern', None) is not None:
+            profile.primary_career_pattern = request.primary_career_pattern
+        if getattr(request, 'notice_period_required_days', None) is not None:
+            profile.notice_period_required_days = request.notice_period_required_days
+        if getattr(request, 'job_opportunity_type', None) is not None:
+            profile.job_opportunity_type = request.job_opportunity_type
         
+        # Commit and refresh before calculating derived metrics
         db.commit()
         db.refresh(profile)
+
+        # Recalculate completion_score and derived profile metrics to keep values consistent
+        try:
+            profile_dict = {
+                'full_name': profile.full_name,
+                'phone_number': profile.phone_number,
+                'bio': profile.bio,
+                'current_role': profile.current_role,
+                'years_of_experience': profile.years_of_experience,
+                'primary_industry_focus': profile.primary_industry_focus,
+                'linkedin_url': profile.linkedin_url,
+                'portfolio_url': profile.portfolio_url,
+                'gender': profile.gender,
+                'birthdate': profile.birthdate,
+                'referral': profile.referral,
+                'location': profile.location,
+                'education_history': profile.education_history,
+                'experience_history': profile.experience_history,
+                'career_gap_report': profile.career_gap_report,
+                'identity_verified': profile.identity_verified
+            }
+            new_completion = CandidateService.calculate_completion_score(profile_dict)
+            profile.completion_score = new_completion
+            # Map completion_score to profile_strength
+            if new_completion >= 80:
+                profile.profile_strength = 'Strong'
+            elif new_completion >= 60:
+                profile.profile_strength = 'Moderate'
+            else:
+                profile.profile_strength = 'Low'
+            # Employment readiness heuristic
+            if new_completion >= 75:
+                profile.employment_readiness_status = 'ready'
+            db.commit()
+            db.refresh(profile)
+        except Exception:
+            # Don't block primary flow if recalculation fails
+            db.rollback()
         
         print(f"[SUCCESS] Career readiness saved successfully. Profile updated to step: {profile.onboarding_step}")
         
@@ -123,9 +216,13 @@ async def get_career_readiness(
             contract_preference=profile.career_readiness_metadata.get("contract_preference", "fulltime") if profile.career_readiness_metadata else "fulltime",
             visa_sponsorship_needed=profile.career_readiness_metadata.get("visa_sponsorship_needed", False) if profile.career_readiness_metadata else False,
             salary_flexibility=profile.career_readiness_metadata.get("salary_flexibility", 0.5) if profile.career_readiness_metadata else 0.5,
+            expected_salary=profile.expected_salary,
+            current_salary=profile.current_salary,
             exploration_trigger=profile.career_readiness_metadata.get("exploration_trigger") if profile.career_readiness_metadata else None,
             target_market_segment=profile.career_readiness_metadata.get("target_market_segment") if profile.career_readiness_metadata else "any",
             current_company_name=profile.current_company_name,
+            between_role_detail=profile.between_role_detail,
+            between_role_note=profile.between_role_note,
             career_readiness_timestamp=profile.career_readiness_timestamp or datetime.now(timezone.utc),
             days_until_revertification=max(0, 15 - ((datetime.now(timezone.utc) - (profile.career_readiness_timestamp or datetime.now(timezone.utc))).days))
         )
@@ -259,9 +356,7 @@ async def get_candidates_for_recruiter(
         
         # Filter by visa sponsorship
         if filters.visa_sponsorship_required is not None:
-            query = query.filter(
-                CandidateProfile.career_readiness_metadata['visa_sponsorship_needed'].astext.cast(bool) == filters.visa_sponsorship_required
-            )
+            query = query.filter(CandidateProfile.visa_sponsorship_needed == filters.visa_sponsorship_required)
         
         # Apply pagination
         total_count = query.count()

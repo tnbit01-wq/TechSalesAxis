@@ -133,10 +133,11 @@ export const apiClient = {
     } catch (err: any) {
       const errorMessage = err instanceof Error ? err.message : "Unknown error";
       
-      // Filter out security/block errors from console pollution
+      // Filter out security/block errors and feedback fallback noise from console pollution
       const isBlockedError = err.status === 403 || (errorMessage && errorMessage.includes("blocked"));
+      const isFeedbackError = path.includes("/assessment/feedback");
       
-      if (!isBlockedError) {
+      if (!isBlockedError && !isFeedbackError) {
         console.error(`API GET Error [${url}]:`, errorMessage);
       }
       
