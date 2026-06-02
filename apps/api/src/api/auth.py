@@ -64,7 +64,7 @@ async def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(
     # Create reset link using configurable URL from config
     reset_link = f"{RESET_PASSWORD_URL}?token={token}"
     from src.services.email_service import send_password_reset_email
-    send_password_reset_email(user.email, reset_link, user.full_name or "User")
+    send_password_reset_email(user.email, reset_link, user.full_name or "User", token=token)
 
     return {"status": "success", "message": "If an account exists for this email, we've sent a password reset link. Check your inbox and spam folder. The link expires in 1 hour."}
 

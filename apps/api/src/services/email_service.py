@@ -136,7 +136,7 @@ def send_otp_email(email, otp, name="User"):
     print(f"[OTP_EMAIL] send_templated_email returned: {result}")
     return result
 
-def send_password_reset_email(email, reset_link, username="User"):
+def send_password_reset_email(email, reset_link, username="User", token=None):
     subject = f"Reset Password - {SMTP_SENDER_NAME}"
     html = f"""
     <html>
@@ -153,9 +153,14 @@ def send_password_reset_email(email, reset_link, username="User"):
     </body>
     </html>
     """
-    return send_templated_email(email, ZEPTO_PWD_RESET_TEMPLATE_ID, {
+    merge_info = {
         "username": username,
         "reset_password_link": reset_link
-    }, subject, html)
+    }
+
+    if token:
+        merge_info["token"] = token
+
+    return send_templated_email(email, ZEPTO_PWD_RESET_TEMPLATE_ID, merge_info, subject, html)
 
 
