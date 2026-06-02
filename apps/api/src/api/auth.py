@@ -5,6 +5,7 @@ from src.core.models import User, RecruiterProfile, CandidateProfile
 from sqlalchemy.orm import Session
 from src.core.auth_utils import get_password_hash, verify_password, create_access_token
 from src.services.email_service import send_otp_email, generate_otp
+from src.core.config import RESET_PASSWORD_URL
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, timedelta, timezone
 import uuid
@@ -60,8 +61,8 @@ async def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(
     user.reset_token_expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
     db.commit()
 
-    # Create reset link
-    reset_link = f"https://techsalesaxis.com/reset-password?token={token}"
+    # Create reset link using configurable URL from config
+    reset_link = f"{RESET_PASSWORD_URL}?token={token}"
     from src.services.email_service import send_password_reset_email
     send_password_reset_email(user.email, reset_link, user.full_name or "User")
 
