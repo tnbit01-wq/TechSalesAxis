@@ -155,7 +155,9 @@ def send_password_reset_email(email, reset_link, username="User", token=None):
     """
     merge_info = {
         "username": username,
-        "reset_password_link": reset_link
+        "reset_password_link": reset_link,
+        "reset_link": reset_link,
+        "reset_url": reset_link
     }
 
     if token:
