@@ -34,10 +34,14 @@ async def get_unified_candidates(
     """
     try:
         # Get all BulkUploadFile records with successfully parsed data
+        # Accept either legacy 'parsed' or 'completed' statuses, or files with parsed_at set
         files = db.query(BulkUploadFile, BulkUpload).join(
             BulkUpload, BulkUploadFile.bulk_upload_id == BulkUpload.id
         ).filter(
-            BulkUploadFile.parsing_status == 'parsed'
+            or_(
+                BulkUploadFile.parsing_status.in_(['parsed', 'completed']),
+                BulkUploadFile.parsed_at != None
+            )
         ).all()
 
         candidates = []

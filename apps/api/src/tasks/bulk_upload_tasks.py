@@ -9,6 +9,7 @@ from src.celery_app import celery_app
 from src.services.s3_service import S3Service
 from src.services.comprehensive_extractor import ComprehensiveResumeExtractor
 from src.services.enhanced_extractor import EnhancedResumeExtractor
+from typing import Dict, Optional
 import logging
 import json
 import tempfile
@@ -175,6 +176,22 @@ def _extract_phone_number(text: str) -> Optional[str]:
     return None
 
 
+def _safe_years_to_int(value) -> int:
+    """Convert various years-of-experience formats to integer years."""
+    if value is None:
+        return 0
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, str):
+        match = re.search(r'\d+', value)
+        if match:
+            try:
+                return int(match.group(0))
+            except Exception:
+                return 0
+    return 0
+
+
 
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=60)
 def virus_scan_file(self, file_id: str, file_path: str, file_name: str) -> Dict:
@@ -199,7 +216,7 @@ def virus_scan_file(self, file_id: str, file_path: str, file_name: str) -> Dict:
 # ============================================================================
 
 @celery_app.task(bind=True, max_retries=2)
-def parse_resume_file(self, file_id: str, file_path: str, file_name: str, bucket_name: Optional[str] = None) -> Dict:
+def parse_resume_file(self, file_id: str, file_path: str, file_name: str, bucket_name: Optional[str] = None, job_id: Optional[str] = None) -> Dict:
     """
     Extract text and structure from resume file (S3 version)
     Uses ComprehensiveResumeExtractor for parsing
@@ -240,6 +257,21 @@ def parse_resume_file(self, file_id: str, file_path: str, file_name: str, bucket
                 raw_text = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
             except Exception as e:
                 logger.warning(f"pypdf failed for {file_name}: {e}")
+
+            # Fallback extractor for PDFs where pypdf yields empty text
+            if not raw_text or len(raw_text.strip()) < 20:
+                try:
+                    import fitz  # PyMuPDF
+                    doc = fitz.open(temp_file_path)
+                    text_parts = []
+                    for page in doc:
+                        page_text = page.get_text("text") or ""
+                        if page_text.strip():
+                            text_parts.append(page_text)
+                    raw_text = "\n".join(text_parts).strip()
+                    logger.info(f"PyMuPDF fallback extracted {len(raw_text)} chars for {file_name}")
+                except Exception as fitz_err:
+                    logger.warning(f"PyMuPDF fallback failed for {file_name}: {fitz_err}")
 
         elif file_name.lower().endswith(('.doc', '.docx')):
             try:
@@ -370,8 +402,10 @@ def parse_resume_file(self, file_id: str, file_path: str, file_name: str, bucket
         
         with SessionLocal() as db:
             file_record = db.query(BulkUploadFile).filter(BulkUploadFile.id == file_id).first()
+            parse_succeeded = bool(raw_text and raw_text.strip()) or bool(extracted_data) or bool(parsed_data)
             if file_record:
-                file_record.parsing_status = 'parsed' if raw_text else 'error'
+                file_record.parsing_status = 'completed' if parse_succeeded else 'failed'
+                file_record.parsing_error = None if parse_succeeded else 'No text could be extracted from file'
                 file_record.raw_text = raw_text.replace('\x00', '') if raw_text else raw_text
                 file_record.parsed_data = parsed_data
                 file_record.extracted_name = parsed_data.get('name')
@@ -381,18 +415,154 @@ def parse_resume_file(self, file_id: str, file_path: str, file_name: str, bucket
                 file_record.extracted_current_role = parsed_data.get('current_role')
                 
                 exp = parsed_data.get('years_experience', 0)
-                file_record.extracted_years_experience = int(exp) if exp else 0
+                file_record.extracted_years_experience = _safe_years_to_int(exp)
                 file_record.parsed_at = datetime.utcnow()
                 
                 # Update Batch Metrics
                 batch = db.query(BulkUpload).filter(BulkUpload.id == file_record.bulk_upload_id).first()
                 if batch:
-                    if raw_text:
+                    if parse_succeeded:
                         batch.successfully_parsed += 1
                     else:
                         batch.parsing_failed += 1
                 
+                # Persist parsed data and batch counters
                 db.commit()
+
+                # === Shadow profile creation (atomic within worker) ===
+                try:
+                    from src.core.models import User, CandidateProfile
+                    import uuid
+                    import string
+                    import random
+
+                    parsed = file_record.parsed_data or {}
+                    email = (parsed.get('email') or '').lower().strip()
+                    phone = parsed.get('phone') or None
+
+                    # Fallback phone extraction from raw_text
+                    if not phone and file_record.raw_text:
+                        phone = _extract_phone_number(file_record.raw_text)
+
+                    if not email:
+                        email = f"shadow_{uuid.uuid4().hex[:8]}@shadow.talentflow.pro"
+
+                    # Check if a user already exists for this email
+                    existing_user = db.query(User).filter(User.email == email).first()
+                    user_id = None
+
+                    if not existing_user:
+                        # Create shadow user and candidate profile
+                        user_id = uuid.uuid4()
+
+                        name = parsed.get('name') or 'Unknown Candidate'
+
+                        # generate random dummy password
+                        dummy_pass = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
+                        try:
+                            from src.api.auth import get_password_hash
+                            hashed = get_password_hash(dummy_pass)
+                        except Exception:
+                            hashed = dummy_pass
+
+                        new_user = User(
+                            id=user_id,
+                            email=email,
+                            hashed_password=hashed,
+                            role='candidate',
+                            is_verified=False
+                        )
+                        db.add(new_user)
+                        db.flush()
+
+                        # Calculate IT/Tech experience
+                        raw_exp = file_record.extracted_years_experience or 0
+                        exp_y_num = _calculate_it_tech_experience(
+                            raw_exp,
+                            parsed.get('current_role', ''),
+                            parsed.get('skills', []),
+                            parsed.get('education', [])
+                        )
+
+                        if exp_y_num < 2:
+                            exp_str = 'fresher'
+                        elif exp_y_num <= 5:
+                            exp_str = 'mid'
+                        elif exp_y_num <= 10:
+                            exp_str = 'senior'
+                        else:
+                            exp_str = 'leadership'
+
+                        new_profile = CandidateProfile(
+                            user_id=user_id,
+                            full_name=name,
+                            phone_number=phone,
+                            current_role=parsed.get('current_role'),
+                            years_of_experience=exp_y_num,
+                            location=parsed.get('location'),
+                            skills=parsed.get('skills', []),
+                            education_history=parsed.get('education', []),
+                            qualification_held=parsed.get('highest_education') or (parsed.get('education', [{}])[0].get('degree') if parsed.get('education') else None),
+                            resume_path=file_record.file_storage_path,
+                            bulk_file_id=file_id,
+                            is_shadow_profile=True,
+                            experience=exp_str
+                        )
+                        db.add(new_profile)
+                        db.commit()
+                    else:
+                        user_id = existing_user.id
+                        existing_profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == user_id).first()
+                        if existing_profile:
+                            raw_exp = file_record.extracted_years_experience or 0
+                            exp_y_num = _calculate_it_tech_experience(
+                                raw_exp,
+                                parsed.get('current_role', ''),
+                                parsed.get('skills', []),
+                                parsed.get('education', [])
+                            )
+
+                            if exp_y_num < 2:
+                                exp_str = 'fresher'
+                            elif exp_y_num <= 5:
+                                exp_str = 'mid'
+                            elif exp_y_num <= 10:
+                                exp_str = 'senior'
+                            else:
+                                exp_str = 'leadership'
+
+                            existing_profile.years_of_experience = exp_y_num
+                            existing_profile.current_role = parsed.get('current_role') or existing_profile.current_role
+                            existing_profile.location = parsed.get('location') or existing_profile.location
+                            existing_profile.experience = exp_str
+                            existing_profile.skills = parsed.get('skills', []) or existing_profile.skills
+                            existing_profile.resume_path = file_record.file_storage_path
+                            existing_profile.bulk_file_id = file_id
+                            db.commit()
+
+                    # Link matched user to file
+                    if user_id:
+                        file_record.matched_candidate_id = user_id
+                        db.commit()
+
+                except Exception as e:
+                    logger.error(f"Shadow profile creation failed for file {file_id}: {e}")
+
+                if job_id:
+                    try:
+                        from src.core.models import BulkUploadProcessingQueue
+                        job_row = db.query(BulkUploadProcessingQueue).filter(BulkUploadProcessingQueue.id == job_id).first()
+                        if job_row:
+                            job_row.job_status = 'completed'
+                            job_row.completed_at = datetime.utcnow()
+                            job_row.job_result = {
+                                'status': 'completed',
+                                'file_id': str(file_id),
+                                'parsing_status': file_record.parsing_status,
+                            }
+                            db.commit()
+                    except Exception as _e:
+                        logger.warning(f"Failed to mark parse queue job completed for job {job_id}: {_e}")
 
         return {
             'file_id': file_id,
@@ -403,6 +573,21 @@ def parse_resume_file(self, file_id: str, file_path: str, file_name: str, bucket
         
     except Exception as e:
         logger.error(f"Parse error for {file_id}: {str(e)}")
+        # Mark queue job as failed if job_id present
+        try:
+            from src.core.database import SessionLocal as _SessionLocal
+            from src.core.models import BulkUploadProcessingQueue as _Queue
+            if job_id:
+                with _SessionLocal() as _dbq:
+                    job_row = _dbq.query(_Queue).filter(_Queue.id == job_id).first()
+                    if job_row:
+                        job_row.job_status = 'failed'
+                        job_row.error_message = str(e)
+                        job_row.completed_at = datetime.utcnow()
+                        job_row.job_result = {'status': 'failed', 'error': str(e)}
+                        _dbq.commit()
+        except Exception:
+            pass
         raise self.retry(exc=e, countdown=10)
     finally:
         if temp_file_path and os.path.exists(temp_file_path):
@@ -416,7 +601,7 @@ def parse_resume_file(self, file_id: str, file_path: str, file_name: str, bucket
 # ============================================================================
 
 @celery_app.task(bind=True, max_retries=2)
-def detect_duplicates(self, file_id: str, extracted_data: Dict) -> Dict:
+def detect_duplicates(self, file_id: str, extracted_data: Dict, job_id: Optional[str] = None) -> Dict:
     """
     Match extracted resume against existing candidates in database
     Uses BulkUploadDuplicateDetector scoring algorithm
@@ -477,11 +662,97 @@ def detect_duplicates(self, file_id: str, extracted_data: Dict) -> Dict:
         result['file_id'] = file_id
         result['admin_review_required'] = admin_review_required
         result['timestamp'] = datetime.utcnow().isoformat()
-        
+
+        # Persist match result to DB for admin review and auditing
+        try:
+            from src.core.database import SessionLocal
+            from src.core.models import BulkUploadFile, BulkUploadCandidateMatch, BulkUpload
+            import uuid
+
+            with SessionLocal() as db:
+                file_record = db.query(BulkUploadFile).filter(BulkUploadFile.id == file_id).first()
+                bulk_id = file_record.bulk_upload_id if file_record else None
+
+                # Upsert a candidate match record for this file
+                existing_match = None
+                if file_record:
+                    existing_match = db.query(BulkUploadCandidateMatch).filter(
+                        BulkUploadCandidateMatch.bulk_upload_file_id == file_id
+                    ).first()
+
+                match_confidence = float(result.get('confidence') or result.get('match_confidence') or 0.0)
+                match_type = result.get('match_type') or ('strong_match' if match_confidence >= 0.9 else ('moderate_match' if match_confidence >= 0.7 else 'soft_match'))
+
+                if existing_match:
+                    existing_match.match_confidence = match_confidence
+                    existing_match.match_type = match_type
+                    existing_match.match_details = result
+                    existing_match.match_reason = result.get('match_reason') or result.get('reason')
+                    existing_match.matched_candidate_user_id = result.get('matched_candidate_id')
+                    existing_match.candidate_full_name = result.get('matched_candidate_name')
+                    existing_match.candidate_email = result.get('matched_candidate_email')
+                    existing_match.candidate_phone = result.get('matched_candidate_phone')
+                    existing_match.updated_at = datetime.utcnow()
+                    db.commit()
+                else:
+                    new_match = BulkUploadCandidateMatch(
+                        id=uuid.uuid4(),
+                        bulk_upload_file_id=file_id,
+                        matched_candidate_user_id=result.get('matched_candidate_id'),
+                        candidate_full_name=result.get('matched_candidate_name') or None,
+                        candidate_email=result.get('matched_candidate_email') or None,
+                        candidate_phone=result.get('matched_candidate_phone') or None,
+                        match_type=match_type,
+                        match_confidence=match_confidence,
+                        match_reason=result.get('match_reason') or result.get('reason') or '',
+                        match_details=result,
+                        admin_decision='pending',
+                        created_at=datetime.utcnow()
+                    )
+                    db.add(new_match)
+                    # update bulk counters if applicable
+                    if bulk_id:
+                        batch = db.query(BulkUpload).filter(BulkUpload.id == bulk_id).first()
+                        if batch and result.get('match_found'):
+                            batch.duplicate_candidates_detected = (batch.duplicate_candidates_detected or 0) + 1
+                    db.commit()
+        except Exception as e:
+            logger.error(f"Failed to persist duplicate match for file {file_id}: {e}")
+
+        # If there is a queue job associated, mark it completed
+        try:
+            from src.core.database import SessionLocal as _SessionLocal
+            from src.core.models import BulkUploadProcessingQueue as _Queue
+            if job_id:
+                with _SessionLocal() as _dbq:
+                    job_row = _dbq.query(_Queue).filter(_Queue.id == job_id).first()
+                    if job_row:
+                        job_row.job_status = 'completed'
+                        job_row.completed_at = datetime.utcnow()
+                        job_row.job_result = {'status': 'completed', 'file_id': str(file_id), 'match_confidence': float(result.get('confidence') or 0.0)}
+                        _dbq.commit()
+        except Exception as _e:
+            logger.warning(f"Failed to mark duplicate detection job completed for job {job_id}: {_e}")
+
         return result
         
     except Exception as e:
         logger.error(f"Duplicate detection error for {file_id}: {str(e)}")
+        # Mark queue job as failed if job_id present
+        try:
+            from src.core.database import SessionLocal as _SessionLocal
+            from src.core.models import BulkUploadProcessingQueue as _Queue
+            if job_id:
+                with _SessionLocal() as _dbq:
+                    job_row = _dbq.query(_Queue).filter(_Queue.id == job_id).first()
+                    if job_row:
+                        job_row.job_status = 'failed'
+                        job_row.error_message = str(e)
+                        job_row.completed_at = datetime.utcnow()
+                        job_row.job_result = {'status': 'failed', 'error': str(e)}
+                        _dbq.commit()
+        except Exception:
+            pass
         raise self.retry(exc=e, countdown=30)
 
 
@@ -559,6 +830,118 @@ def send_invitation_email(self, file_id: str, candidate_email: str,
     except Exception as e:
         logger.error(f"Email send error for {candidate_email}: {str(e)}")
         raise self.retry(exc=e, countdown=60 * (2 ** self.request.retries))
+
+
+@celery_app.task(bind=True, max_retries=2)
+def merge_candidate_job(self, match_id: str, bulk_upload_id: str, job_id: Optional[str] = None) -> Dict:
+    """Celery job to perform an approved merge for a candidate match."""
+    try:
+        from src.core.database import SessionLocal
+        from src.core.models import BulkUploadCandidateMatch
+
+        with SessionLocal() as db:
+            match = db.query(BulkUploadCandidateMatch).filter(BulkUploadCandidateMatch.id == match_id).first()
+            if not match:
+                raise Exception('Match not found')
+
+            # Minimal merge implementation: mark merge_status completed
+            match.merge_status = 'completed'
+            match.merge_completed_at = datetime.utcnow()
+            db.commit()
+
+        # mark queue job completed if provided
+        if job_id:
+            try:
+                from src.core.database import SessionLocal as _SessionLocal
+                from src.core.models import BulkUploadProcessingQueue as _Queue
+                with _SessionLocal() as _dbq:
+                    job_row = _dbq.query(_Queue).filter(_Queue.id == job_id).first()
+                    if job_row:
+                        job_row.job_status = 'completed'
+                        job_row.completed_at = datetime.utcnow()
+                        job_row.job_result = {'status': 'completed', 'match_id': match_id}
+                        _dbq.commit()
+            except Exception:
+                pass
+
+        return {'status': 'merged', 'match_id': match_id}
+    except Exception as e:
+        logger.error(f"Merge job failed for match {match_id}: {e}")
+        if job_id:
+            try:
+                from src.core.database import SessionLocal as _SessionLocal
+                from src.core.models import BulkUploadProcessingQueue as _Queue
+                with _SessionLocal() as _dbq:
+                    job_row = _dbq.query(_Queue).filter(_Queue.id == job_id).first()
+                    if job_row:
+                        job_row.job_status = 'failed'
+                        job_row.error_message = str(e)
+                        job_row.completed_at = datetime.utcnow()
+                        job_row.job_result = {'status': 'failed', 'error': str(e)}
+                        _dbq.commit()
+            except Exception:
+                pass
+        raise self.retry(exc=e, countdown=60)
+
+
+@celery_app.task(bind=True, max_retries=2)
+def create_candidate_account_job(self, match_id: str, bulk_upload_id: str, job_id: Optional[str] = None) -> Dict:
+    """Celery job to create a new candidate account for a match."""
+    try:
+        from src.core.database import SessionLocal
+        from src.core.models import BulkUploadCandidateMatch, User, CandidateProfile
+        import uuid
+
+        with SessionLocal() as db:
+            match = db.query(BulkUploadCandidateMatch).filter(BulkUploadCandidateMatch.id == match_id).first()
+            if not match:
+                raise Exception('Match not found')
+
+            # Minimal account creation: create a User and CandidateProfile if none exists
+            email = match.candidate_email or f"shadow_{uuid.uuid4().hex[:8]}@shadow.talentflow.pro"
+            existing_user = db.query(User).filter(User.email == email).first()
+            if not existing_user:
+                user_id = uuid.uuid4()
+                new_user = User(id=user_id, email=email, role='candidate', is_verified=False, hashed_password='')
+                db.add(new_user)
+                db.flush()
+                new_profile = CandidateProfile(user_id=user_id, full_name=match.candidate_full_name or 'Unknown', resume_path=None, is_shadow_profile=True)
+                db.add(new_profile)
+                match.matched_candidate_user_id = user_id
+                db.commit()
+
+        if job_id:
+            try:
+                from src.core.database import SessionLocal as _SessionLocal
+                from src.core.models import BulkUploadProcessingQueue as _Queue
+                with _SessionLocal() as _dbq:
+                    job_row = _dbq.query(_Queue).filter(_Queue.id == job_id).first()
+                    if job_row:
+                        job_row.job_status = 'completed'
+                        job_row.completed_at = datetime.utcnow()
+                        job_row.job_result = {'status': 'completed', 'match_id': match_id}
+                        _dbq.commit()
+            except Exception:
+                pass
+
+        return {'status': 'created', 'match_id': match_id}
+    except Exception as e:
+        logger.error(f"Create account job failed for match {match_id}: {e}")
+        if job_id:
+            try:
+                from src.core.database import SessionLocal as _SessionLocal
+                from src.core.models import BulkUploadProcessingQueue as _Queue
+                with _SessionLocal() as _dbq:
+                    job_row = _dbq.query(_Queue).filter(_Queue.id == job_id).first()
+                    if job_row:
+                        job_row.job_status = 'failed'
+                        job_row.error_message = str(e)
+                        job_row.completed_at = datetime.utcnow()
+                        job_row.job_result = {'status': 'failed', 'error': str(e)}
+                        _dbq.commit()
+            except Exception:
+                pass
+        raise self.retry(exc=e, countdown=60)
 
 
 # ============================================================================
@@ -672,13 +1055,12 @@ def debug_task():
 
 
 
-def parse_resume_file_fastapi(file_id: str, file_path: str, file_name: str, bucket_name: str = None):
-    class DummySelf:
-        def retry(self, exc=None, countdown=None):
-            return Exception(str(exc))
-            
+def parse_resume_file_fastapi(file_id: str, file_path: str, file_name: str, bucket_name: str = None, job_id: str = None):
+    logger.info(f"🚀 PARSE_RESUME_FILE_FASTAPI STARTED: file_id={file_id}, job_id={job_id}, file_name={file_name}")
+    
     # 1. Run standard parsing first
-    result = parse_resume_file(file_id, file_path, file_name, bucket_name)
+    result = parse_resume_file.run(file_id, file_path, file_name, bucket_name, job_id)
+    logger.info(f"✅ PARSE_RESUME_FILE_FASTAPI COMPLETED: file_id={file_id}, result={result.get('status')}")
     
     # 2. Add Shadow profile creation logic directly inside this reliable fastAPI thread!
     from src.core.database import SessionLocal
@@ -690,7 +1072,8 @@ def parse_resume_file_fastapi(file_id: str, file_path: str, file_name: str, buck
     try:
         with SessionLocal() as db:
             file_record = db.query(BulkUploadFile).filter(BulkUploadFile.id == file_id).first()
-            if not file_record or file_record.parsing_status != 'parsed':
+            if not file_record or file_record.parsing_status not in ('parsed', 'completed'):
+                logger.info(f"⚠️ Skipping shadow profile: file {file_id} not in parsed status")
                 return result
                 
             parsed_data = file_record.parsed_data or {}

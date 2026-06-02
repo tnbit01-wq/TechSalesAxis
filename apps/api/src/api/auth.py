@@ -346,57 +346,6 @@ async def update_password(
     finally:
         db.close()
 
-@router.post("/forgot-password")
-async def forgot_password(request: ForgotPasswordRequest):
-    """
-    Sends a password reset link via SES.
-    """
-    db = SessionLocal()
-    try:
-        user = db.query(User).filter(User.email == request.email).first()
-        if not user:
-            # Silently return success to avoid email enum
-            return {"status": "success", "message": "Recovery instructions sent if email exists."}
-        
-        # In a real app, generate a signed reset token. For now, sending OTP logic can be reused.
-        otp = generate_otp()
-        user.otp_code = otp
-        user.otp_expires_at = datetime.utcnow() + timedelta(minutes=15)
-        db.commit()
-        
-        # Link would normally point to frontend reset page with token
-        reset_link = f"https://techsalesaxis.cloud/reset-password?email={request.email}&token={otp}"
-        from src.services.email_service import send_password_reset_email
-        send_password_reset_email(request.email, reset_link)
-
-        return {"status": "success", "message": "Recovery instructions sent to your email."}
-    finally:
-        db.close()
-
-@router.post("/reset-password")
-async def reset_password(request: ResetPasswordRequest):
-    """
-    Finalizes password reset using the token from the email.
-    """
-    db = SessionLocal()
-    try:
-        user = db.query(User).filter(User.email == request.email).first()
-        if not user or user.otp_code != request.token:
-             raise HTTPException(status_code=400, detail="Invalid reset token.")
-        
-        if datetime.utcnow() > (user.otp_expires_at or datetime.min):
-            raise HTTPException(status_code=400, detail="Reset token expired.")
-
-        user.hashed_password = get_password_hash(request.password)
-        user.otp_code = None # Clear
-        db.commit()
-        return {"status": "success", "message": "Password reset successful."}
-    except Exception as e:
-        print(f"RESET PASSWORD ERROR: {e}")
-        raise HTTPException(status_code=400, detail="Invalid or expired reset link.")
-    finally:
-        db.close()
-
 @router.delete("/delete-account")
 async def delete_account(
     current_user: dict = Depends(get_current_user)

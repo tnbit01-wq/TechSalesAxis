@@ -16,7 +16,9 @@ async def get_current_user(
             detail="Invalid authentication header"
         )
 
-    token = authorization.split(" ")[1]
+    token = authorization.replace("Bearer ", "", 1).strip()
+    if token.startswith('"') and token.endswith('"'):
+        token = token[1:-1].strip()
     
     try:
         # 1. Decode token

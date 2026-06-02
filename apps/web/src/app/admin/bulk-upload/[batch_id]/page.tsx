@@ -8,6 +8,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import ComprehensiveDataTable from '@/components/admin/ComprehensiveDataTable';
+import { awsAuth } from '@/lib/awsAuth';
 
 interface ParsedFile {
   id: string;
@@ -99,7 +100,7 @@ export default function BatchDetailPage() {
 
   const fetchBatchDetail = async () => {
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('tf_token') : null;
+      const token = awsAuth.getToken();
       if (!token) {
         router.push('/login');
         return;
@@ -280,7 +281,7 @@ export default function BatchDetailPage() {
 
         {/* Parsed Files Section */}
         <div className="mb-6">
-          <ComprehensiveDataTable files={batch.files} batchName={batch.batch_name} />
+          <ComprehensiveDataTable files={batch.files} batchName={batch.batch_name} batchId={batch.id} />
         </div>
 
         {/* Action Buttons */}

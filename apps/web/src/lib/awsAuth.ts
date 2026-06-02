@@ -26,6 +26,15 @@ export const awsAuth = {
   /**
    * Verify OTP and get JWT (Step 2)
    */
+  normalizeToken(rawToken: string | null): string | null {
+    if (!rawToken) return null;
+    let token = rawToken.trim();
+    if (token.startsWith('"') && token.endsWith('"')) {
+      token = token.slice(1, -1).trim();
+    }
+    return token || null;
+  },
+
   async verifyOtp(email: string, otp: string) {
     const response = await fetch(`${API_URL}/auth/verify-otp`, {
       method: "POST",
@@ -39,8 +48,9 @@ export const awsAuth = {
     }
 
     const data = await response.json();
-    if (data.access_token) {
-      localStorage.setItem("tf_token", data.access_token);
+    const token = this.normalizeToken(data.access_token);
+    if (token) {
+      localStorage.setItem("tf_token", token);
       localStorage.setItem("tf_user_email", email);
     }
     return data;
@@ -79,8 +89,9 @@ export const awsAuth = {
     }
 
     const data = await response.json();
-    if (data.access_token) {
-      localStorage.setItem("tf_token", data.access_token);
+    const token = awsAuth.normalizeToken(data.access_token);
+    if (token) {
+      localStorage.setItem("tf_token", token);
       localStorage.setItem("tf_user_email", email);
     }
     return data;
@@ -91,7 +102,8 @@ export const awsAuth = {
    */
   getToken() {
     if (typeof window !== "undefined") {
-      return localStorage.getItem("tf_token");
+      const storedToken = localStorage.getItem("tf_token");
+      return awsAuth.normalizeToken(storedToken);
     }
     return null;
   },
@@ -102,7 +114,7 @@ export const awsAuth = {
    */
   getUser() {
     if (typeof window !== "undefined") {
-      const token = localStorage.getItem("tf_token");
+      const token = this.getToken();
       if (!token) return null;
       
       try {

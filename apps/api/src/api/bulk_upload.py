@@ -8,7 +8,7 @@ Purpose: Handle file uploads, duplicate detection, account creation
 """
 
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, BackgroundTasks, Header
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
 from typing import List, Optional, Dict
 from datetime import datetime, timedelta
 import uuid
@@ -17,8 +17,9 @@ from pathlib import Path
 import hashlib
 import asyncio
 import logging
+import threading
 
-from sqlalchemy import select, and_, or_, insert
+from sqlalchemy import select, and_, or_, insert, func
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
 
@@ -29,6 +30,22 @@ from src.services.s3_service import S3Service
 from src.tasks.bulk_upload_tasks import parse_resume_file, parse_resume_file_fastapi
 
 logger = logging.getLogger(__name__)
+
+
+def _start_parse_worker(file_id: str, file_path: str, file_name: str, bucket_name: str, job_id: str) -> None:
+    """Run resume parsing in a daemon thread so reparse requests do not depend on BackgroundTasks."""
+    worker = threading.Thread(
+        target=parse_resume_file_fastapi,
+        kwargs={
+            "file_id": file_id,
+            "file_path": file_path,
+            "file_name": file_name,
+            "bucket_name": bucket_name,
+            "job_id": job_id,
+        },
+        daemon=True,
+    )
+    worker.start()
 
 # Bucket logic: Map to correct S3 folders and buckets
 # Project now uses 'techsalesaxis-storage' as the primary bucket
@@ -58,7 +75,9 @@ def get_current_user_sync(authorization: Optional[str] = Header(None)) -> dict:
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Invalid authorization header format")
     
-    token = authorization.replace("Bearer ", "")
+    token = authorization.replace("Bearer ", "", 1).strip()
+    if token.startswith('"') and token.endswith('"'):
+        token = token[1:-1].strip()
     
     try:
         from src.core.auth_utils import decode_access_token
@@ -86,10 +105,11 @@ def get_current_user_sync(authorization: Optional[str] = Header(None)) -> dict:
         finally:
             db.close()
             
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"AUTH ERROR in bulk_upload: {str(e)}")
-        # For development bypass if needed, but here we should be strict
-        raise HTTPException(status_code=401, detail=f"Authentication failed: {str(e)}")
+        logger.error("AUTH ERROR in bulk_upload: %s", str(e), exc_info=True)
+        raise HTTPException(status_code=401, detail="Authentication failed: invalid or expired token")
 
 # ============================================================================
 # PYDANTIC MODELS
@@ -129,6 +149,7 @@ class BulkUploadStatusResponse(BaseModel):
     parsing_failed: int
     duplicate_candidates_detected: int
     new_candidates_identified: int
+    duplicates_admin_reviewed: int
     average_confidence: float
     processing_started_at: Optional[datetime]
     processing_completed_at: Optional[datetime]
@@ -362,19 +383,49 @@ def upload_resume_file(
         batch.total_files_uploaded += 1
         
         db.commit()
-        db.refresh(new_file)
-        
-        # Queue jobs for processing
-        # Use background_tasks.add_task for FastAPI background tasks (in-process)
-        if background_tasks:
-            logger.info(f"File uploaded, queuing via FastAPI BackgroundTasks: {new_file.id}")
-            background_tasks.add_task(
-                parse_resume_file_fastapi,
-                file_id=str(new_file.id),
-                file_path=s3_key,
-                file_name=file.filename,
-                bucket_name=bucket_name
+        # Enqueue parse job into processing queue (dispatcher will pick it up)
+        try:
+            queue_job = BulkUploadProcessingQueue(
+                bulk_upload_id=bulk_upload_id,
+                bulk_upload_file_id=new_file.id,
+                job_type='parse_resume',
+                job_status='queued',
+                priority=50,
+                scheduled_for=datetime.utcnow()
             )
+            db.add(queue_job)
+            db.commit()
+            logger.info(f"Enqueued parse job {queue_job.id} for file {new_file.id}")
+
+            # Dev-safe execution path: process immediately in FastAPI background thread.
+            # This avoids files being stuck in 'queued' when dispatcher/worker isn't running.
+            if background_tasks:
+                queue_job.job_status = 'processing'
+                queue_job.started_at = datetime.utcnow()
+                db.commit()
+                background_tasks.add_task(
+                    parse_resume_file_fastapi,
+                    file_id=str(new_file.id),
+                    file_path=s3_key,
+                    file_name=file.filename,
+                    bucket_name=bucket_name,
+                    job_id=str(queue_job.id)
+                )
+        except Exception as e:
+            logger.warning(f"Failed to enqueue queue job, falling back to Celery direct enqueue: {e}")
+            try:
+                parse_resume_file.delay(str(new_file.id), s3_key, file.filename, bucket_name)
+            except Exception as e2:
+                logger.warning(f"Failed to enqueue Celery parse task, falling back to BackgroundTasks: {e2}")
+                if background_tasks:
+                    background_tasks.add_task(
+                        parse_resume_file_fastapi,
+                        file_id=str(new_file.id),
+                        file_path=s3_key,
+                        file_name=file.filename,
+                        bucket_name=bucket_name
+                    )
+                    bucket_name=bucket_name
 
         return FileUploadResponse(
             file_id=str(new_file.id),
@@ -412,6 +463,29 @@ def get_bulk_upload_status(
         # In a real system, you'd calculate job_queue_size from Celery or a DB queue table
         # For now, we return the metrics from the batch record
         
+        queue_size = db.execute(
+            select(func.count())
+            .select_from(BulkUploadProcessingQueue)
+            .where(
+                BulkUploadProcessingQueue.bulk_upload_id == bulk_upload_id,
+                BulkUploadProcessingQueue.job_status.in_(['queued', 'processing'])
+            )
+        ).scalar_one()
+
+        duplicates_admin_reviewed = db.execute(
+            select(func.count())
+            .select_from(BulkUploadCandidateMatch)
+            .join(
+                BulkUploadFile,
+                BulkUploadCandidateMatch.bulk_upload_file_id == BulkUploadFile.id
+            )
+            .where(
+                BulkUploadFile.bulk_upload_id == bulk_upload_id,
+                BulkUploadCandidateMatch.admin_decision.isnot(None),
+                BulkUploadCandidateMatch.admin_decision != 'pending'
+            )
+        ).scalar_one()
+
         return BulkUploadStatusResponse(
             bulk_upload_id=str(batch.id),
             batch_name=batch.batch_name,
@@ -421,10 +495,11 @@ def get_bulk_upload_status(
             parsing_failed=batch.parsing_failed,
             duplicate_candidates_detected=batch.duplicate_candidates_detected,
             new_candidates_identified=batch.new_candidates_identified,
+            duplicates_admin_reviewed=int(duplicates_admin_reviewed or 0),
             average_confidence=float(batch.extraction_confidence_avg or 0.0),
             processing_started_at=batch.processing_started_at,
             processing_completed_at=batch.processing_completed_at,
-            job_queue_size=0 # Placeholder
+            job_queue_size=int(queue_size or 0)
         )
     
     except HTTPException:
@@ -432,6 +507,43 @@ def get_bulk_upload_status(
     except Exception as e:
         logger.error(f"Error getting status for {bulk_upload_id}: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get status")
+
+
+# ============================================================================
+# GET FILES LIST - For detailed dashboard display
+# ============================================================================
+
+@router.get("/{bulk_upload_id}/files", response_model=List[Dict])
+def get_bulk_upload_files(
+    bulk_upload_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user_sync)
+):
+    """Get list of all files in bulk upload batch with their parsing status"""
+    try:
+        files = db.execute(
+            select(BulkUploadFile)
+            .where(BulkUploadFile.bulk_upload_id == bulk_upload_id)
+            .order_by(BulkUploadFile.created_at.desc())
+        ).scalars().all()
+
+        result = []
+        for file in files:
+            result.append({
+                'id': str(file.id),
+                'filename': file.original_filename,
+                'parsing_status': file.parsing_status,
+                'extracted_name': (file.parsed_data or {}).get('name') if file.parsed_data else file.extracted_name,
+                'extracted_email': (file.parsed_data or {}).get('email') if file.parsed_data else file.extracted_email,
+                'error_message': 'Parsing failed - click Reparse to retry' if (file.parsing_status == 'error' or file.parsing_status == 'failed') else None,
+                'created_at': file.created_at.isoformat() if file.created_at else None
+            })
+
+        return result
+    
+    except Exception as e:
+        logger.error(f"Error getting files for {bulk_upload_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get files list")
 
 
 # ============================================================================
@@ -453,14 +565,38 @@ def get_duplicates_for_review(
     """
     try:
         # Query duplicates needing review
-        # SELECT * FROM bulk_upload_candidate_matches
-        # WHERE bulk_upload_id = ?
-        # AND match_confidence BETWEEN 0.70 and 0.90
-        # AND admin_decision = 'pending'
-        # ORDER BY match_confidence DESC
-        # LIMIT limit OFFSET skip
-        
-        return []  # Mock response
+        # Join bulk_upload_candidate_matches -> bulk_upload_files to filter by batch
+        stmt = (
+            select(BulkUploadCandidateMatch, BulkUploadFile)
+            .join(BulkUploadFile, BulkUploadCandidateMatch.bulk_upload_file_id == BulkUploadFile.id)
+            .where(
+                BulkUploadFile.bulk_upload_id == bulk_upload_id,
+                BulkUploadCandidateMatch.match_confidence >= 0.70,
+                BulkUploadCandidateMatch.match_confidence < 0.90,
+                or_(BulkUploadCandidateMatch.admin_decision == None, BulkUploadCandidateMatch.admin_decision == 'pending')
+            )
+            .order_by(BulkUploadCandidateMatch.match_confidence.desc())
+            .limit(limit)
+            .offset(skip)
+        )
+
+        rows = db.execute(stmt).all()
+        results = []
+        for match_row, file_row in rows:
+            item = CandidateDuplicateReviewItem(
+                match_id=str(match_row.id),
+                file_id=str(match_row.bulk_upload_file_id),
+                extracted_name=(file_row.parsed_data or {}).get('name') if file_row.parsed_data else file_row.extracted_name,
+                extracted_email=(file_row.parsed_data or {}).get('email') if file_row.parsed_data else file_row.extracted_email,
+                existing_candidate_id=str(match_row.matched_candidate_user_id) if match_row.matched_candidate_user_id else None,
+                existing_candidate_name=match_row.candidate_full_name or None,
+                match_confidence=float(match_row.match_confidence or 0.0),
+                match_type=match_row.match_type,
+                match_details=match_row.match_details or {}
+            )
+            results.append(item)
+
+        return results
     
     except Exception as e:
         logger.error(f"Error getting duplicates: {str(e)}")
@@ -488,36 +624,55 @@ def submit_duplicate_review(
         # Validate decision
         if review.admin_decision not in ['approved_merge', 'rejected_duplicate', 'create_new']:
             raise HTTPException(status_code=400, detail="Invalid admin decision")
-        
         # Update match decision in database
-        # await db.execute(
-        #     update(bulk_upload_candidate_matches)
-        #     .where(bulk_upload_candidate_matches.c.id == match_id)
-        #     .values(
-        #         admin_decision=review.admin_decision,
-        #         admin_decision_made_by=current_user['user_id'],
-        #         admin_decision_reason=review.decision_reason,
-        #         admin_decision_at=datetime.utcnow()
-        #     )
-        # )
-        
-        # If approved_merge: queue merge job
+        match = db.execute(
+            select(BulkUploadCandidateMatch).where(BulkUploadCandidateMatch.id == match_id)
+        ).scalar_one_or_none()
+
+        if not match:
+            raise HTTPException(status_code=404, detail="Match not found")
+
+        # Apply admin decision
+        match.admin_decision = review.admin_decision
+        match.admin_decision_made_by = current_user.get('user_id')
+        match.admin_decision_reason = review.decision_reason
+        match.admin_decision_at = datetime.utcnow()
+        db.commit()
+
+        # If approved_merge: enqueue merge job in processing queue
         if review.admin_decision == 'approved_merge':
-            if background_tasks:
-                background_tasks.add_task(
-                    _merge_candidate_task,
-                    match_id=match_id,
-                    bulk_upload_id=bulk_upload_id
+            try:
+                job = BulkUploadProcessingQueue(
+                    bulk_upload_id=bulk_upload_id,
+                    bulk_upload_file_id=None,
+                    job_type='merge_candidate',
+                    job_status='queued',
+                    priority=80,
+                    scheduled_for=datetime.utcnow()
                 )
-        
-        # If create_new: queue account creation
-        else:
-            if background_tasks:
-                background_tasks.add_task(
-                    _create_candidate_account_task,
-                    match_id=match_id,
-                    bulk_upload_id=bulk_upload_id
+                # attach match id in job_result for dispatcher to pick
+                job.job_result = {'match_id': match_id}
+                db.add(job)
+                db.commit()
+            except Exception as e:
+                logger.error(f"Failed to enqueue merge job for match {match_id}: {e}")
+
+        # If create_new: enqueue account creation job
+        elif review.admin_decision == 'create_new':
+            try:
+                job = BulkUploadProcessingQueue(
+                    bulk_upload_id=bulk_upload_id,
+                    bulk_upload_file_id=None,
+                    job_type='create_account',
+                    job_status='queued',
+                    priority=70,
+                    scheduled_for=datetime.utcnow()
                 )
+                job.job_result = {'match_id': match_id}
+                db.add(job)
+                db.commit()
+            except Exception as e:
+                logger.error(f"Failed to enqueue create_account job for match {match_id}: {e}")
         
         logger.info(f"Admin decision recorded for {match_id}: {review.admin_decision}")
         
@@ -674,6 +829,400 @@ def delete_bulk_upload_batch(
         db.rollback()
         logger.error(f"Error deleting batch {bulk_upload_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to delete batch: {str(e)}")
+
+
+@router.get("/{bulk_upload_id}/file/{file_id}/view")
+def view_bulk_upload_file(
+    bulk_upload_id: str,
+    file_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user_sync)
+):
+    """Stream the original resume through the API without exposing storage URLs."""
+    try:
+        file_record = db.execute(
+            select(BulkUploadFile).where(
+                BulkUploadFile.id == file_id,
+                BulkUploadFile.bulk_upload_id == bulk_upload_id
+            )
+        ).scalar_one_or_none()
+
+        if not file_record:
+            raise HTTPException(status_code=404, detail="File not found")
+
+        file_storage_path = file_record.file_storage_path or ""
+        if not file_storage_path.startswith("s3://"):
+            raise HTTPException(status_code=400, detail="File storage path is not available")
+
+        parts = file_storage_path[5:].split("/", 1)
+        if len(parts) != 2:
+            raise HTTPException(status_code=400, detail="Invalid file storage path")
+
+        bucket_name, s3_key = parts
+        s3 = S3Service.get_client()
+        s3_response = s3.get_object(Bucket=bucket_name, Key=s3_key)
+        content_type = s3_response.get("ContentType") or "application/octet-stream"
+        body = s3_response["Body"]
+
+        def stream_file():
+            try:
+                for chunk in iter(lambda: body.read(1024 * 1024), b""):
+                    yield chunk
+            finally:
+                body.close()
+
+        return StreamingResponse(
+            stream_file(),
+            media_type=content_type,
+            headers={"Content-Disposition": f'inline; filename="{file_record.original_filename}"'}
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error streaming file {file_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to view file")
+
+
+@router.post("/{bulk_upload_id}/file/{file_id}/reparse", response_model=Dict)
+def reparse_file(
+    bulk_upload_id: str,
+    file_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user_sync)
+):
+    """
+    Requeue parsing for a specific file. Enqueues Celery parse job.
+    """
+    try:
+        logger.info(f"🔄 REPARSE SINGLE FILE CALLED: bulk_upload_id={bulk_upload_id}, file_id={file_id}")
+        
+        # Verify batch exists and file belongs to it
+        batch = db.execute(select(BulkUpload).where(BulkUpload.id == bulk_upload_id)).scalar_one_or_none()
+        if not batch:
+            raise HTTPException(status_code=404, detail="Bulk upload batch not found")
+
+        file_record = db.execute(select(BulkUploadFile).where(BulkUploadFile.id == file_id)).scalar_one_or_none()
+        if not file_record:
+            raise HTTPException(status_code=404, detail="File not found")
+
+        # Reset status so UI reflects that reparsing has been re-queued.
+        file_record.parsing_status = 'pending'
+        file_record.parsing_error = None
+        db.commit()
+        logger.info(f"✅ File {file_id} status reset to pending")
+
+        # Enqueue parse task
+        s3_path = file_record.file_storage_path or ''
+        # Normalize s3 key
+        s3_key = s3_path.replace('s3://', '').split('/', 1)[1] if s3_path.startswith('s3://') else s3_path
+        bucket = s3_path.replace('s3://', '').split('/', 1)[0] if s3_path.startswith('s3://') else S3_BUCKETS.get('bulk-resumes')
+
+        try:
+            # Insert queue job
+            queue_job = BulkUploadProcessingQueue(
+                bulk_upload_id=bulk_upload_id,
+                bulk_upload_file_id=file_id,
+                job_type='parse_resume',
+                job_status='queued',
+                priority=50,
+                scheduled_for=datetime.utcnow()
+            )
+            db.add(queue_job)
+            db.commit()
+            logger.info(f"✅ Queue job created: {queue_job.id} for file {file_id}")
+
+            queue_job.job_status = 'processing'
+            queue_job.started_at = datetime.utcnow()
+            db.commit()
+            logger.info(f"✅ Queue job {queue_job.id} marked as processing")
+            
+            _start_parse_worker(
+                file_id=str(file_record.id),
+                file_path=s3_key,
+                file_name=file_record.original_filename,
+                bucket_name=bucket,
+                job_id=str(queue_job.id)
+            )
+            logger.info(f"✅ Parse worker STARTED for job {queue_job.id}")
+        except Exception as e:
+            logger.error(f"❌ Failed to start parse worker: {e}", exc_info=True)
+            # Try Celery as fallback
+            try:
+                logger.info(f"⚠️ Attempting Celery fallback for file {file_id}")
+                parse_resume_file.delay(str(file_id), s3_key, file_record.original_filename, bucket, job_id=str(queue_job.id))
+                logger.info(f"✅ Celery task enqueued")
+            except Exception as e2:
+                logger.error(f"❌ Celery fallback also failed: {e2}")
+                raise
+
+        logger.info(f"✅ REPARSE ENDPOINT RETURNING SUCCESS for file {file_id}")
+        return {"status": "queued", "file_id": file_id}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error requeueing parse for {file_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to requeue parse")
+
+
+@router.post("/{bulk_upload_id}/reparse-all", response_model=Dict)
+def reparse_all_files(
+    bulk_upload_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user_sync)
+):
+    """
+    Requeue parsing for all files in a batch that are still pending/failed.
+    This is the bulk recovery path for batches where the UI timed out.
+    """
+    try:
+        logger.info(f"🔄 REPARSE ALL FILES CALLED for batch {bulk_upload_id}")
+        stale_job_cutoff_minutes = 15
+        
+        batch = db.execute(select(BulkUpload).where(BulkUpload.id == bulk_upload_id)).scalar_one_or_none()
+        if not batch:
+            raise HTTPException(status_code=404, detail="Bulk upload batch not found")
+
+        files = db.execute(
+            select(BulkUploadFile).where(
+                BulkUploadFile.bulk_upload_id == bulk_upload_id,
+                or_(
+                    BulkUploadFile.parsing_status.is_(None),
+                    ~BulkUploadFile.parsing_status.in_(['parsed', 'completed'])
+                )
+            )
+        ).scalars().all()
+
+        logger.info(f"📋 Found {len(files)} files to reparse in batch {bulk_upload_id}")
+        
+        queued_count = 0
+        skipped_count = 0
+
+        for file_record in files:
+            active_job = db.execute(
+                select(BulkUploadProcessingQueue).where(
+                    BulkUploadProcessingQueue.bulk_upload_file_id == file_record.id,
+                    BulkUploadProcessingQueue.job_type == 'parse_resume',
+                    BulkUploadProcessingQueue.job_status.in_(['queued', 'processing'])
+                )
+            ).scalar_one_or_none()
+
+            if active_job:
+                is_stale_job = False
+                if active_job.started_at:
+                    age_minutes = (datetime.utcnow() - active_job.started_at).total_seconds() / 60.0
+                    is_stale_job = age_minutes >= stale_job_cutoff_minutes
+
+                if not is_stale_job and file_record.parsing_status not in ('pending', 'failed', 'error'):
+                    skipped_count += 1
+                    continue
+
+                logger.info(
+                    f"♻️ Reclaiming active job {active_job.id} for file {file_record.id} "
+                    f"(status={active_job.job_status}, stale={is_stale_job})"
+                )
+                active_job.job_status = 'failed'
+                active_job.error_message = 'requeued_by_admin'
+                active_job.completed_at = datetime.utcnow()
+                try:
+                    active_job.job_result = {'status': 'requeued_by_admin', 'reason': 'bulk_reparse_force'}
+                except Exception:
+                    pass
+                db.commit()
+
+            s3_path = file_record.file_storage_path or ''
+            if s3_path.startswith('s3://'):
+                parts = s3_path[5:].split('/', 1)
+                bucket = parts[0] if len(parts) == 2 else S3_BUCKETS.get('bulk-resumes')
+                s3_key = parts[1] if len(parts) == 2 else s3_path
+            else:
+                bucket = S3_BUCKETS.get('bulk-resumes')
+                s3_key = s3_path
+
+            queue_job = BulkUploadProcessingQueue(
+                bulk_upload_id=bulk_upload_id,
+                bulk_upload_file_id=file_record.id,
+                job_type='parse_resume',
+                job_status='queued',
+                priority=90,
+                scheduled_for=datetime.utcnow()
+            )
+            db.add(queue_job)
+            file_record.parsing_status = 'pending'
+            file_record.parsing_error = None
+            db.commit()
+
+            # Add background task immediately
+            queue_job.job_status = 'processing'
+            queue_job.started_at = datetime.utcnow()
+            db.commit()
+            
+            _start_parse_worker(
+                file_id=str(file_record.id),
+                file_path=s3_key,
+                file_name=file_record.original_filename,
+                bucket_name=bucket,
+                job_id=str(queue_job.id)
+            )
+            logger.info(f"📋 Parse worker started for file {file_record.id}")
+
+            queued_count += 1
+
+        db.commit()
+
+        return {
+            'status': 'queued',
+            'bulk_upload_id': bulk_upload_id,
+            'files_found': len(files),
+            'queued_count': queued_count,
+            'skipped_count': skipped_count,
+            'message': 'Bulk reparse queued. Leave the page open while the queue drains.'
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error bulk requeueing parse for batch {bulk_upload_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to bulk requeue parse jobs")
+
+
+@router.get("/{bulk_upload_id}/file/{file_id}/status", response_model=Dict)
+def get_file_status(
+    bulk_upload_id: str,
+    file_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user_sync)
+):
+    """
+    Return current status of a single file in the batch
+    """
+    try:
+        file_record = db.execute(select(BulkUploadFile).where(BulkUploadFile.id == file_id, BulkUploadFile.bulk_upload_id == bulk_upload_id)).scalar_one_or_none()
+        if not file_record:
+            raise HTTPException(status_code=404, detail="File not found")
+
+        normalized_status = file_record.parsing_status
+        if normalized_status == 'parsed':
+            normalized_status = 'completed'
+        elif normalized_status == 'error':
+            normalized_status = 'failed'
+
+        return {
+            'file_id': str(file_record.id),
+            'original_filename': file_record.original_filename,
+            'parsing_status': normalized_status,
+            'parsing_error': file_record.parsing_error,
+            'match_confidence': float(file_record.match_confidence or 0.0),
+            'matched_candidate_id': str(file_record.matched_candidate_id) if file_record.matched_candidate_id else None,
+            'parsed_at': file_record.parsed_at.isoformat() if file_record.parsed_at else None,
+            'parsed_data': file_record.parsed_data or None
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching file status for {file_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch file status")
+
+
+@router.post("/{bulk_upload_id}/file/{file_id}/replace", response_model=Dict)
+def replace_file(
+    bulk_upload_id: str,
+    file_id: str,
+    file: UploadFile = File(...),
+    upload_token: str = Form(...),
+    db: Session = Depends(get_db),
+    background_tasks: BackgroundTasks = None,
+    current_user: dict = Depends(get_current_user_sync)
+):
+    """
+    Replace an existing file in a batch. Overwrites S3 object and updates DB record, then requeues parse.
+    """
+    try:
+        # Validate batch and file
+        batch = db.execute(select(BulkUpload).where(BulkUpload.id == bulk_upload_id)).scalar_one_or_none()
+        if not batch:
+            raise HTTPException(status_code=404, detail="Bulk upload batch not found")
+
+        existing_file = db.execute(select(BulkUploadFile).where(BulkUploadFile.id == file_id, BulkUploadFile.bulk_upload_id == bulk_upload_id)).scalar_one_or_none()
+        if not existing_file:
+            raise HTTPException(status_code=404, detail="File not found")
+
+        # Validate extension and size
+        file_ext = Path(file.filename).suffix.lower()
+        if file_ext not in ALLOWED_EXTENSIONS:
+            raise HTTPException(status_code=400, detail=f"File type {file_ext} not allowed. Use: {ALLOWED_EXTENSIONS}")
+
+        content = file.file.read()
+        if len(content) > MAX_FILE_SIZE:
+            raise HTTPException(status_code=413, detail=f"File exceeds max size {MAX_FILE_SIZE}")
+
+        # Calculate new hash
+        file_hash = hashlib.sha256(content).hexdigest()
+
+        # Write to S3 at same key used earlier: bulk-resumes/{batch_id}/{file_id}.ext
+        s3_key = f"{BULK_RESUME_PREFIX}/{bulk_upload_id}/{file_id}{file_ext}"
+        bucket_name = S3_BUCKETS.get('bulk-resumes') or 'techsalesaxis-storage'
+
+        uploaded = S3Service.upload_file(
+            content,
+            s3_key,
+            file.content_type or 'application/pdf',
+            bucket_name=bucket_name
+        )
+
+        if not uploaded:
+            raise HTTPException(status_code=500, detail='Failed to replace file in S3')
+
+        # Update DB record
+        existing_file.original_filename = file.filename
+        existing_file.file_ext = file_ext.replace('.', '')
+        existing_file.file_size_bytes = len(content)
+        existing_file.file_hash = file_hash
+        existing_file.file_storage_path = f"s3://{bucket_name}/{s3_key}"
+        existing_file.parsing_status = 'pending'
+        existing_file.parsing_error = None
+        existing_file.parsed_data = None
+        existing_file.raw_text = None
+        existing_file.parsed_at = None
+
+        db.commit()
+
+        try:
+            queue_job = BulkUploadProcessingQueue(
+                bulk_upload_id=bulk_upload_id,
+                bulk_upload_file_id=file_id,
+                job_type='parse_resume',
+                job_status='queued',
+                priority=50,
+                scheduled_for=datetime.utcnow()
+            )
+            db.add(queue_job)
+            db.commit()
+            logger.info(f"Enqueued parse job {queue_job.id} for replaced file {file_id}")
+        except Exception as e:
+            logger.warning(f"Failed to enqueue queue job for replaced file, falling back to Celery: {e}")
+            try:
+                parse_resume_file.delay(str(file_id), s3_key, file.filename, bucket_name)
+            except Exception as e2:
+                logger.warning(f"Failed to enqueue Celery parse task for replaced file {file_id}: {e2}")
+                if background_tasks:
+                    background_tasks.add_task(
+                        parse_resume_file_fastapi,
+                        file_id=str(file_id),
+                        file_path=s3_key,
+                        file_name=file.filename,
+                        bucket_name=bucket_name
+                    )
+
+        return {"status": "replaced", "file_id": file_id}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error replacing file {file_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to replace file")
 
 
 # ============================================================================

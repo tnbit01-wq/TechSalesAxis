@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
-import { Search, ChevronDown, ChevronUp, Download, Filter } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Search, ChevronDown, ChevronUp, Download, Filter, ExternalLink } from 'lucide-react';
+import { awsAuth } from '@/lib/awsAuth';
 
 interface ParsedFile {
   id: string;
@@ -32,6 +33,7 @@ interface Column {
 interface Props {
   files: ParsedFile[];
   batchName: string;
+  batchId?: string;
 }
 
 const COLUMNS: Column[] = [
@@ -47,7 +49,7 @@ const COLUMNS: Column[] = [
   { id: 'skills', label: 'Skills', key: 'parsed_data.skills', width: '300px', sortable: false },
 ];
 
-export default function ComprehensiveDataTable({ files, batchName }: Props) {
+export default function ComprehensiveDataTable({ files, batchName, batchId }: Props) {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'file_name', direction: 'asc' });
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
@@ -56,8 +58,16 @@ export default function ComprehensiveDataTable({ files, batchName }: Props) {
     new Set(COLUMNS.map(c => c.id))
   );
 
+  const [localFiles, setLocalFiles] = useState<ParsedFile[] | null>(files || null);
+  const [reparsingById, setReparsingById] = useState<Record<string, boolean>>({});
+  const [bulkReparsing, setBulkReparsing] = useState(false);
+
+  useEffect(() => {
+    setLocalFiles(files || null);
+  }, [files]);
+
   const filteredAndSortedFiles = useMemo(() => {
-    let result = [...files];
+    let result = [...(localFiles || files)];
 
     // Filter by search term
     if (searchTerm) {
@@ -91,6 +101,90 @@ export default function ComprehensiveDataTable({ files, batchName }: Props) {
 
     return result;
   }, [files, searchTerm, sortConfig]);
+
+  const isSuccessfullyParsed = (status?: string) => {
+    const normalized = (status || '').toLowerCase();
+    return normalized === 'parsed' || normalized === 'completed';
+  };
+
+  const canReparseStatus = (status?: string) => {
+    const normalized = (status || '').toLowerCase();
+    return !isSuccessfullyParsed(normalized) && normalized !== 'processing' && normalized !== 'scanning';
+  };
+
+  const canBulkReparseStatus = (status?: string) => {
+    return !isSuccessfullyParsed(status);
+  };
+
+  const reparsableFiles = (localFiles || files).filter((f) => canBulkReparseStatus(f.status));
+
+  const handleSingleReparse = async (fileId: string) => {
+    if (!batchId) return;
+    setReparsingById((prev) => ({ ...prev, [fileId]: true }));
+    try {
+      const token = awsAuth.getToken();
+      if (!token) {
+        alert('Authentication required');
+        return;
+      }
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
+      const res = await fetch(`${apiUrl}/api/v1/bulk-upload/${batchId}/file/${fileId}/reparse`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to queue reparse');
+      }
+
+      setLocalFiles((prev) => {
+        if (!prev) return prev;
+        return prev.map((f) => (f.id === fileId ? { ...f, status: 'scanning', error_message: null } : f));
+      });
+      pollFileStatus(batchId, fileId, setLocalFiles);
+    } catch (e) {
+      console.error(e);
+      alert(e instanceof Error ? e.message : 'Failed to queue reparse');
+    } finally {
+      setReparsingById((prev) => ({ ...prev, [fileId]: false }));
+    }
+  };
+
+  const handleBulkReparse = async () => {
+    if (!batchId) return;
+    setBulkReparsing(true);
+    try {
+      const token = awsAuth.getToken();
+      if (!token) {
+        alert('Authentication required');
+        return;
+      }
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
+      const res = await fetch(`${apiUrl}/api/v1/bulk-upload/${batchId}/reparse-all`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to queue bulk reparse');
+      }
+
+      const data = await res.json().catch(() => ({}));
+      const queuedCount = Number(data?.queued_count || 0);
+      if (queuedCount > 0) {
+        setLocalFiles((prev) => {
+          if (!prev) return prev;
+          return prev.map((f) => (canBulkReparseStatus(f.status) ? { ...f, status: 'scanning', error_message: null } : f));
+        });
+      }
+      alert(`Bulk reparse queued for ${queuedCount} file(s)`);
+    } catch (e) {
+      console.error(e);
+      alert(e instanceof Error ? e.message : 'Failed to queue bulk reparse');
+    } finally {
+      setBulkReparsing(false);
+    }
+  };
 
   const handleSort = (columnId: string) => {
     const column = COLUMNS.find(c => c.id === columnId);
@@ -185,22 +279,60 @@ export default function ComprehensiveDataTable({ files, batchName }: Props) {
     return String(value);
   };
 
+  const openFileView = async (fileId: string, filename?: string) => {
+    if (!batchId) return;
+
+    try {
+      const token = awsAuth.getToken();
+      if (!token) {
+        alert('Authentication required');
+        return;
+      }
+
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
+      const response = await fetch(`${apiUrl}/api/v1/bulk-upload/${batchId}/file/${fileId}/view`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.detail || `Failed to open ${filename || 'file'}`);
+      }
+
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, '_blank', 'noopener,noreferrer');
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Failed to open file');
+    }
+  };
+
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
       {/* Professional Header */}
       <div className="bg-gradient-to-r from-slate-50 to-white px-6 py-5 border-b border-slate-200">
-        <div className="flex justify-between items-start gap-4 mb-4">
+            <div className="flex justify-between items-start gap-4 mb-4">
           <div>
             <h2 className="text-2xl font-bold text-slate-900">Complete Data View</h2>
-            <p className="text-slate-600 text-sm mt-1">{filteredAndSortedFiles.length} of {files.length} records</p>
+            <p className="text-slate-600 text-sm mt-1">{filteredAndSortedFiles.length} of {(localFiles || files).length} records</p>
           </div>
-          <button
-            onClick={handleExportCSV}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 text-sm font-semibold transition-all shadow-md hover:shadow-lg active:scale-95"
-          >
-            <Download className="w-4 h-4" />
-            Export CSV
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleBulkReparse}
+              disabled={!batchId || reparsableFiles.length === 0 || bulkReparsing}
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-all"
+            >
+              {bulkReparsing ? 'Queuing...' : `Reparse All Not Parsed (${reparsableFiles.length})`}
+            </button>
+            <button
+              onClick={handleExportCSV}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 text-sm font-semibold transition-all shadow-md hover:shadow-lg active:scale-95"
+            >
+              <Download className="w-4 h-4" />
+              Export CSV
+            </button>
+          </div>
         </div>
 
         {/* Search and Controls */}
@@ -269,6 +401,7 @@ export default function ComprehensiveDataTable({ files, batchName }: Props) {
                     </div>
                   </th>
                 ))}
+                <th className="px-4 py-4 text-left">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
@@ -295,9 +428,9 @@ export default function ComprehensiveDataTable({ files, batchName }: Props) {
                       <td key={col.id} className="px-4 py-4 text-slate-700" style={{ width: col.width }}>
                         {col.id === 'status' ? (
                           <span className={`inline-flex items-center px-2.5 py-1 text-xs font-bold rounded-full ${
-                            file.status === 'parsed' ? 'bg-emerald-100 text-emerald-700' :
-                            file.status === 'error' ? 'bg-red-100 text-red-700' :
-                            file.status === 'scanning' ? 'bg-amber-100 text-amber-700' :
+                            isSuccessfullyParsed(file.status) ? 'bg-emerald-100 text-emerald-700' :
+                            file.status === 'error' || file.status === 'failed' ? 'bg-red-100 text-red-700' :
+                            file.status === 'scanning' || file.status === 'processing' ? 'bg-amber-100 text-amber-700' :
                             'bg-blue-50 text-[#1a56db]'
                           }`}>
                             {file.status}
@@ -320,12 +453,34 @@ export default function ComprehensiveDataTable({ files, batchName }: Props) {
                         )}
                       </td>
                     ))}
+                    <td className="px-4 py-4">
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          onClick={() => openFileView(file.id, file.file_name)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-colors"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          View File
+                        </button>
+                        {canReparseStatus(file.status) ? (
+                          <button
+                            onClick={() => handleSingleReparse(file.id)}
+                            disabled={reparsingById[file.id]}
+                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-lg text-xs font-semibold"
+                          >
+                            {reparsingById[file.id] ? 'Queuing...' : 'Reparse'}
+                          </button>
+                        ) : (
+                          <span className="text-xs text-slate-400 self-center">-</span>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                   
                   {/* Expanded Detail Row */}
                   {expandedRow === file.id && (
                     <tr className="bg-gradient-to-r from-blue-50 to-white border-b-2 border-[#1a56db]/20">
-                      <td colSpan={COLUMNS.filter(c => visibleColumns.has(c.id)).length + 2} className="px-6 py-5">
+                      <td colSpan={COLUMNS.filter(c => visibleColumns.has(c.id)).length + 3} className="px-6 py-5">
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                           <div className="bg-white border border-slate-200 rounded-lg p-4">
                             <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">File Name</label>
@@ -383,6 +538,77 @@ export default function ComprehensiveDataTable({ files, batchName }: Props) {
                                   ))}
                                 </div>
                               </div>
+                              <div className="lg:col-span-3 flex gap-3">
+                                <button
+                                  onClick={() => openFileView(file.id, file.file_name)}
+                                  className="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200"
+                                >
+                                  <ExternalLink className="w-4 h-4" />
+                                  View Original File
+                                </button>
+                                <button
+                                  onClick={async () => {
+                                    try {
+                                      const token = typeof window !== 'undefined' ? localStorage.getItem('tf_token') : null;
+                                      if (!token) return alert('Not authenticated');
+                                      const apiUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
+                                      const res = await fetch(`${apiUrl}/api/v1/bulk-upload/${batchId}/file/${file.id}/reparse`, {
+                                        method: 'POST',
+                                        headers: { 'Authorization': `Bearer ${token}` }
+                                      });
+                                      if (res.ok) {
+                                        alert('Reparse queued');
+                                        pollFileStatus(batchId, file.id, setLocalFiles);
+                                      } else {
+                                        const err = await res.json().catch(() => ({}));
+                                        alert(err.detail || 'Failed to queue reparse');
+                                      }
+                                    } catch (e) {
+                                      console.error(e);
+                                      alert('Failed to queue reparse');
+                                    }
+                                  }}
+                                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                                >
+                                  Reparse File
+                                </button>
+
+                                <label className="px-4 py-2 bg-gray-100 border border-slate-200 rounded-lg cursor-pointer hover:bg-gray-200">
+                                  Replace File
+                                  <input
+                                    type="file"
+                                    accept=".pdf,.doc,.docx"
+                                    className="sr-only"
+                                    onChange={async (e) => {
+                                      const f = e.target.files?.[0];
+                                      if (!f) return;
+                                      try {
+                                        const token = typeof window !== 'undefined' ? localStorage.getItem('tf_token') : null;
+                                        if (!token) return alert('Not authenticated');
+                                        const apiUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
+                                        const form = new FormData();
+                                        form.append('file', f);
+                                        form.append('upload_token', 'token123');
+                                        const res = await fetch(`${apiUrl}/api/v1/bulk-upload/${batchId}/file/${file.id}/replace`, {
+                                          method: 'POST',
+                                          headers: { 'Authorization': `Bearer ${token}` },
+                                          body: form
+                                        });
+                                        if (res.ok) {
+                                          alert('File replaced and queued for parse');
+                                          pollFileStatus(batchId, file.id, setLocalFiles);
+                                        } else {
+                                          const err = await res.json().catch(() => ({}));
+                                          alert(err.detail || 'Upload failed');
+                                        }
+                                      } catch (err) {
+                                        console.error(err);
+                                        alert('Upload error');
+                                      }
+                                    }}
+                                  />
+                                </label>
+                              </div>
                             </>
                           ) : file.error_message ? (
                             <div className="lg:col-span-3 bg-red-50 border border-red-200 rounded-lg p-4">
@@ -423,4 +649,34 @@ export default function ComprehensiveDataTable({ files, batchName }: Props) {
       </div>
     </div>
   );
+}
+
+// Helper: Poll file status until final and update localFiles via setter
+function pollFileStatus(batchId: string | undefined, fileId: string, setLocalFiles: (updater: any) => void) {
+  if (!batchId) return;
+  let attempts = 0;
+  const interval = setInterval(async () => {
+    attempts += 1;
+    try {
+      const token = awsAuth.getToken();
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
+      const res = await fetch(`${apiUrl}/api/v1/bulk-upload/${batchId}/file/${fileId}/status`, {
+        headers: { 'Authorization': token ? `Bearer ${token}` : '' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setLocalFiles((prev: any) => {
+          if (!prev) return prev;
+          return prev.map((f: any) => (f.id === fileId ? { ...f, status: data.parsing_status || f.status, parsed_data: data.parsed_data || f.parsed_data, error_message: data.parsing_error || f.error_message } : f));
+        });
+        if (['parsed', 'error', 'completed', 'failed'].includes((data.parsing_status || '').toLowerCase()) || attempts > 60) {
+          clearInterval(interval);
+        }
+      } else {
+        if (attempts > 60) clearInterval(interval);
+      }
+    } catch (e) {
+      if (attempts > 60) clearInterval(interval);
+    }
+  }, 3000);
 }
