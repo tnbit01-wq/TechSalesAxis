@@ -8,9 +8,7 @@ import {
   Briefcase, Users, Building2, BarChart3, ShieldCheck,
   Target, AlertCircle, User, ExternalLink, ArrowRight,
   Trash2, Clock, ChevronRight, Sparkles, FileText,
-  TrendingUp, Search, CheckCircle2, Loader2, Bookmark,
-  MapPin, DollarSign, Star, Award, UserCheck, UserX,
-  ClipboardList, Navigation, MessageSquare, Zap,
+  TrendingUp, Search, CheckCircle2, Loader2,
 } from 'lucide-react';
 import { awsAuth } from '@/lib/awsAuth';
 
@@ -20,13 +18,10 @@ import { awsAuth } from '@/lib/awsAuth';
 
 type DataType =
   | 'candidate_list'
-  | 'candidate_profile'
-  | 'resume_info'
   | 'job_list'
   | 'company_list'
   | 'market_data'
-  | 'application_list'
-  | 'career_gps'
+  | 'behavioral_report'
   | 'none'
   | 'error';
 
@@ -44,9 +39,7 @@ interface ChatMessage {
   data_type?: DataType;
   data_results?: any[];
   action_cards?: ActionCard[];
-  feature_prompts?: string[];
-  next_steps?: string[];
-  intent?: string;
+  intelligence_metrics?: Record<string, number>;
   isStreaming?: boolean;
 }
 
@@ -60,48 +53,24 @@ interface SessionSummary {
 }
 
 // ─────────────────────────────────────────────
-// Role-aware placeholder hints
-// ─────────────────────────────────────────────
-
-const RECRUITER_HINTS = [
-  'Find candidates with Salesforce and SaaS experience…',
-  'Show me top enterprise sales candidates in Bangalore…',
-  'Which roles are in high demand right now?',
-  'Find all candidates, including passive talent…',
-  'Show applications pending review…',
-  'Search for SDR candidates with 2–4 years experience…',
-];
-
-const CANDIDATE_HINTS = [
-  'Find SaaS account executive jobs in Bangalore…',
-  'Show me companies hiring for enterprise sales roles…',
-  'What roles are trending in the market right now?',
-  'Check my Career GPS milestones…',
-  'Show my recent job applications…',
-  'Find remote inside sales roles with 8+ LPA…',
-];
-
-// ─────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────
 
 const SESSION_KEY = 'ai_chat_session_id';
 
 const ICON_MAP: Record<string, React.FC<{ className?: string }>> = {
-  user:        ({ className }) => <User          className={className} />,
-  file:        ({ className }) => <FileText      className={className} />,
-  users:       ({ className }) => <Users         className={className} />,
-  briefcase:   ({ className }) => <Briefcase     className={className} />,
-  send:        ({ className }) => <Send          className={className} />,
-  search:      ({ className }) => <Search        className={className} />,
-  building:    ({ className }) => <Building2     className={className} />,
-  building2:   ({ className }) => <Building2     className={className} />,
-  plus:        ({ className }) => <Plus          className={className} />,
-  chart:       ({ className }) => <BarChart3     className={className} />,
-  clipboard:   ({ className }) => <ClipboardList className={className} />,
-  link:        ({ className }) => <ExternalLink  className={className} />,
-  bookmark:    ({ className }) => <Bookmark      className={className} />,
-  target:      ({ className }) => <Target        className={className} />,
+  user:      ({ className }) => <User      className={className} />,
+  file:      ({ className }) => <FileText  className={className} />,
+  users:     ({ className }) => <Users     className={className} />,
+  briefcase: ({ className }) => <Briefcase className={className} />,
+  send:      ({ className }) => <Send      className={className} />,
+  search:    ({ className }) => <Search    className={className} />,
+  building:  ({ className }) => <Building2 className={className} />,
+  building2: ({ className }) => <Building2 className={className} />,
+  plus:      ({ className }) => <Plus      className={className} />,
+  chart:     ({ className }) => <BarChart3 className={className} />,
+  clipboard: ({ className }) => <CheckCircle2 className={className} />,
+  link:      ({ className }) => <ExternalLink className={className} />,
 };
 
 function CardIcon({ name, className }: { name: string; className?: string }) {
@@ -113,219 +82,51 @@ function timeAgo(iso?: string): string {
   if (!iso) return '';
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
-function useRotatingPlaceholder(hints: string[], interval = 3500) {
-  const [idx, setIdx] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => setIdx(i => (i + 1) % hints.length), interval);
-    return () => clearInterval(t);
-  }, [hints, interval]);
-  return hints[idx];
-}
-
 // ─────────────────────────────────────────────
-// Candidate Card — shows verified vs passive
+// Result Renderers
 // ─────────────────────────────────────────────
 
 function CandidateCards({ items }: { items: any[] }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-      {items.map((c, i) => {
-        const isVerified = c.is_verified || c.assessment_status === 'completed';
-        const isPassive  = c.is_passive  || (!isVerified && c.assessment_status !== 'in_progress');
-        return (
-          <div
-            key={i}
-            className="group bg-zinc-900/60 border border-white/[0.06] rounded-2xl p-4 hover:border-blue-500/30 hover:bg-zinc-800/60 transition-all duration-200"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-600/20 to-violet-600/20 flex items-center justify-center flex-shrink-0 border border-white/5 relative">
-                <User className="w-5 h-5 text-blue-400" />
-                {/* Verified / passive indicator dot */}
-                <span
-                  className={`absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border border-zinc-900 ${
-                    isVerified ? 'bg-emerald-500' : isPassive ? 'bg-amber-500' : 'bg-blue-400'
-                  }`}
-                  title={isVerified ? 'Verified' : isPassive ? 'Passive candidate' : 'Assessment in progress'}
-                />
-              </div>
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-white truncate">
-                  {c.full_name || c.name || 'Unnamed'}
-                </p>
-                <p className="text-xs text-zinc-500 truncate">
-                  {c.current_role || 'IT Sales Professional'}
-                </p>
-              </div>
+      {items.map((c, i) => (
+        <div key={i} className="group bg-zinc-900/60 border border-white/[0.06] rounded-2xl p-4 hover:border-blue-500/30 hover:bg-zinc-800/60 transition-all duration-200">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-600/20 to-violet-600/20 flex items-center justify-center flex-shrink-0 border border-white/5">
+              <User className="w-5 h-5 text-blue-400" />
             </div>
-
-            {/* Skills */}
-            {Array.isArray(c.skills) && c.skills.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1">
-                {c.skills.slice(0, 3).map((s: string, si: number) => (
-                  <span
-                    key={si}
-                    className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-300 border border-blue-500/15"
-                  >
-                    {s}
-                  </span>
-                ))}
-                {c.skills.length > 3 && (
-                  <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500 border border-zinc-700">
-                    +{c.skills.length - 3}
-                  </span>
-                )}
-              </div>
-            )}
-
-            <div className="mt-3 flex items-center gap-3 flex-wrap">
-              <span className="inline-flex items-center gap-1 text-[10px] font-mono text-zinc-400">
-                <Target className="w-3 h-3 text-zinc-600" />
-                {c.years_of_experience || 0}y exp
-              </span>
-              {c.current_location && (
-                <span className="inline-flex items-center gap-1 text-[10px] font-mono text-zinc-500">
-                  <MapPin className="w-3 h-3" />
-                  {c.current_location}
-                </span>
-              )}
-              {typeof c.culture_match_score === 'number' && (
-                <span className="inline-flex items-center gap-1 text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                  <BarChart3 className="w-3 h-3" />
-                  {Math.round(c.culture_match_score)}% match
-                </span>
-              )}
-              {/* Verified / Passive badge */}
-              {isVerified ? (
-                <span className="inline-flex items-center gap-1 text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                  <ShieldCheck className="w-3 h-3" />
-                  Verified
-                </span>
-              ) : isPassive ? (
-                <span className="inline-flex items-center gap-1 text-[10px] font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
-                  <UserCheck className="w-3 h-3" />
-                  Passive
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 text-[10px] font-mono text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/20">
-                  <Loader2 className="w-3 h-3" />
-                  In Progress
-                </span>
-              )}
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-white truncate">{c.full_name || c.name || 'Unnamed'}</p>
+              <p className="text-xs text-zinc-500 truncate">{c.current_role || 'Professional'}</p>
             </div>
           </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
-// Candidate Profile Card (detailed)
-// ─────────────────────────────────────────────
-
-function CandidateProfileCard({ item }: { item: any }) {
-  return (
-    <div className="mt-3 bg-zinc-900/70 border border-white/[0.07] rounded-2xl p-5">
-      <div className="flex items-start gap-4">
-        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-600/25 to-violet-600/25 flex items-center justify-center flex-shrink-0 border border-white/5">
-          <User className="w-7 h-7 text-blue-400" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-base font-bold text-white">{item.full_name || 'Candidate'}</p>
-          <p className="text-sm text-zinc-400 mt-0.5">{item.current_role || 'IT Sales Professional'}</p>
-          <p className="text-xs text-zinc-600 mt-0.5 font-mono">{item.email}</p>
-        </div>
-        {item.assessment_status === 'completed' && (
-          <span className="flex-shrink-0 inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
-            <ShieldCheck className="w-3.5 h-3.5" />
-            Verified
-          </span>
-        )}
-      </div>
-
-      <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
-        {item.years_of_experience != null && (
-          <div className="bg-zinc-800/60 rounded-xl p-3 border border-white/5">
-            <p className="text-[10px] text-zinc-500 font-mono">Experience</p>
-            <p className="text-sm font-semibold text-white mt-0.5">{item.years_of_experience} yrs</p>
-          </div>
-        )}
-        {item.current_location && (
-          <div className="bg-zinc-800/60 rounded-xl p-3 border border-white/5">
-            <p className="text-[10px] text-zinc-500 font-mono">Location</p>
-            <p className="text-sm font-semibold text-white mt-0.5 truncate">{item.current_location}</p>
-          </div>
-        )}
-        {item.profile_strength && (
-          <div className="bg-zinc-800/60 rounded-xl p-3 border border-white/5">
-            <p className="text-[10px] text-zinc-500 font-mono">Profile</p>
-            <p className="text-sm font-semibold text-white mt-0.5">{item.profile_strength}</p>
-          </div>
-        )}
-      </div>
-
-      {Array.isArray(item.skills) && item.skills.length > 0 && (
-        <div className="mt-3">
-          <p className="text-[10px] text-zinc-500 font-mono mb-2">SKILLS</p>
-          <div className="flex flex-wrap gap-1.5">
-            {item.skills.slice(0, 8).map((s: string, i: number) => (
-              <span key={i} className="text-[10px] font-mono px-2 py-0.5 rounded-lg bg-blue-500/10 text-blue-300 border border-blue-500/15">
-                {s}
-              </span>
-            ))}
-            {item.skills.length > 8 && (
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-lg bg-zinc-800 text-zinc-500 border border-zinc-700">
-                +{item.skills.length - 8} more
+          <div className="mt-3 flex items-center gap-3 flex-wrap">
+            <span className="inline-flex items-center gap-1 text-[10px] font-mono text-zinc-400">
+              <Target className="w-3 h-3 text-zinc-600" />
+              {c.years_of_experience || 0}y exp
+            </span>
+            {typeof c.culture_match_score === 'number' && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                <BarChart3 className="w-3 h-3" />
+                {Math.round(c.culture_match_score)}% match
               </span>
             )}
+            <span className="inline-flex items-center gap-1 text-[10px] font-mono text-blue-400">
+              <ShieldCheck className="w-3 h-3" />
+              Verified
+            </span>
           </div>
         </div>
-      )}
+      ))}
     </div>
   );
 }
-
-// ─────────────────────────────────────────────
-// Resume Info Card
-// ─────────────────────────────────────────────
-
-function ResumeInfoCard({ item }: { item: any }) {
-  return (
-    <div className="mt-3 bg-zinc-900/70 border border-white/[0.07] rounded-2xl p-4">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600/20 to-pink-600/20 flex items-center justify-center flex-shrink-0 border border-white/5">
-          <FileText className="w-5 h-5 text-violet-400" />
-        </div>
-        <div>
-          <p className="text-sm font-semibold text-white">{item.full_name}'s Resume</p>
-          <p className="text-xs text-zinc-500 font-mono">{item.file_name || 'resume.pdf'}</p>
-        </div>
-      </div>
-      {item.parsed_data && (
-        <div className="mt-3 text-xs text-zinc-400 bg-zinc-800/50 rounded-xl p-3 border border-white/5 font-mono whitespace-pre-wrap line-clamp-4">
-          {typeof item.parsed_data === 'string'
-            ? item.parsed_data.slice(0, 300)
-            : JSON.stringify(item.parsed_data).slice(0, 300)}
-          {' '}…
-        </div>
-      )}
-      <p className="mt-2 text-[10px] text-zinc-600 font-mono">
-        Uploaded {item.uploaded_at ? new Date(item.uploaded_at).toLocaleDateString() : '—'}
-      </p>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
-// Job Cards
-// ─────────────────────────────────────────────
 
 function JobCards({ items }: { items: any[] }) {
   return (
@@ -337,20 +138,11 @@ function JobCards({ items }: { items: any[] }) {
               <Briefcase className="w-4 h-4 text-emerald-400" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-white truncate">
-                {job.title || job.job_title || 'Role'}
-              </p>
-              <p className="text-xs text-zinc-500 truncate">
-                {job.company_name || 'Company'}{job.location ? ` · ${job.location}` : ''}
-              </p>
-              {job.salary_range && (
-                <p className="text-[11px] text-zinc-600 mt-0.5 inline-flex items-center gap-1">
-                  <DollarSign className="w-3 h-3" />
-                  {job.salary_range}
-                </p>
-              )}
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {typeof job.match_score === 'number' && job.match_score > 0 && (
+              <p className="text-sm font-semibold text-white truncate">{job.title || job.job_title || 'Role'}</p>
+              <p className="text-xs text-zinc-500 truncate">{job.company_name || 'Company'} · {job.location || 'Location'}</p>
+              <p className="text-[11px] text-zinc-600 mt-0.5 truncate">{job.salary_range || 'Competitive'}</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {typeof job.match_score === 'number' && (
                   <span className="text-[10px] font-mono text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
                     {Math.round(job.match_score)}% match
                   </span>
@@ -358,11 +150,6 @@ function JobCards({ items }: { items: any[] }) {
                 {job.experience_band && (
                   <span className="text-[10px] font-mono text-zinc-400 bg-zinc-800 border border-zinc-700 px-2 py-0.5 rounded-full">
                     {job.experience_band}
-                  </span>
-                )}
-                {job.job_type && (
-                  <span className="text-[10px] font-mono text-zinc-500 bg-zinc-800/50 border border-zinc-700/50 px-2 py-0.5 rounded-full">
-                    {job.job_type}
                   </span>
                 )}
               </div>
@@ -373,10 +160,6 @@ function JobCards({ items }: { items: any[] }) {
     </div>
   );
 }
-
-// ─────────────────────────────────────────────
-// Company Cards
-// ─────────────────────────────────────────────
 
 function CompanyCards({ items }: { items: any[] }) {
   return (
@@ -388,27 +171,14 @@ function CompanyCards({ items }: { items: any[] }) {
               <Building2 className="w-4 h-4 text-indigo-400" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-white truncate">
-                {co.company_name || co.name || 'Company'}
-              </p>
-              <p className="text-xs text-zinc-500 truncate">
-                {co.industry || 'Tech'}{co.location ? ` · ${co.location}` : ''}
-              </p>
-              {co.size_band && (
-                <p className="text-[11px] text-zinc-600 mt-0.5">{co.size_band}</p>
+              <p className="text-sm font-semibold text-white truncate">{co.company_name || co.name || 'Company'}</p>
+              <p className="text-xs text-zinc-500 truncate">{co.industry || co.industry_category || 'High-growth'}</p>
+              <p className="text-[11px] text-zinc-600 mt-0.5">{co.location || 'Global'} · {co.size || co.size_band || 'Growth-stage'}</p>
+              {co.match_score && (
+                <span className="mt-1.5 inline-flex text-[10px] font-mono text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full">
+                  {Math.round(co.match_score)}% culture fit
+                </span>
               )}
-              <div className="mt-1.5 flex flex-wrap gap-1.5">
-                {typeof co.open_jobs === 'number' && co.open_jobs > 0 && (
-                  <span className="text-[10px] font-mono text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
-                    {co.open_jobs} open role{co.open_jobs !== 1 ? 's' : ''}
-                  </span>
-                )}
-                {typeof co.match_score === 'number' && (
-                  <span className="text-[10px] font-mono text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full">
-                    {Math.round(co.match_score)}% culture fit
-                  </span>
-                )}
-              </div>
             </div>
           </div>
         </div>
@@ -416,25 +186,21 @@ function CompanyCards({ items }: { items: any[] }) {
     </div>
   );
 }
-
-// ─────────────────────────────────────────────
-// Market Data Chart
-// ─────────────────────────────────────────────
 
 function MarketData({ items }: { items: any[] }) {
   const max = Math.max(...items.map(i => i.value), 1);
   return (
-    <div className="mt-3 space-y-2.5">
+    <div className="mt-3 space-y-2">
       {items.map((item, i) => (
         <div key={i} className="flex items-center gap-3">
-          <span className="text-[11px] font-mono text-zinc-400 w-40 truncate flex-shrink-0">{item.label}</span>
+          <span className="text-[11px] font-mono text-zinc-400 w-36 truncate flex-shrink-0">{item.label}</span>
           <div className="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-blue-500 to-emerald-500 rounded-full transition-all duration-700"
+              className="h-full bg-emerald-500 rounded-full transition-all duration-700"
               style={{ width: `${(item.value / max) * 100}%` }}
             />
           </div>
-          <span className="text-[11px] font-mono text-emerald-400 w-8 text-right">{item.value}</span>
+          <span className="text-[11px] font-mono text-emerald-400 w-6 text-right">{item.value}</span>
         </div>
       ))}
     </div>
@@ -442,131 +208,20 @@ function MarketData({ items }: { items: any[] }) {
 }
 
 // ─────────────────────────────────────────────
-// Application List
+// Action Cards
 // ─────────────────────────────────────────────
 
-const STATUS_STYLES: Record<string, string> = {
-  applied:     'text-blue-400 bg-blue-500/10 border-blue-500/20',
-  shortlisted: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
-  interview:   'text-violet-400 bg-violet-500/10 border-violet-500/20',
-  hired:       'text-teal-400 bg-teal-500/10 border-teal-500/20',
-  rejected:    'text-red-400 bg-red-500/10 border-red-500/20',
-  pending:     'text-amber-400 bg-amber-500/10 border-amber-500/20',
-};
-
-function ApplicationList({ items, role }: { items: any[]; role: string }) {
-  return (
-    <div className="mt-3 space-y-2">
-      {items.map((app, i) => {
-        const statusStyle = STATUS_STYLES[app.status?.toLowerCase()] || STATUS_STYLES.pending;
-        return (
-          <div key={i} className="bg-zinc-900/60 border border-white/[0.06] rounded-xl p-3 flex items-center justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              {role === 'recruiter' ? (
-                <>
-                  <p className="text-sm font-semibold text-white truncate">{app.candidate_name || 'Candidate'}</p>
-                  <p className="text-xs text-zinc-500 truncate">{app.job_title || 'Role'}</p>
-                </>
-              ) : (
-                <>
-                  <p className="text-sm font-semibold text-white truncate">{app.job_title || 'Role'}</p>
-                  <p className="text-xs text-zinc-500 truncate">{app.company_name || 'Company'}</p>
-                </>
-              )}
-            </div>
-            <span className={`flex-shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full border ${statusStyle}`}>
-              {(app.status || 'pending').charAt(0).toUpperCase() + (app.status || 'pending').slice(1)}
-            </span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
-// Career GPS
-// ─────────────────────────────────────────────
-
-function CareerGPSCards({ items }: { items: any[] }) {
-  return (
-    <div className="mt-3 space-y-2">
-      {items.map((m, i) => (
-        <div key={i} className="bg-zinc-900/60 border border-white/[0.06] rounded-xl p-3 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-teal-500/20 to-emerald-500/20 flex items-center justify-center flex-shrink-0 border border-white/5">
-            <Navigation className="w-4 h-4 text-teal-400" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-white truncate">{m.milestone_title || 'Milestone'}</p>
-          </div>
-          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-            m.milestone_status === 'completed'
-              ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
-              : 'text-amber-400 bg-amber-500/10 border-amber-500/20'
-          }`}>
-            {m.milestone_status || 'pending'}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
-// Feature Prompts (proactive nudge chips)
-// ─────────────────────────────────────────────
-
-function FeaturePrompts({
-  prompts,
-  onSend,
-}: {
-  prompts: string[];
-  onSend: (text: string) => void;
-}) {
-  if (!prompts || prompts.length === 0) return null;
-  return (
-    <div className="mt-3 flex flex-wrap gap-2">
-      <div className="w-full flex items-center gap-1.5 mb-1">
-        <Zap className="w-3 h-3 text-amber-500" />
-        <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-          Next actions
-        </span>
-      </div>
-      {prompts.map((p, i) => (
-        <button
-          key={i}
-          onClick={() => onSend(p)}
-          className="group inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800/60 border border-amber-500/15 hover:border-amber-500/40 hover:bg-amber-500/5 transition-all text-xs text-zinc-400 hover:text-amber-300"
-        >
-          <Sparkles className="w-3 h-3 text-amber-500/60 group-hover:text-amber-400 flex-shrink-0" />
-          {p}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
-// Action Cards (redirect buttons)
-// ─────────────────────────────────────────────
-
-function ActionCards({
-  cards,
-  onNavigate,
-}: {
-  cards: ActionCard[];
-  onNavigate: (url: string) => void;
-}) {
+function ActionCards({ cards, onNavigate }: { cards: ActionCard[]; onNavigate: (url: string) => void }) {
   if (!cards || cards.length === 0) return null;
   return (
-    <div className="mt-3 flex flex-wrap gap-2">
+    <div className="mt-4 flex flex-wrap gap-2">
       {cards.map((card, i) => (
         <button
           key={i}
           onClick={() => onNavigate(card.url)}
           className="group inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-zinc-800/80 border border-white/[0.07] hover:border-blue-500/40 hover:bg-blue-600/10 transition-all duration-200 text-xs font-medium text-zinc-300 hover:text-blue-300"
         >
-          <CardIcon name={card.icon} className="w-3.5 h-3.5 text-zinc-500 group-hover:text-blue-400 transition-colors flex-shrink-0" />
+          <CardIcon name={card.icon} className="w-3.5 h-3.5 text-zinc-500 group-hover:text-blue-400 transition-colors" />
           {card.label}
           <ChevronRight className="w-3 h-3 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all" />
         </button>
@@ -579,21 +234,11 @@ function ActionCards({
 // Message Bubble
 // ─────────────────────────────────────────────
 
-function MessageBubble({
-  msg,
-  onNavigate,
-  onSendPrompt,
-  userRole,
-}: {
-  msg: ChatMessage;
-  onNavigate: (url: string) => void;
-  onSendPrompt: (text: string) => void;
-  userRole: string;
-}) {
+function MessageBubble({ msg, onNavigate }: { msg: ChatMessage; onNavigate: (url: string) => void }) {
   const isUser = msg.role === 'user';
 
   const renderData = () => {
-    const hasData = msg.data_results && msg.data_results.length > 0;
+    if (!msg.data_results?.length && msg.data_type === 'none') return null;
 
     return (
       <>
@@ -603,24 +248,11 @@ function MessageBubble({
             <p className="text-xs text-red-300">Connection issue. Please retry.</p>
           </div>
         )}
-        {hasData && msg.data_type === 'candidate_list'    && <CandidateCards items={msg.data_results!} />}
-        {hasData && msg.data_type === 'candidate_profile' && <CandidateProfileCard item={msg.data_results![0]} />}
-        {hasData && msg.data_type === 'resume_info'       && <ResumeInfoCard item={msg.data_results![0]} />}
-        {hasData && msg.data_type === 'job_list'          && <JobCards items={msg.data_results!} />}
-        {hasData && msg.data_type === 'company_list'      && <CompanyCards items={msg.data_results!} />}
-        {hasData && msg.data_type === 'market_data'       && <MarketData items={msg.data_results!} />}
-        {hasData && msg.data_type === 'application_list'  && <ApplicationList items={msg.data_results!} role={userRole} />}
-        {hasData && msg.data_type === 'career_gps'        && <CareerGPSCards items={msg.data_results!} />}
-
-        {/* Action cards — always show if present, regardless of data */}
-        {msg.action_cards && msg.action_cards.length > 0 && (
-          <ActionCards cards={msg.action_cards} onNavigate={onNavigate} />
-        )}
-
-        {/* Proactive feature nudge chips */}
-        {msg.feature_prompts && msg.feature_prompts.length > 0 && (
-          <FeaturePrompts prompts={msg.feature_prompts} onSend={onSendPrompt} />
-        )}
+        {msg.data_type === 'candidate_list' && msg.data_results && <CandidateCards items={msg.data_results} />}
+        {msg.data_type === 'job_list'       && msg.data_results && <JobCards       items={msg.data_results} />}
+        {msg.data_type === 'company_list'   && msg.data_results && <CompanyCards   items={msg.data_results} />}
+        {msg.data_type === 'market_data'    && msg.data_results && <MarketData     items={msg.data_results} />}
+        {msg.action_cards && <ActionCards cards={msg.action_cards} onNavigate={onNavigate} />}
       </>
     );
   };
@@ -632,31 +264,22 @@ function MessageBubble({
           <Brain className="w-3.5 h-3.5 text-blue-400" />
         </div>
       )}
-      <div className={`max-w-[85%] ${isUser ? 'order-first' : ''}`}>
-        <div
-          className={`px-4 py-3 rounded-2xl ${
-            isUser
-              ? 'bg-blue-600 text-white rounded-tr-sm shadow-lg shadow-blue-900/20'
-              : 'bg-zinc-900/70 border border-white/[0.06] text-zinc-100 rounded-tl-sm backdrop-blur-sm'
-          }`}
-        >
+
+      <div className={`max-w-[82%] ${isUser ? 'order-first' : ''}`}>
+        <div className={`px-4 py-3 rounded-2xl ${
+          isUser
+            ? 'bg-blue-600 text-white rounded-tr-sm shadow-lg shadow-blue-900/20'
+            : 'bg-zinc-900/70 border border-white/[0.06] text-zinc-100 rounded-tl-sm backdrop-blur-sm'
+        }`}>
           {msg.isStreaming ? (
             <div className="flex items-center gap-2">
-              <span className="flex gap-1">
-                {[0, 1, 2].map(i => (
-                  <span
-                    key={i}
-                    className="w-1.5 h-1.5 rounded-full bg-zinc-500 animate-bounce"
-                    style={{ animationDelay: `${i * 150}ms` }}
-                  />
-                ))}
-              </span>
+              <Loader2 className="w-4 h-4 animate-spin text-zinc-400" />
               <span className="text-sm text-zinc-400">Thinking…</span>
             </div>
           ) : (
             <>
               <p className="text-[14px] leading-relaxed whitespace-pre-wrap">{msg.content}</p>
-              {!isUser && renderData()}
+              {renderData()}
             </>
           )}
           <span className="mt-2 block text-[9px] font-mono opacity-30 uppercase tracking-widest">
@@ -674,8 +297,8 @@ function MessageBubble({
 
 export default function GlobalChatInterface() {
   const { isChatMode, toggleChatMode } = useChatViewStore();
-  const pathname = usePathname();
-  const router   = useRouter();
+  const pathname  = usePathname();
+  const router    = useRouter();
 
   // ── State ──────────────────────────────────
   const [input,       setInput]       = useState('');
@@ -683,19 +306,20 @@ export default function GlobalChatInterface() {
   const [isListening, setIsListening] = useState(false);
   const [sessionId,   setSessionId]   = useState<string | null>(null);
   const [sessions,    setSessions]    = useState<SessionSummary[]>([]);
-  const [messages,    setMessages]    = useState<ChatMessage[]>([]);
-  const [greetingLoaded, setGreetingLoaded] = useState(false);
+  const [messages,    setMessages]    = useState<ChatMessage[]>([{
+    role:      'assistant',
+    content:   'Synchronising with your workspace…',
+    timestamp: new Date(),
+  }]);
 
-  const recognitionRef  = useRef<any>(null);
-  const messagesEndRef  = useRef<HTMLDivElement>(null);
-  const textareaRef     = useRef<HTMLTextAreaElement>(null);
+  const recognitionRef = useRef<any>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef    = useRef<HTMLTextAreaElement>(null);
 
   const userInfo = typeof window !== 'undefined' ? awsAuth.getUser() : null;
-  const userRole = ((userInfo as any)?.role as string | undefined) || '';
+  const userRole = (userInfo as any)?.role as string | undefined;
 
-  const hints           = userRole === 'recruiter' ? RECRUITER_HINTS : CANDIDATE_HINTS;
-  const placeholder     = useRotatingPlaceholder(hints);
-  const apiBase         = process.env.NEXT_PUBLIC_API_URL || '/api';
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || '/api';
 
   // ── Auth helper ────────────────────────────
   const authHeaders = useCallback(() => {
@@ -707,20 +331,12 @@ export default function GlobalChatInterface() {
     };
   }, []);
 
-  const getClientContext = useCallback((source: string) => ({
-    role: userRole,
-    path: pathname,
-    source,
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    local_hour: new Date().getHours(),
-  }), [pathname, userRole]);
-
   // ── Speech recognition ─────────────────────
   useEffect(() => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) return;
     const rec = new SR();
-    rec.continuous     = false;
+    rec.continuous = false;
     rec.interimResults = false;
     rec.onresult = (e: any) => { setInput(e.results[0][0].transcript); setIsListening(false); };
     rec.onerror  = () => setIsListening(false);
@@ -729,11 +345,11 @@ export default function GlobalChatInterface() {
   }, []);
 
   const toggleListening = () => {
-    if (isListening) recognitionRef.current?.stop();
-    else { setIsListening(true); recognitionRef.current?.start(); }
+    if (isListening) { recognitionRef.current?.stop(); }
+    else             { setIsListening(true); recognitionRef.current?.start(); }
   };
 
-  // ── Auto-scroll ────────────────────────────
+  // ── Scroll ─────────────────────────────────
   useEffect(() => {
     if (isChatMode) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isChatMode]);
@@ -748,107 +364,35 @@ export default function GlobalChatInterface() {
     } catch { /* silent */ }
   }, [apiBase, authHeaders]);
 
-  // ── Fetch personalised greeting on open ───
-  const fetchGreeting = useCallback(async (sid: string | null) => {
-    if (greetingLoaded) return;
-    setGreetingLoaded(true);
-
-    // Show shimmer placeholder
-    setMessages([{
-      role: 'assistant',
-      content: '',
-      timestamp: new Date(),
-      isStreaming: true,
-    }]);
-
-    try {
-      const res = await fetch(`${apiBase}/ai/assistant/chat`, {
-        method:  'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({
-          prompt:     '__greeting__',
-          session_id: sid,
-          client_context: getClientContext('global_chat_open'),
-        }),
-      });
-
-      if (!res.ok) throw new Error('greeting failed');
-      const result = await res.json();
-
-      if (result.session_id) {
-        setSessionId(result.session_id);
-        localStorage.setItem(SESSION_KEY, result.session_id);
-      }
-
-      setMessages([{
-        role:         'assistant',
-        content:      result.text || `Hey there! What would you like to do today?`,
-        timestamp:    new Date(),
-        action_cards: result.action_cards,
-        feature_prompts: result.feature_prompts,
-        data_type:    'none',
-      }]);
-
+  useEffect(() => {
+    if (isChatMode) {
+      // Restore session from localStorage
+      const saved = localStorage.getItem(SESSION_KEY);
+      if (saved) setSessionId(saved);
       loadSessions();
-    } catch {
-      setMessages([{
-        role:      'assistant',
-        content:   `Hey! I'm your TalentCore AI assistant. What can I help you with?`,
-        timestamp: new Date(),
-        data_type: 'none',
-      }]);
     }
-  }, [apiBase, authHeaders, getClientContext, greetingLoaded, loadSessions]);
+  }, [isChatMode, loadSessions]);
 
-  // ── Load past session ──────────────────────
+  // ── Load a past session ────────────────────
   const loadSession = useCallback(async (sid: string) => {
     try {
       const res = await fetch(`${apiBase}/ai/assistant/sessions/${sid}/messages`, {
         headers: authHeaders(),
       });
-      if (!res.ok) throw new Error('Unable to load session');
+      if (!res.ok) return;
       const data = await res.json();
       const msgs: ChatMessage[] = (data.messages || []).map((m: any) => ({
-        role:           m.role,
-        content:        m.content,
-        timestamp:      new Date(m.timestamp || Date.now()),
-        intent:         m.intent,
-        data_type:      m.data_type || 'none',
-        data_results:   m.data_results,
-        action_cards:   m.action_cards,
-        feature_prompts:m.feature_prompts,
-        next_steps:     m.next_steps,
-        isStreaming:    false,
+        role:      m.role,
+        content:   m.content,
+        timestamp: new Date(m.timestamp || Date.now()),
       }));
-      setMessages(
-        msgs.length
-          ? msgs
-          : [{ role: 'assistant', content: 'Session loaded. What would you like to continue?', timestamp: new Date(), data_type: 'none' }]
-      );
+      setMessages(msgs.length ? msgs : [{
+        role: 'assistant', content: 'Session loaded. What would you like to continue?', timestamp: new Date(),
+      }]);
       setSessionId(sid);
       localStorage.setItem(SESSION_KEY, sid);
-      setGreetingLoaded(true);
-      await loadSessions();
-      return true;
-    } catch {
-      localStorage.removeItem(SESSION_KEY);
-      setSessionId(null);
-      setGreetingLoaded(false);
-      return false;
-    }
-  }, [apiBase, authHeaders, loadSessions]);
-
-  useEffect(() => {
-    if (!isChatMode) return;
-    const saved = localStorage.getItem(SESSION_KEY);
-    if (saved) {
-      loadSession(saved).then(success => {
-        if (!success) fetchGreeting(null);
-      });
-      return;
-    }
-    fetchGreeting(null);
-  }, [isChatMode, fetchGreeting, loadSession]);
+    } catch { /* silent */ }
+  }, [apiBase, authHeaders]);
 
   // ── Delete session ─────────────────────────
   const deleteSession = useCallback(async (sid: string, e: React.MouseEvent) => {
@@ -869,13 +413,11 @@ export default function GlobalChatInterface() {
   // ── New session ────────────────────────────
   const newSession = () => {
     setSessionId(null);
-    setGreetingLoaded(false);
     localStorage.removeItem(SESSION_KEY);
     setMessages([{
       role: 'assistant',
       content: 'New session started. What are we focusing on today?',
       timestamp: new Date(),
-      data_type: 'none',
     }]);
   };
 
@@ -895,11 +437,11 @@ export default function GlobalChatInterface() {
     }
   };
 
-  // ── Send prompt (also used by feature prompt chips) ──
-  const sendMessage = useCallback(async (text: string) => {
-    if (!text.trim() || loading) return;
+  // ── Send ───────────────────────────────────
+  const handleSend = async () => {
+    if (!input.trim() || loading) return;
 
-    const userMsg: ChatMessage = { role: 'user', content: text, timestamp: new Date() };
+    const userMsg: ChatMessage = { role: 'user', content: input, timestamp: new Date() };
     const thinkingMsg: ChatMessage = {
       role: 'assistant', content: '', timestamp: new Date(), isStreaming: true,
     };
@@ -914,34 +456,38 @@ export default function GlobalChatInterface() {
         method:  'POST',
         headers: authHeaders(),
         body: JSON.stringify({
-          prompt:     text,
+          prompt:     input,
           session_id: sessionId,
-          client_context: getClientContext('global_chat'),
+          client_context: {
+            role:   userRole,
+            path:   pathname,
+            source: 'global_chat',
+          },
         }),
       });
 
       if (!res.ok) throw new Error(`API ${res.status}`);
+
       const result = await res.json();
 
+      // Persist session
       if (result.session_id) {
         setSessionId(result.session_id);
         localStorage.setItem(SESSION_KEY, result.session_id);
         loadSessions();
       }
 
+      // Replace streaming placeholder
       setMessages(prev => {
         const next = [...prev];
         next[next.length - 1] = {
-          role:            'assistant',
-          content:         result.text || 'Processing complete.',
-          timestamp:       new Date(),
-          data_type:       result.data_type    || 'none',
-          data_results:    result.data_results,
-          action_cards:    result.action_cards,
-          feature_prompts: result.feature_prompts,
-          next_steps:      result.next_steps,
-          intent:          result.intent,
-          isStreaming:     false,
+          role:         'assistant',
+          content:      result.text || 'Processing complete.',
+          timestamp:    new Date(),
+          data_type:    result.data_type   || 'none',
+          data_results: result.data_results,
+          action_cards: result.action_cards,
+          isStreaming:  false,
         };
         return next;
       });
@@ -960,20 +506,17 @@ export default function GlobalChatInterface() {
     } finally {
       setLoading(false);
     }
-  }, [loading, apiBase, authHeaders, sessionId, getClientContext, loadSessions]);
-
-  const handleSend = () => sendMessage(input);
+  };
 
   if (!isChatMode) return null;
 
   // ─────────────────────────────────────────────
   // Render
   // ─────────────────────────────────────────────
-
   return (
     <div className="fixed inset-0 z-[100] flex bg-[#09090b] text-zinc-100 overflow-hidden">
 
-      {/* ── Sidebar ─────────────────────────── */}
+      {/* ── Sidebar ─────────────────────────────── */}
       <aside className="w-72 flex-shrink-0 bg-zinc-950/60 border-r border-white/[0.05] flex flex-col">
 
         {/* Logo */}
@@ -984,16 +527,7 @@ export default function GlobalChatInterface() {
             </div>
             <div>
               <p className="text-sm font-bold tracking-tight">TalentCore AI</p>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <p className="text-[10px] text-zinc-500 font-mono tracking-widest">GLOBAL ASSISTANT</p>
-                <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded font-mono ${
-                  userRole === 'recruiter'
-                    ? 'bg-violet-500/15 text-violet-400 border border-violet-500/20'
-                    : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
-                }`}>
-                  {userRole?.toUpperCase() || '—'}
-                </span>
-              </div>
+              <p className="text-[10px] text-zinc-500 font-mono tracking-widest">GLOBAL ASSISTANT</p>
             </div>
           </div>
         </div>
@@ -1007,64 +541,6 @@ export default function GlobalChatInterface() {
             <Plus className="w-4 h-4 text-blue-500" />
             New Session
           </button>
-        </div>
-
-        {/* Role-aware quick actions */}
-        <div className="px-4 pt-4">
-          <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest mb-2 px-1">
-            Quick Actions
-          </p>
-          <div className="space-y-1">
-            {userRole === 'recruiter' ? (
-              <>
-                <button
-                  onClick={() => sendMessage('Show me all candidates including passive talent')}
-                  className="w-full text-left flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] transition-all"
-                >
-                  <Users className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
-                  Browse all candidates
-                </button>
-                <button
-                  onClick={() => sendMessage('What roles are in high demand right now?')}
-                  className="w-full text-left flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] transition-all"
-                >
-                  <TrendingUp className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
-                  Market insights
-                </button>
-                <button
-                  onClick={() => sendMessage('Show pending applications')}
-                  className="w-full text-left flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] transition-all"
-                >
-                  <ClipboardList className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-                  Pending reviews
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  onClick={() => sendMessage('Find jobs matching my skills')}
-                  className="w-full text-left flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] transition-all"
-                >
-                  <Search className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
-                  Jobs for my skills
-                </button>
-                <button
-                  onClick={() => sendMessage('Show my Career GPS milestones')}
-                  className="w-full text-left flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] transition-all"
-                >
-                  <Navigation className="w-3.5 h-3.5 text-teal-500 flex-shrink-0" />
-                  My Career GPS
-                </button>
-                <button
-                  onClick={() => sendMessage('What are the trending roles in the market?')}
-                  className="w-full text-left flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] transition-all"
-                >
-                  <TrendingUp className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
-                  Market trends
-                </button>
-              </>
-            )}
-          </div>
         </div>
 
         {/* Session History */}
@@ -1083,9 +559,7 @@ export default function GlobalChatInterface() {
               onClick={() => loadSession(s.id)}
               onKeyDown={e => e.key === 'Enter' && loadSession(s.id)}
               className={`group w-full flex items-start gap-2.5 px-3 py-2.5 rounded-xl text-left transition-all hover:bg-white/[0.05] cursor-pointer ${
-                sessionId === s.id
-                  ? 'bg-blue-600/10 border border-blue-500/20'
-                  : 'border border-transparent'
+                sessionId === s.id ? 'bg-blue-600/10 border border-blue-500/20' : 'border border-transparent'
               }`}
             >
               <Clock className="w-3.5 h-3.5 text-zinc-600 flex-shrink-0 mt-0.5" />
@@ -1093,10 +567,7 @@ export default function GlobalChatInterface() {
                 <p className="text-xs text-zinc-300 truncate leading-tight">
                   {s.session_title || s.last_intent || 'Session'}
                 </p>
-                <p className="text-[10px] text-zinc-600 mt-0.5 font-mono">
-                  {timeAgo(s.updated_at)}
-                  {s.message_count ? ` · ${s.message_count} msgs` : ''}
-                </p>
+                <p className="text-[10px] text-zinc-600 mt-0.5 font-mono">{timeAgo(s.updated_at)}</p>
               </div>
               <button
                 onClick={e => deleteSession(s.id, e)}
@@ -1120,7 +591,7 @@ export default function GlobalChatInterface() {
         </div>
       </aside>
 
-      {/* ── Main ──────────────────────────────── */}
+      {/* ── Main ─────────────────────────────────── */}
       <main className="flex-1 flex flex-col min-w-0 relative">
 
         {/* Header bar */}
@@ -1135,10 +606,7 @@ export default function GlobalChatInterface() {
               SECURE · ROLE: {userRole?.toUpperCase() || '—'} · {sessionId ? 'SESSION ACTIVE' : 'NEW SESSION'}
             </span>
           </div>
-          <button
-            onClick={toggleChatMode}
-            className="p-1.5 text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.05] rounded-lg transition-all"
-          >
+          <button onClick={toggleChatMode} className="p-1.5 text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.05] rounded-lg transition-all">
             <X className="w-4 h-4" />
           </button>
         </header>
@@ -1146,13 +614,7 @@ export default function GlobalChatInterface() {
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-6 md:px-16 lg:px-32 xl:px-48 pt-8 pb-40 space-y-6">
           {messages.map((m, i) => (
-            <MessageBubble
-              key={i}
-              msg={m}
-              onNavigate={handleNavigate}
-              onSendPrompt={sendMessage}
-              userRole={userRole}
-            />
+            <MessageBubble key={i} msg={m} onNavigate={handleNavigate} />
           ))}
           <div ref={messagesEndRef} />
         </div>
@@ -1160,7 +622,7 @@ export default function GlobalChatInterface() {
         {/* Input bar */}
         <div className="absolute bottom-0 inset-x-0 px-6 md:px-16 lg:px-32 xl:px-48 pb-6 pt-4 bg-gradient-to-t from-[#09090b] via-[#09090b]/95 to-transparent">
           <div className="relative">
-            {/* Focus glow */}
+            {/* Glow */}
             <div className="absolute -inset-px rounded-2xl bg-gradient-to-r from-blue-600/20 via-violet-600/10 to-blue-600/20 opacity-0 focus-within:opacity-100 transition-opacity duration-500 blur-sm pointer-events-none" />
 
             <div className="relative flex items-end gap-2 bg-zinc-900/90 backdrop-blur-xl border border-white/[0.08] focus-within:border-blue-500/30 rounded-2xl p-3 transition-all duration-300 shadow-2xl">
@@ -1185,7 +647,7 @@ export default function GlobalChatInterface() {
                 onKeyDown={e => {
                   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
                 }}
-                placeholder={isListening ? 'Listening…' : placeholder}
+                placeholder={isListening ? 'Listening…' : 'Ask anything — find candidates, jobs, companies, market trends…'}
                 rows={1}
                 className="flex-1 bg-transparent text-[14px] text-zinc-100 placeholder:text-zinc-600 resize-none outline-none py-1.5 px-1 min-h-[36px] max-h-[160px] leading-relaxed font-[450]"
               />
@@ -1203,12 +665,9 @@ export default function GlobalChatInterface() {
               </button>
             </div>
 
-            {/* Hint line */}
+            {/* Hint */}
             <p className="text-center text-[10px] text-zinc-700 mt-2 font-mono">
-              Enter to send · Shift+Enter for new line ·{' '}
-              {userRole === 'recruiter'
-                ? 'Search candidates, post jobs, view applications'
-                : 'Search jobs, companies, explore Career GPS'}
+              Enter to send · Shift+Enter for new line
             </p>
           </div>
         </div>

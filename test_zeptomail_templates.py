@@ -15,7 +15,11 @@ def test_templates():
     print(f"Result: {otp_res}")
     
     print("\n--- 2. Testing Password Reset Template ---")
-    reset_res = send_password_reset_email(test_email, "https://techsalesaxis.com/reset?token=test123", username="Mithun")
+    reset_res = send_password_reset_email(
+        test_email,
+        "https://techsalesaxis.com/?token=test123",
+        username="Mithun"
+    )
     print(f"Result: {reset_res}")
 
 if __name__ == "__main__":

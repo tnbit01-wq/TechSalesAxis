@@ -30,7 +30,10 @@ type SignupState =
 function SignupForm() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const role = searchParams.get("role") || "candidate";
+  const emailParam = searchParams.get("email");
+  const role =
+    searchParams.get("role") ||
+    (emailParam ? (isPersonalEmail(emailParam) ? "candidate" : "recruiter") : "candidate");
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [state, setState] = useState<SignupState>("INITIAL");
@@ -151,15 +154,12 @@ function SignupForm() {
         if (handled) return; // checkSession already took care of the state
 
         // Check if email was passed from login (account not found)
-        const emailParam = searchParams.get("email");
-        
         if (emailParam) {
           // Auto-start signup with provided email
           window.history.replaceState({}, "", window.location.pathname + `?role=${role}`);
-          const decodedEmail = decodeURIComponent(emailParam);
-          const name = extractNameFromEmail(decodedEmail);
+          const name = extractNameFromEmail(emailParam);
           setUserName(name);
-          setEmail(decodedEmail);
+          setEmail(emailParam);
           addMessage(`Welcome ${name}! Let's set up your account. Sending verification code...`, "bot");
           // Trigger signup with the email
           setState("AWAITING_OTP_TRIGGER");

@@ -6,7 +6,11 @@ import Link from "next/link";
 import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import { useVoice } from "@/hooks/useVoice";
-import { extractNameFromEmail, isValidEmail } from "@/utils/emailValidation";
+import {
+  extractNameFromEmail,
+  isPersonalEmail,
+  isValidEmail,
+} from "@/utils/emailValidation";
 
 type Message = {
   id: string;
@@ -35,6 +39,9 @@ function LoginForm() {
 
   const { isListening, transcript, startListening, stopListening, hasSupport } =
     useVoice();
+
+  const getSignupRoleFromEmail = (value: string) =>
+    isPersonalEmail(value) ? "candidate" : "recruiter";
 
   // Scroll to bottom whenever messages change
   useEffect(() => {
@@ -175,8 +182,11 @@ function LoginForm() {
           const checkRes = await apiClient.post("/auth/check-email", { email: emailInput });
           if (!checkRes.exists) {
             addMessage("You don't have an account yet. Redirecting to sign up...", "bot");
+            const signupRole = getSignupRoleFromEmail(emailInput);
             setTimeout(() => {
-              router.replace(`/signup?email=${encodeURIComponent(emailInput)}`);
+              router.replace(
+                `/signup?email=${encodeURIComponent(emailInput)}&role=${signupRole}`,
+              );
             }, 1500);
             setIsLoading(false);
             return;
@@ -241,8 +251,11 @@ function LoginForm() {
           const errorMessage = err.message || "Login failed. Please try again.";
           if (errorMessage.includes("No account found") || errorMessage.includes("not verified") || errorMessage.includes("incomplete")) {
             addMessage("Your account setup isn't complete yet. Redirecting to sign up...", "bot");
+            const signupRole = getSignupRoleFromEmail(email);
             setTimeout(() => {
-              router.replace(`/signup?email=${encodeURIComponent(email)}`);
+              router.replace(
+                `/signup?email=${encodeURIComponent(email)}&role=${signupRole}`,
+              );
             }, 1500);
           } else if (errorMessage.includes("incorrect")) {
             addMessage("Password is incorrect. Please try again or type 'forgot password' to reset it.", "bot");
