@@ -19,10 +19,12 @@ import {
   XCircle,
   ClipboardList,
   Activity,
+  Share2,
 } from "lucide-react";
 import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import LockedView from "@/components/dashboard/LockedView";
+import ShareJobModal from "@/components/ShareJobModal";
 
 interface Job {
   id: string;
@@ -59,6 +61,7 @@ export default function JobsManagement() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
+  const [sharingJob, setSharingJob] = useState<Job | null>(null);
   const [profile, setProfile] = useState<{
     assessment_status?: string;
     full_name?: string;
@@ -241,6 +244,13 @@ export default function JobsManagement() {
         .jobs-scroll::-webkit-scrollbar-thumb:hover {
           background: #94a3b8;
         }
+        .scrollbar-none::-webkit-scrollbar {
+          display: none;
+        }
+        .scrollbar-none {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
       `}</style>
 
       <main className="mx-auto flex h-[calc(100vh-64px)] w-full max-w-[1700px] flex-col gap-4 px-4 py-4">
@@ -250,47 +260,14 @@ export default function JobsManagement() {
         </div>
       ) : (
         <>
-          <section className="flex flex-col gap-3 rounded-[28px] border border-orange-100/80 bg-white px-5 py-4 shadow-[0_8px_24px_rgba(255,138,0,0.08)] lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#FF8A00]">Hiring Workspace</p>
-              <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-900">Job management</h1>
-              <p className="mt-1 text-sm text-slate-500">
-                Review openings, keep the board readable, and move candidates through the pipeline without wasting vertical space.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-600">
-              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5">{stats.total} total</span>
-              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-emerald-700">{stats.active} open</span>
-              <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-amber-700">{stats.paused} paused</span>
-              <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-rose-700">{stats.closed} closed</span>
-            </div>
-          </section>
-
-          <section className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[330px_minmax(0,1fr)]">
-            <aside className="flex min-h-0 flex-col overflow-hidden rounded-[28px] border border-orange-100/80 bg-white shadow-[0_8px_24px_rgba(255,138,0,0.08)]">
-              <div className="flex-shrink-0 border-b border-orange-100/70 bg-gradient-to-r from-[#FFF7EE] to-white px-5 py-4">
-                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#FF8A00]">Hiring Roles</p>
-                <p className="mt-1 text-sm text-slate-500">Organize openings and move faster on hiring decisions</p>
+          <section className="flex flex-col lg:grid lg:grid-cols-[290px_minmax(0,1fr)] min-h-0 flex-1 gap-4 overflow-hidden">
+            <aside className="flex flex-col min-h-0 bg-white rounded-[24px] border border-slate-100 shadow-[0_4px_20px_rgba(15,23,42,0.03)] overflow-hidden lg:h-full flex-shrink-0">
+              <div className="hidden lg:block flex-shrink-0 px-5 py-4 border-b border-slate-50 bg-[linear-gradient(135deg,#FFF9F2_0%,#FFFFFF_100%)]">
+                <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-[#FF8A00]">Hiring Directory</h2>
+                <p className="mt-0.5 text-[11px] font-medium text-slate-400">Manage listings and view pipeline metrics</p>
               </div>
 
-              <div className="jobs-scroll flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
-                <Link
-                  href="/dashboard/recruiter/hiring/jobs/new"
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#FF8A00] px-4 py-2.5 text-xs font-black uppercase tracking-wider text-white transition hover:bg-[#E67A00]"
-                >
-                  <Plus className="h-4 w-4" />
-                  Create New Role
-                </Link>
-
-                <Link
-                  href="/dashboard/recruiter/hiring/applications"
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-black uppercase tracking-wider text-slate-700 transition hover:border-[#FF8A00] hover:text-[#FF8A00]"
-                >
-                  <ClipboardList className="h-4 w-4" />
-                  Open Candidate Pipeline
-                </Link>
-
+              <div className="flex flex-col gap-3 lg:gap-4 p-4 flex-shrink-0 lg:flex-1 lg:overflow-y-auto lg:space-y-4 lg:gap-0">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <input
@@ -298,47 +275,57 @@ export default function JobsManagement() {
                     placeholder="Search role or location"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-[#FF8A00]/60 focus:ring-2 focus:ring-[#FF8A00]/15"
+                    className="w-full rounded-xl border border-slate-150 bg-slate-50 py-2 pl-9 pr-3 text-xs text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-[#FF8A00]/50 focus:bg-white focus:ring-4 focus:ring-[#FF8A00]/5"
                   />
                 </div>
 
                 <div>
-                  <p className="mb-2.5 text-[11px] font-bold text-slate-600">Role Status</p>
-                  <div className="space-y-2">
+                  <h3 className="mb-2 text-[10px] font-black uppercase tracking-wider text-slate-500 hidden lg:block">Role Status</h3>
+                  <div className="flex flex-row overflow-x-auto gap-2 lg:flex-col lg:space-y-1 lg:gap-0 scrollbar-none py-1 -mx-4 px-4 lg:mx-0 lg:px-0">
                     {[
-                      { value: "all", label: "All Roles" },
-                      { value: "active", label: "Open" },
-                      { value: "paused", label: "Paused" },
-                      { value: "closed", label: "Closed" },
+                      { value: "all", label: "All Roles", count: stats.total, color: "text-slate-700 bg-slate-100/70" },
+                      { value: "active", label: "Open", count: stats.active, color: "text-emerald-700 bg-emerald-50" },
+                      { value: "paused", label: "Paused", count: stats.paused, color: "text-amber-700 bg-amber-50" },
+                      { value: "closed", label: "Closed", count: stats.closed, color: "text-rose-700 bg-rose-50" },
                     ].map((status) => (
                       <button
                         key={status.value}
                         onClick={() => setStatusFilter(status.value)}
-                        className={`w-full rounded-2xl px-3 py-2.5 text-left text-sm font-semibold transition-all ${
+                        className={`flex items-center justify-between w-auto lg:w-full gap-2 rounded-xl px-3 py-1.5 lg:py-2 text-xs font-bold transition-all whitespace-nowrap ${
                           statusFilter === status.value
-                            ? "bg-[#FF8A00] text-white"
-                            : "text-slate-600 hover:bg-[#FFF6ED] hover:text-[#FF8A00]"
+                            ? "bg-[#FF8A00] text-white shadow-md shadow-orange-100"
+                            : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                         }`}
                       >
-                        {status.label}
+                        <span>{status.label}</span>
+                        <span className={`px-1.5 py-0.5 rounded-md text-[9px] font-black ${
+                          statusFilter === status.value
+                            ? "bg-white/20 text-white"
+                            : status.color
+                        }`}>
+                          {status.count}
+                        </span>
                       </button>
                     ))}
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-orange-100 bg-[#FFF8F1] p-3">
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#C96B00]">Recent Activity</p>
-                  <div className="mt-3 space-y-2">
+                <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3 hidden lg:block">
+                  <h3 className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-500">Recent Activity</h3>
+                  <div className="mt-2.5 space-y-1.5">
                     {recentJobViews.length === 0 ? (
-                      <p className="text-xs text-slate-500">No candidate activity yet for your roles.</p>
+                      <p className="text-[10px] text-slate-400">No activity logged.</p>
                     ) : (
-                      recentJobViews.slice(0, 5).map((view) => (
-                        <div key={view.id} className="rounded-xl border border-orange-100/70 bg-white p-2.5">
-                          <p className="text-xs font-bold text-slate-900 line-clamp-1">{view.candidate_name}</p>
-                          <p className="mt-0.5 text-[11px] text-slate-500 line-clamp-1">Viewed {view.job_title}</p>
-                          <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-[#C96B00]">
-                            {new Date(view.viewed_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                          </p>
+                      recentJobViews.slice(0, 4).map((view) => (
+                        <div key={view.id} className="rounded-lg border border-slate-100 bg-white p-2">
+                          <p className="text-[11px] font-bold text-[#1E293B] line-clamp-1">{view.candidate_name}</p>
+                          <p className="text-[9px] text-slate-400 line-clamp-1">Viewed: {view.job_title}</p>
+                          <div className="mt-1 flex items-center justify-between text-[8px] font-bold text-slate-400 uppercase">
+                            <span>Activity</span>
+                            <span className="text-[#FF8A00]">
+                              {new Date(view.viewed_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                            </span>
+                          </div>
                         </div>
                       ))
                     )}
@@ -347,17 +334,30 @@ export default function JobsManagement() {
               </div>
             </aside>
 
-            <div className="flex min-h-0 flex-col overflow-hidden rounded-[28px] border border-orange-100/80 bg-white shadow-[0_8px_24px_rgba(255,138,0,0.08)]">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-orange-100/70 bg-gradient-to-r from-[#FFF7EE] to-white px-5 py-4">
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#FF8A00]">Openings Board</p>
-                  <p className="mt-1 text-sm font-semibold text-slate-600">
-                    {filteredJobs.length} role{filteredJobs.length !== 1 ? "s" : ""} matching your filters
-                  </p>
+            <div className="flex-1 flex flex-col min-h-0 bg-white rounded-[24px] border border-slate-100 shadow-[0_4px_20px_rgba(15,23,42,0.03)] overflow-hidden">
+              <div className="flex-shrink-0 flex items-center justify-between px-6 py-3.5 border-b border-slate-100 bg-[linear-gradient(135deg,#FFF9F2_0%,#FFFFFF_100%)] flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <h1 className="text-base font-black tracking-tight text-slate-900">Job Board</h1>
+                  <span className="inline-flex items-center rounded-full bg-orange-50 px-2.5 py-0.5 text-[10px] font-black text-[#FF8A00] ring-1 ring-inset ring-orange-100">
+                    {filteredJobs.length} listed
+                  </span>
                 </div>
-                <div className="inline-flex items-center gap-2 rounded-full border border-orange-200 bg-white px-3 py-1.5 text-xs font-bold text-[#C96B00]">
-                  <Activity className="h-3.5 w-3.5" />
-                  Hiring in progress
+
+                <div className="flex items-center gap-2">
+                  <Link
+                    href="/dashboard/recruiter/hiring/applications"
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-[10px] font-black uppercase tracking-wider text-slate-700 transition hover:border-[#FF8A00] hover:text-[#FF8A00] hover:bg-orange-50/20 active:scale-95"
+                  >
+                    <ClipboardList className="h-3.5 w-3.5" />
+                    Applications
+                  </Link>
+                  <Link
+                    href="/dashboard/recruiter/hiring/jobs/new"
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-2 text-[10px] font-black uppercase tracking-wider text-white transition hover:bg-[#FF8A00] active:scale-95 shadow-md shadow-slate-200 hover:shadow-orange-200"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Create Role
+                  </Link>
                 </div>
               </div>
 
@@ -380,153 +380,152 @@ export default function JobsManagement() {
                     {filteredJobs.map((job) => (
                       <article
                         key={job.id}
-                        className="group rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_4px_16px_rgba(15,23,42,0.05)] transition-all hover:border-orange-200 hover:shadow-[0_12px_28px_rgba(255,138,0,0.12)]"
+                        className="group flex flex-col justify-between rounded-2xl border border-slate-150 bg-white p-4 shadow-sm hover:border-orange-200 hover:shadow-md transition-all duration-200"
                       >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex items-start gap-3">
-                            <div className="mt-0.5 flex h-11 w-11 items-center justify-center rounded-2xl border border-orange-100 bg-[#FFF6ED]">
-                              <Briefcase className="h-5 w-5 text-[#FF8A00]" />
+                        <div>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="flex-shrink-0 flex h-8 w-8 items-center justify-center rounded-xl bg-orange-50/50 border border-orange-100 group-hover:bg-[#FFF6ED] transition-colors">
+                                <Briefcase className="h-4 w-4 text-[#FF8A00]" />
+                              </div>
+                              <div>
+                                <h2 className="text-sm font-bold text-slate-800 line-clamp-1 group-hover:text-slate-900 transition-colors">
+                                  {job.title}
+                                </h2>
+                                <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mt-0.5">
+                                  {profile?.companies?.name || "Your Company"}
+                                </p>
+                              </div>
                             </div>
-                            <div>
-                              <h2 className="text-lg font-black text-slate-900 line-clamp-1">{job.title}</h2>
-                              <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.15em] text-[#C96B00]">
-                                {profile?.companies?.name || "Your Company"}
-                              </p>
-                            </div>
-                          </div>
 
-                          <div className="flex items-center gap-2">
-                            <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${getStatusClasses(job.status)}`}>
-                              {getStatusLabel(job.status)}
-                            </span>
-                            <div className="relative">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setActiveMenu(activeMenu === job.id ? null : job.id);
-                                }}
-                                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-                              >
-                                <MoreVertical className="h-4 w-4" />
-                              </button>
-
-                              {activeMenu === job.id && (
-                                <div
-                                  className="absolute right-0 top-full z-40 mt-2 w-48 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl"
-                                  onClick={(e) => e.stopPropagation()}
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              <span className={`rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-wider ${getStatusClasses(job.status)}`}>
+                                {getStatusLabel(job.status)}
+                              </span>
+                              
+                              <div className="relative">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveMenu(activeMenu === job.id ? null : job.id);
+                                  }}
+                                  className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-50 hover:text-slate-600"
                                 >
-                                  {job.status !== "active" && (
-                                    <button
-                                      onClick={() => {
-                                        updateJobStatus(job.id, "active");
-                                        setActiveMenu(null);
-                                      }}
-                                      className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-bold text-slate-700 transition hover:bg-emerald-50 hover:text-emerald-700"
-                                    >
-                                      <CheckCircle2 className="h-4 w-4" />
-                                      Mark as Open
-                                    </button>
-                                  )}
-                                  {job.status === "active" && (
-                                    <button
-                                      onClick={() => {
-                                        updateJobStatus(job.id, "paused");
-                                        setActiveMenu(null);
-                                      }}
-                                      className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-bold text-slate-700 transition hover:bg-amber-50 hover:text-amber-700"
-                                    >
-                                      <PauseCircle className="h-4 w-4" />
-                                      Pause Hiring
-                                    </button>
-                                  )}
-                                  {job.status !== "closed" && (
-                                    <button
-                                      onClick={() => {
-                                        updateJobStatus(job.id, "closed");
-                                        setActiveMenu(null);
-                                      }}
-                                      className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-bold text-slate-700 transition hover:bg-rose-50 hover:text-rose-700"
-                                    >
-                                      <XCircle className="h-4 w-4" />
-                                      Close Role
-                                    </button>
-                                  )}
-                                  <button
-                                    onClick={() => {
-                                      router.push(`/dashboard/recruiter/hiring/jobs/${job.id}/edit`);
-                                      setActiveMenu(null);
-                                    }}
-                                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-bold text-slate-700 transition hover:bg-blue-50 hover:text-blue-700"
+                                  <MoreVertical className="h-4 w-4" />
+                                </button>
+
+                                {activeMenu === job.id && (
+                                  <div
+                                    className="absolute right-0 top-full z-40 mt-1 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl"
+                                    onClick={(e) => e.stopPropagation()}
                                   >
-                                    <Edit3 className="h-4 w-4" />
-                                    Edit Role
-                                  </button>
-                                  <div className="my-1 h-px bg-slate-100" />
-                                  <button
-                                    onClick={() => deleteJob(job.id)}
-                                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-bold text-rose-700 transition hover:bg-rose-50"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                    Delete Role
-                                  </button>
-                                </div>
-                              )}
+                                    {job.status !== "active" && (
+                                      <button
+                                        onClick={() => {
+                                          updateJobStatus(job.id, "active");
+                                          setActiveMenu(null);
+                                        }}
+                                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-[11px] font-bold text-slate-700 transition hover:bg-emerald-50 hover:text-emerald-700"
+                                      >
+                                        <CheckCircle2 className="h-3.5 w-3.5" />
+                                        Mark as Open
+                                      </button>
+                                    )}
+                                    {job.status === "active" && (
+                                      <button
+                                        onClick={() => {
+                                          updateJobStatus(job.id, "paused");
+                                          setActiveMenu(null);
+                                        }}
+                                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-[11px] font-bold text-slate-700 transition hover:bg-amber-50 hover:text-amber-700"
+                                      >
+                                        <PauseCircle className="h-3.5 w-3.5" />
+                                        Pause Hiring
+                                      </button>
+                                    )}
+                                    {job.status !== "closed" && (
+                                      <button
+                                        onClick={() => {
+                                          updateJobStatus(job.id, "closed");
+                                          setActiveMenu(null);
+                                        }}
+                                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-[11px] font-bold text-slate-700 transition hover:bg-rose-50 hover:text-rose-700"
+                                      >
+                                        <XCircle className="h-3.5 w-3.5" />
+                                        Close Role
+                                      </button>
+                                    )}
+                                    <button
+                                      onClick={() => {
+                                        router.push(`/dashboard/recruiter/hiring/jobs/${job.id}/edit`);
+                                        setActiveMenu(null);
+                                      }}
+                                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-[11px] font-bold text-slate-700 transition hover:bg-blue-50 hover:text-blue-700"
+                                    >
+                                      <Edit3 className="h-3.5 w-3.5" />
+                                      Edit Role
+                                    </button>
+                                    <div className="my-1 h-px bg-slate-100" />
+                                    <button
+                                      onClick={() => deleteJob(job.id)}
+                                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-[11px] font-bold text-rose-700 transition hover:bg-rose-50"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                      Delete Role
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           </div>
-                        </div>
 
-                        <p className="mt-3 line-clamp-2 text-sm leading-relaxed text-slate-600">
-                          {job.description || "No role summary added yet."}
-                        </p>
-
-                        <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
-                          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Location</p>
-                            <p className="mt-1 flex items-center gap-1.5 font-semibold text-slate-800">
-                              <MapPin className="h-3.5 w-3.5 text-slate-500" />
+                          <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                            <span className="inline-flex items-center gap-1 rounded-lg bg-slate-50 border border-slate-100 px-2 py-0.5 text-slate-500" title="Location">
+                              <MapPin className="h-3 w-3 text-slate-400" />
                               {job.location || "Remote"}
-                            </p>
+                            </span>
+                            <span className="inline-flex items-center gap-1 rounded-lg bg-slate-50 border border-slate-100 px-2 py-0.5 text-slate-500" title="Experience">
+                              <Briefcase className="h-3 w-3 text-slate-400" />
+                              {getExperienceBandLabel(job.experience_band)}
+                            </span>
+                            <span className="inline-flex items-center gap-1 rounded-lg bg-slate-50 border border-slate-100 px-2 py-0.5 text-slate-500" title="Positions">
+                              <Users className="h-3 w-3 text-slate-400" />
+                              {job.number_of_positions} pos
+                            </span>
+                            <span className="inline-flex items-center gap-1 rounded-lg bg-[#FFF7EE] border border-orange-100 px-2 py-0.5 text-[#C96B00]" title="Views">
+                              <Activity className="h-3 w-3 text-[#FF8A00]" />
+                              {getJobViewCount(job.id)} views
+                            </span>
                           </div>
-                          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Positions</p>
-                            <p className="mt-1 flex items-center gap-1.5 font-semibold text-slate-800">
-                              <Users className="h-3.5 w-3.5 text-slate-500" />
-                              {job.number_of_positions}
-                            </p>
-                          </div>
-                          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Experience</p>
-                            <p className="mt-1 font-semibold text-slate-800">{getExperienceBandLabel(job.experience_band)}</p>
-                          </div>
-                          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Candidate Views</p>
-                            <p className="mt-1 flex items-center gap-1.5 font-semibold text-slate-800">
-                              <Users className="h-3.5 w-3.5 text-slate-500" />
-                              {getJobViewCount(job.id)}
-                            </p>
-                          </div>
+
+                          <p className="mt-2 text-xs leading-relaxed text-slate-500 line-clamp-2">
+                            {job.description || "No description provided."}
+                          </p>
                         </div>
 
-                        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-4">
-                          <p className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500">
-                            <Clock3 className="h-3.5 w-3.5" />
+                        <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
+                          <p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            <Clock3 className="h-3 w-3" />
                             Posted {new Date(job.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                           </p>
 
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5">
                             <button
-                              onClick={() => router.push(`/dashboard/recruiter/hiring/jobs/${job.id}/edit`)}
-                              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-black uppercase tracking-wider text-slate-700 transition hover:border-[#FF8A00] hover:text-[#FF8A00]"
+                              onClick={() => {
+                                setSharingJob(job);
+                              }}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-[#FF8A00] hover:text-[#FF8A00] hover:bg-orange-50/10 active:scale-95"
+                              title="Share Role"
                             >
-                              <Edit3 className="h-3.5 w-3.5" />
-                              Edit Role
+                              <Share2 className="h-3.5 w-3.5" />
                             </button>
+
                             <button
                               onClick={() => router.push(`/dashboard/recruiter/hiring/applications?job=${job.id}`)}
-                              className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-3 py-2 text-[11px] font-black uppercase tracking-wider text-white transition hover:bg-[#FF8A00]"
+                              className="inline-flex h-8 items-center justify-center gap-1 rounded-xl bg-slate-900 px-3.5 py-1 text-[10px] font-black uppercase tracking-wider text-white transition hover:bg-[#FF8A00] active:scale-95"
                             >
-                              Review Candidates
-                              <ArrowRight className="h-3.5 w-3.5" />
+                              Applications
+                              <ArrowRight className="h-3 w-3" />
                             </button>
                           </div>
                         </div>
@@ -540,6 +539,14 @@ export default function JobsManagement() {
         </>
       )}
       </main>
+
+      {sharingJob && (
+        <ShareJobModal
+          job={sharingJob}
+          companyName={profile?.companies?.name}
+          onClose={() => setSharingJob(null)}
+        />
+      )}
     </div>
   );
 }

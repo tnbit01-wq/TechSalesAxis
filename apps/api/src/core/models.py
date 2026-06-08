@@ -276,6 +276,7 @@ class ChatThread(Base):
     candidate_archived = Column(Boolean, default=False)
     last_message_at = Column(DateTime, default=func.now())
     created_at = Column(DateTime, default=func.now())
+    negative_reply_read_at = Column(DateTime, nullable=True)
 
 class ChatMessage(Base):
     __tablename__ = 'chat_messages'

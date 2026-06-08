@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from src.core.dependencies import get_current_user
 from src.services.recruiter_service import recruiter_service
 from src.services.s3_service import S3Service
@@ -891,6 +891,30 @@ async def generate_job_ai(data: JobAIPrompt):
         "currency": "USD"
     }
 
+@router.post("/jobs/parse-jd")
+async def parse_jd_file(
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user)
+):
+    """
+    Upload a Job Description document (PDF, DOCX, TXT) and parse it into
+    structured job form fields using AI. Returns the same shape as /jobs/generate-ai.
+    """
+    from src.services.jd_parser_service import JDParserService
+
+    if not file or not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+
+    try:
+        file_bytes = await file.read()
+        result = await JDParserService.parse_jd_file(file_bytes, file.filename)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        print(f"ERROR in parse_jd_file: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to parse JD: {str(e)}")
+
 @router.post("/check-job-potential")
 async def check_job_potential(
     data: Dict[str, Any], 
@@ -992,6 +1016,20 @@ async def get_candidate(candidate_id: str, db: Session = Depends(get_db)):
 @router.post("/candidate/{candidate_id}/invite")
 async def invite_candidate(candidate_id: str, data: JobInviteRequest, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     user_id = user["sub"]
+    
+    # Check if recruiter has a rejected/inactive thread with this candidate within last 30 days
+    thread = db.query(ChatThread).filter(
+        ChatThread.recruiter_id == user_id,
+        ChatThread.candidate_id == candidate_id
+    ).first()
+    if thread and not thread.is_active:
+        from datetime import datetime, timedelta
+        if thread.last_message_at and (datetime.utcnow() - thread.last_message_at < timedelta(days=30)):
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot invite candidate within 30 days of rejection."
+            )
+            
     invite_msg = data.message or "A recruiter invited you to explore a role."
     
     # 1. Create thread so they can talk immediately

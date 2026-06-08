@@ -116,6 +116,7 @@ export default function RecommendationsPage() {
 
     return candidateApplications.some(app => {
       const appStatus = app.status || app.app?.status || '';
+      if (appStatus.toLowerCase() === 'rejected') return false;
       const isSensitiveStatus = ['applied', 'shortlisted', 'interview_scheduled', 'offered', 'hired'].includes(appStatus.toLowerCase());
       const hasInviteReply = app.invite_message_replied || app.has_replied_to_invite || false;
       return isSensitiveStatus || hasInviteReply;

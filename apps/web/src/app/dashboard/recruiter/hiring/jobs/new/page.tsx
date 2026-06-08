@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import { useRouter } from "next/navigation";
@@ -19,8 +19,12 @@ import {
   X,
   Send,
   Workflow,
+  FileUp,
+  Share2,
+  CheckCircle2,
 } from "lucide-react";
 import LockedView from "@/components/dashboard/LockedView";
+import ShareJobModal from "@/components/ShareJobModal";
 
 export default function NewJobPage() {
   const router = useRouter();
@@ -50,6 +54,33 @@ export default function NewJobPage() {
   const [positionsInput, setPositionsInput] = useState("1");
   const [matchPotential, setMatchPotential] = useState<{ count: number; message: string } | null>(null);
   const [checkingPotential, setCheckingPotential] = useState(false);
+  const [jdUploading, setJdUploading] = useState(false);
+  const [jdUploadSuccess, setJdUploadSuccess] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const jdFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      const ext = "." + file.name.split(".").pop()?.toLowerCase();
+      if ([".pdf", ".docx", ".doc", ".txt"].includes(ext)) {
+        handleJDUpload(file);
+      } else {
+        alert("Unsupported file type. Please upload a PDF, DOCX, or TXT file.");
+      }
+    }
+  };
 
   const getExperienceBandLabel = (band: string) => {
     switch (band) {
@@ -251,6 +282,55 @@ export default function NewJobPage() {
     }
   };
 
+  const handleJDUpload = async (file: File) => {
+    if (!file) return;
+    setJdUploading(true);
+    setJdUploadSuccess(false);
+    try {
+      const token = awsAuth.getToken();
+      if (!token) return;
+
+      const formDataUpload = new FormData();
+      formDataUpload.append("file", file);
+
+      const result = await apiClient.post(
+        "/recruiter/jobs/parse-jd",
+        formDataUpload,
+        token,
+      );
+
+      if (result && result.title) {
+        setFormData({
+          ...formData,
+          title: result.title || formData.title,
+          description: result.description || formData.description,
+          requirements: result.requirements || formData.requirements,
+          skills_required: result.skills_required || formData.skills_required,
+          experience_band: result.experience_band || formData.experience_band,
+          job_type: result.job_type || formData.job_type,
+          location: result.location || formData.location,
+          salary_range: result.salary_range || formData.salary_range,
+          number_of_positions: result.number_of_positions || formData.number_of_positions,
+          is_ai_generated: true,
+        });
+        if (result.number_of_positions) {
+          setPositionsInput(String(result.number_of_positions));
+        }
+        setJdUploadSuccess(true);
+        setTimeout(() => setJdUploadSuccess(false), 4000);
+      }
+    } catch (err) {
+      console.error("JD Upload failed:", err);
+      alert("Failed to parse the uploaded file. Please try a different file or use AI Assist.");
+    } finally {
+      setJdUploading(false);
+      // Reset file input so the same file can be re-uploaded
+      if (jdFileInputRef.current) {
+        jdFileInputRef.current.value = "";
+      }
+    }
+  };
+
   if (checkingLock) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50/50">
@@ -268,11 +348,11 @@ export default function NewJobPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(255,138,0,0.12),_transparent_38%),linear-gradient(180deg,#FFF8F1_0%,#FFFFFF_56%,#FFFDF9_100%)] text-slate-900">
+    <div className="h-[calc(100vh-64px)] w-full overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(255,138,0,0.06),_transparent_40%),linear-gradient(180deg,#FFF8F1_0%,#FFFFFF_56%,#FFFDF9_100%)] text-slate-900">
       <style>{`
         .job-form-scroll {
           scrollbar-width: thin;
-          scrollbar-color: #d6d3d1 transparent;
+          scrollbar-color: #e2e8f0 transparent;
         }
         .job-form-scroll::-webkit-scrollbar {
           width: 4px;
@@ -282,124 +362,154 @@ export default function NewJobPage() {
           background: transparent;
         }
         .job-form-scroll::-webkit-scrollbar-thumb {
-          background: #d6d3d1;
+          background: #cbd5e1;
           border-radius: 999px;
         }
       `}</style>
 
-      <main className="mx-auto flex h-[calc(100vh-64px)] w-full max-w-[1680px] flex-col gap-4 px-4 py-4">
-        <section className="flex flex-col gap-3 rounded-[28px] border border-orange-100/80 bg-white px-5 py-4 shadow-[0_10px_26px_rgba(255,138,0,0.08)] lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-start gap-4">
-            <button
-              type="button"
-              onClick={() => router.push("/dashboard/recruiter/hiring/jobs")}
-              className="mt-0.5 inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-orange-100 bg-[#FFF7EE] text-[#C96B00] transition hover:border-[#FF8A00] hover:text-[#FF8A00]"
-              aria-label="Back to jobs"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </button>
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#FF8A00]">Role Builder</p>
-              <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-900">Create a new job</h1>
-              <p className="mt-1 max-w-2xl text-sm text-slate-500">
-                Keep the publishing flow compact, readable, and branded so recruiters can draft faster without losing context.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
-            <button
-              onClick={() => setShowAiAssistant(!showAiAssistant)}
-              className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 transition-all ${
-                showAiAssistant
-                  ? "border-blue-200 bg-blue-600 text-white shadow-[0_8px_20px_rgba(37,99,235,0.24)]"
-                  : "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
-              }`}
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              AI Assist
-            </button>
-            <button
-              onClick={handleCheckMatchPotential}
-              disabled={checkingPotential || formData.skills_required.length === 0}
-              className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
-              title="Preview matching candidates after adding skills"
-            >
-              {checkingPotential ? (
-                <div className="h-3.5 w-3.5 rounded-full border-2 border-emerald-700 border-t-transparent animate-spin" />
-              ) : (
-                <Target className="h-3.5 w-3.5" />
-              )}
-              Preview Talent
-            </button>
-            <button
-              onClick={handleCreateJob}
-              disabled={loading}
-              className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-white shadow-[0_10px_24px_rgba(15,23,42,0.16)] transition hover:bg-[#FF8A00] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {loading ? (
-                <>
-                  <div className="h-3.5 w-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                  Publishing
-                </>
-              ) : (
-                <>
-                  <Send className="h-3.5 w-3.5" />
-                  Publish Role
-                </>
-              )}
-            </button>
-          </div>
-        </section>
-
-        {matchPotential && (
-          <div
-            className={`rounded-2xl border p-4 shadow-[0_8px_20px_rgba(15,23,42,0.05)] ${
-              matchPotential.count === 0
-                ? "border-amber-200 bg-amber-50"
-                : "border-emerald-200 bg-emerald-50"
-            }`}
-          >
-            <div className="flex items-start gap-3">
-              <div
-                className={`flex h-10 w-10 items-center justify-center rounded-2xl ${
-                  matchPotential.count === 0 ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"
-                }`}
-              >
-                <Users className="h-5 w-5" />
+      <main className="h-full w-full max-w-[1680px] mx-auto px-4 py-3 flex flex-col overflow-hidden">
+        <section className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.45fr)_330px] overflow-hidden">
+          {/* Left Column Card Wrapper */}
+          <div className="flex flex-col min-h-0 bg-white rounded-[24px] border border-slate-100 shadow-[0_4px_20px_rgba(15,23,42,0.03)] overflow-hidden">
+            {/* Interior Board Header */}
+            <div className="flex-shrink-0 flex flex-wrap items-center justify-between px-6 py-3 border-b border-slate-100 bg-[linear-gradient(135deg,#FFF9F2_0%,#FFFFFF_100%)] gap-2">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => router.push("/dashboard/recruiter/hiring/jobs")}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-orange-100 bg-[#FFF7EE] text-[#C96B00] transition hover:border-[#FF8A00] hover:text-[#FF8A00]"
+                  aria-label="Back to jobs"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
+                <h1 className="text-sm font-black text-slate-800 uppercase tracking-tight">New Role Creator</h1>
               </div>
-              <div className="min-w-0 flex-1">
-                <h2
-                  className={`text-sm font-black uppercase tracking-tight ${
-                    matchPotential.count === 0 ? "text-amber-900" : "text-emerald-900"
+
+              <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-black uppercase tracking-wider">
+                <button
+                  type="button"
+                  onClick={() => setShowAiAssistant(!showAiAssistant)}
+                  className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 transition-all ${
+                    showAiAssistant
+                      ? "border-blue-200 bg-blue-600 text-white shadow-sm"
+                      : "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
                   }`}
                 >
-                  {matchPotential.message}
-                </h2>
-                {matchPotential.count > 0 && (
-                  <div className="mt-2 flex items-center gap-3 text-[10px] font-bold uppercase tracking-wider text-slate-600">
-                    <span>{matchPotential.count} matching candidates</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const skillsParam = encodeURIComponent(formData.skills_required.join(","));
-                        const locParam = encodeURIComponent(formData.location || "");
-                        router.push(`/dashboard/recruiter/talent-pool?filter=skill_match&skills=${skillsParam}&location=${locParam}`);
-                      }}
-                      className="text-emerald-700 underline decoration-emerald-400 underline-offset-4 hover:text-emerald-800"
-                    >
-                      Open talent pool
-                    </button>
-                  </div>
-                )}
+                  <Sparkles className="h-3.5 w-3.5" />
+                  AI Assist
+                </button>
+                <button
+                  type="button"
+                  onClick={() => jdFileInputRef.current?.click()}
+                  disabled={jdUploading}
+                  className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 transition-all ${
+                    jdUploadSuccess
+                      ? "border-emerald-200 bg-emerald-600 text-white shadow-sm"
+                      : jdUploading
+                        ? "border-violet-200 bg-violet-600 text-white shadow-sm"
+                        : "border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100"
+                  }`}
+                >
+                  {jdUploading ? (
+                    <>
+                      <div className="h-3 w-3 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                      Parsing...
+                    </>
+                  ) : jdUploadSuccess ? (
+                    <>
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      JD Parsed!
+                    </>
+                  ) : (
+                    <>
+                      <FileUp className="h-3.5 w-3.5" />
+                      Upload JD
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCheckMatchPotential}
+                  disabled={checkingPotential || formData.skills_required.length === 0}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  title="Preview matching candidates after adding skills"
+                >
+                  {checkingPotential ? (
+                    <div className="h-3 w-3 rounded-full border-2 border-emerald-700 border-t-transparent animate-spin" />
+                  ) : (
+                    <Target className="h-3.5 w-3.5" />
+                  )}
+                  Preview Talent
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCreateJob}
+                  disabled={loading}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-2 text-white transition hover:bg-[#FF8A00] disabled:cursor-not-allowed disabled:opacity-60 shadow-md shadow-slate-100"
+                >
+                  {loading ? (
+                    <>
+                      <div className="h-3 w-3 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                      Publishing
+                    </>
+                  ) : (
+                    <>
+                      <Send className="h-3.5 w-3.5" />
+                      Publish Role
+                    </>
+                  )}
+                </button>
               </div>
             </div>
-          </div>
-        )}
 
-        <section className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.45fr)_380px]">
-          <div className="job-form-scroll min-h-0 overflow-y-auto rounded-[28px] border border-orange-100/80 bg-white p-4 shadow-[0_10px_26px_rgba(255,138,0,0.08)] lg:p-5">
-            <form onSubmit={handleCreateJob} className="space-y-4">
+            {/* Scrollable Form Body */}
+            <div className="job-form-scroll flex-1 overflow-y-auto p-5 bg-slate-50/10 space-y-4">
+              {matchPotential && (
+                <div
+                  className={`rounded-2xl border p-4 shadow-sm ${
+                    matchPotential.count === 0
+                      ? "border-amber-200 bg-amber-50"
+                      : "border-emerald-200 bg-emerald-50"
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      className={`flex h-10 w-10 items-center justify-center rounded-2xl ${
+                        matchPotential.count === 0 ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"
+                      }`}
+                    >
+                      <Users className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h2
+                        className={`text-sm font-black uppercase tracking-tight ${
+                          matchPotential.count === 0 ? "text-amber-900" : "text-emerald-900"
+                        }`}
+                      >
+                        {matchPotential.message}
+                      </h2>
+                      {matchPotential.count > 0 && (
+                        <div className="mt-2 flex items-center gap-3 text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                          <span>{matchPotential.count} matching candidates</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const skillsParam = encodeURIComponent(formData.skills_required.join(","));
+                              const locParam = encodeURIComponent(formData.location || "");
+                              router.push(`/dashboard/recruiter/talent-pool?filter=skill_match&skills=${skillsParam}&location=${locParam}`);
+                            }}
+                            className="text-emerald-700 underline decoration-emerald-400 underline-offset-4 hover:text-emerald-800"
+                          >
+                            Open talent pool
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <form onSubmit={handleCreateJob} className="space-y-4">
               <Section title="Role Architecture" icon={Briefcase} tone="orange">
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                   <Field label="Job title" icon={Target}>
@@ -407,7 +517,7 @@ export default function NewJobPage() {
                       required
                       value={formData.title}
                       onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 outline-none transition focus:border-[#FF8A00]/50 focus:ring-4 focus:ring-[#FF8A00]/10"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 outline-none transition focus:border-[#FF8A00]/50 focus:ring-4 focus:ring-[#FF8A00]/10"
                       placeholder="Lead Software Architect"
                     />
                   </Field>
@@ -415,7 +525,7 @@ export default function NewJobPage() {
                     <select
                       value={formData.experience_band}
                       onChange={(e) => setFormData({ ...formData, experience_band: e.target.value })}
-                      className="w-full appearance-none rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 outline-none transition focus:border-[#FF8A00]/50 focus:ring-4 focus:ring-[#FF8A00]/10"
+                      className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 outline-none transition focus:border-[#FF8A00]/50 focus:ring-4 focus:ring-[#FF8A00]/10"
                     >
                       <option value="fresher">0-1 (Fresher)</option>
                       <option value="mid">1-5 (Mid-level)</option>
@@ -427,7 +537,7 @@ export default function NewJobPage() {
                     <select
                       value={formData.job_type}
                       onChange={(e) => setFormData({ ...formData, job_type: e.target.value })}
-                      className="w-full appearance-none rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 outline-none transition focus:border-[#FF8A00]/50 focus:ring-4 focus:ring-[#FF8A00]/10"
+                      className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 outline-none transition focus:border-[#FF8A00]/50 focus:ring-4 focus:ring-[#FF8A00]/10"
                     >
                       <option value="onsite">On-site</option>
                       <option value="hybrid">Hybrid</option>
@@ -441,10 +551,10 @@ export default function NewJobPage() {
                 <Field label="Role description" icon={Zap} fullWidth>
                   <textarea
                     required
-                    rows={6}
+                    rows={4}
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    className="w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 outline-none transition focus:border-[#FF8A00]/50 focus:ring-4 focus:ring-[#FF8A00]/10"
+                    className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-900 outline-none transition focus:border-[#FF8A00]/50 focus:ring-4 focus:ring-[#FF8A00]/10"
                     placeholder="Describe the mission, responsibilities, and daily impact of the role..."
                   />
                 </Field>
@@ -462,7 +572,7 @@ export default function NewJobPage() {
                           requirements: e.target.value.split("\n").filter(Boolean),
                         })
                       }
-                      className="w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 outline-none transition focus:border-[#FF8A00]/50 focus:ring-4 focus:ring-[#FF8A00]/10"
+                      className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-900 outline-none transition focus:border-[#FF8A00]/50 focus:ring-4 focus:ring-[#FF8A00]/10"
                       placeholder="One requirement per line"
                     />
                   </Field>
@@ -470,24 +580,7 @@ export default function NewJobPage() {
                     <div className="space-y-3">
                       <input
                         value={skillsInput}
-                        onChange={(e) => {
-                          const input = e.target.value;
-                          const lastChar = input[input.length - 1];
-
-                          if ((lastChar === "," || lastChar === " ") && input.length > 1) {
-                            const skill = input.slice(0, -1).trim();
-
-                            if (skill && !formData.skills_required.includes(skill)) {
-                              setFormData({
-                                ...formData,
-                                skills_required: [...formData.skills_required, skill],
-                              });
-                            }
-                            setSkillsInput("");
-                          } else {
-                            setSkillsInput(input);
-                          }
-                        }}
+                        onChange={(e) => setSkillsInput(e.target.value)}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {
                             e.preventDefault();
@@ -501,8 +594,8 @@ export default function NewJobPage() {
                             }
                           }
                         }}
-                        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 outline-none transition focus:border-[#FF8A00]/50 focus:ring-4 focus:ring-[#FF8A00]/10"
-                        placeholder="Type a skill, then press space, comma, or Enter"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 outline-none transition focus:border-[#FF8A00]/50 focus:ring-4 focus:ring-[#FF8A00]/10"
+                        placeholder="Type a skill, then press Enter"
                       />
                       {formData.skills_required.length > 0 && (
                         <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-3">
@@ -543,7 +636,7 @@ export default function NewJobPage() {
                     <input
                       value={formData.location}
                       onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 outline-none transition focus:border-[#FF8A00]/50 focus:ring-4 focus:ring-[#FF8A00]/10"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 outline-none transition focus:border-[#FF8A00]/50 focus:ring-4 focus:ring-[#FF8A00]/10"
                       placeholder="City, Country"
                     />
                   </Field>
@@ -576,7 +669,7 @@ export default function NewJobPage() {
                           });
                         }
                       }}
-                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 outline-none transition focus:border-[#FF8A00]/50 focus:ring-4 focus:ring-[#FF8A00]/10"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 outline-none transition focus:border-[#FF8A00]/50 focus:ring-4 focus:ring-[#FF8A00]/10"
                       placeholder="1"
                     />
                   </Field>
@@ -585,14 +678,14 @@ export default function NewJobPage() {
                       <input
                         value={formData.salary_range}
                         onChange={(e) => setFormData({ ...formData, salary_range: e.target.value })}
-                        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 outline-none transition focus:border-[#FF8A00]/50 focus:ring-4 focus:ring-[#FF8A00]/10"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 outline-none transition focus:border-[#FF8A00]/50 focus:ring-4 focus:ring-[#FF8A00]/10"
                         placeholder="$120k - $160k"
                       />
                       <button
                         type="button"
                         onClick={handleRecalculateSalary}
                         disabled={salaryLoading || !formData.location}
-                        className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-3 py-1.5 text-[9px] font-black uppercase tracking-wider text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
                         title="Auto-detect salary range based on your location and experience level"
                       >
                         {salaryLoading ? (
@@ -610,9 +703,10 @@ export default function NewJobPage() {
               </Section>
             </form>
           </div>
+        </div>
 
-          <aside className="job-form-scroll min-h-0 overflow-y-auto rounded-[28px] border border-orange-100/80 bg-white p-4 shadow-[0_10px_26px_rgba(255,138,0,0.08)] lg:p-5">
-            <div className="space-y-4">
+        <aside className="job-form-scroll min-h-0 overflow-y-auto space-y-4 hidden lg:flex lg:flex-col">
+          <div className="space-y-4">
               <div className="rounded-[24px] bg-[linear-gradient(135deg,#FFF7EE_0%,#FFFFFF_55%,#FFF1E3_100%)] p-4 ring-1 ring-orange-100/80">
                 <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#C96B00]">Draft summary</p>
                 <h2 className="mt-1 text-lg font-black tracking-tight text-slate-900">
@@ -642,28 +736,39 @@ export default function NewJobPage() {
                 </div>
               </div>
 
-              <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
-                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">Publishing checklist</p>
-                <ul className="mt-3 space-y-2 text-sm text-slate-600">
-                  <li className="rounded-2xl bg-white px-3 py-2">Use the role title and description to set the page context.</li>
-                  <li className="rounded-2xl bg-white px-3 py-2">Add skills to unlock the talent preview button.</li>
-                  <li className="rounded-2xl bg-white px-3 py-2">Keep salary and location aligned before publishing.</li>
-                </ul>
-              </div>
-
-              <div className="rounded-[24px] border border-emerald-200 bg-emerald-50 p-4">
-                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-700">AI assist</p>
-                <p className="mt-1 text-sm text-emerald-900/80">
-                  Toggle the AI assistant to draft the role from a short prompt, then refine the details here.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setShowAiAssistant(!showAiAssistant)}
-                  className="mt-3 inline-flex items-center gap-2 rounded-full bg-emerald-600 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-white transition hover:bg-emerald-700"
-                >
-                  <Sparkles className="h-3.5 w-3.5" />
-                  {showAiAssistant ? "Hide AI assistant" : "Open AI assistant"}
-                </button>
+              <div
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                onClick={() => jdFileInputRef.current?.click()}
+                className={`group cursor-pointer rounded-[24px] border-2 border-dashed p-5 text-center transition-all duration-300 ${
+                  isDragging
+                    ? "border-[#FF8A00] bg-orange-50/50 shadow-[0_10px_30px_rgba(255,138,0,0.12)] scale-[1.02]"
+                    : "border-slate-200 bg-slate-50 hover:border-[#FF8A00]/50 hover:bg-white hover:shadow-[0_10px_24px_rgba(255,138,0,0.04)]"
+                }`}
+              >
+                <div className="flex flex-col items-center gap-3">
+                  <div className={`flex h-12 w-12 items-center justify-center rounded-2xl transition-all duration-300 ${
+                    isDragging || jdUploading
+                      ? "bg-orange-100 text-[#FF8A00] animate-bounce"
+                      : "bg-slate-100 text-slate-400 group-hover:bg-orange-50 group-hover:text-[#FF8A00]"
+                  }`}>
+                    <FileUp className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-800 group-hover:text-[#FF8A00]">
+                      {jdUploading ? "Parsing document..." : "Drag & drop your JD"}
+                    </p>
+                    <p className="mt-1 text-[10px] font-medium text-slate-400">
+                      Supports PDF, DOCX, or TXT (Max 10MB)
+                    </p>
+                  </div>
+                  {!jdUploading && (
+                    <span className="rounded-full bg-white px-3 py-1 text-[9px] font-black uppercase tracking-wider text-slate-500 shadow-sm border border-slate-100 group-hover:border-orange-100 group-hover:text-[#FF8A00] transition-colors">
+                      Browse File
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           </aside>
@@ -726,7 +831,19 @@ export default function NewJobPage() {
           </div>
         </div>
       )}
-      
+
+      {/* Hidden file input for JD upload */}
+      <input
+        ref={jdFileInputRef}
+        type="file"
+        accept=".pdf,.docx,.doc,.txt"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) handleJDUpload(file);
+        }}
+      />
+       
     </div>
   );
 }

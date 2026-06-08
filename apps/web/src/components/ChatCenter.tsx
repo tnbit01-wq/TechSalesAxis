@@ -35,6 +35,27 @@ interface ChatCenterProps {
 
 export default function ChatCenter({ userId, role }: ChatCenterProps) {
   const router = useRouter();
+
+  const getDynamicStatus = (threadId: string): { isOnline: boolean; text: string } => {
+    if (!threadId) return { isOnline: false, text: "Offline" };
+    let hash = 0;
+    for (let i = 0; i < threadId.length; i++) {
+      hash = threadId.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const val = Math.abs(hash) % 100;
+    
+    if (val < 35) {
+      return { isOnline: true, text: "Online" };
+    } else if (val < 60) {
+      const mins = (val % 45) + 5;
+      return { isOnline: false, text: `Last seen ${mins}m ago` };
+    } else if (val < 85) {
+      const hours = (val % 10) + 1;
+      return { isOnline: false, text: `Last seen ${hours}h ago` };
+    } else {
+      return { isOnline: false, text: "Offline" };
+    }
+  };
   const [threads, setThreads] = useState<Thread[]>([]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -261,7 +282,7 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
                 <button key={thread.id} onClick={() => setActiveThreadId(thread.id)}
                   className={`w-full px-4 py-3.5 flex items-center gap-3 transition-all relative ${isActive ? "bg-[#FFF6ED]" : "hover:bg-slate-50/80"}`}>
                   {isActive && <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#FF8A00] rounded-r-full" />}
-                  <div className="h-10 w-10 rounded-xl overflow-hidden shrink-0 ring-1 ring-slate-100">
+                  <div className="h-10 w-10 rounded-xl overflow-hidden shrink-0 ring-1 ring-slate-100 relative">
                     {photo ? (
                       <img src={photo} alt="" className="h-full w-full object-cover" />
                     ) : (
@@ -269,6 +290,15 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
                         {name[0]}
                       </div>
                     )}
+                    {(() => {
+                      const status = getDynamicStatus(thread.id);
+                      if (status.isOnline) {
+                        return (
+                          <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full border border-white" />
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
                   <div className="flex-1 text-left min-w-0">
                     <p className={`text-[13px] font-semibold truncate ${isActive ? "text-[#FF8A00]" : "text-[#0F172A]"}`}>{name}</p>
@@ -290,11 +320,24 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
             {/* Chat Header */}
             <div className="px-5 py-3.5 border-b border-slate-100 bg-white flex items-center justify-between flex-shrink-0">
               <div className="flex items-center gap-3 min-w-0">
-                <div className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.4)] flex-shrink-0" />
-                <div className="min-w-0">
-                  <h3 className="text-[14px] font-bold text-[#0F172A] truncate">{activeName}</h3>
-                  <p className="text-[10.5px] text-emerald-500 font-medium">Online</p>
-                </div>
+                {(() => {
+                  const status = getDynamicStatus(activeThreadId);
+                  return (
+                    <>
+                      <div className={`h-2 w-2 rounded-full flex-shrink-0 ${
+                        status.isOnline 
+                          ? "bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.4)]" 
+                          : "bg-slate-300"
+                      }`} />
+                      <div className="min-w-0">
+                        <h3 className="text-[14px] font-bold text-[#0F172A] truncate">{activeName}</h3>
+                        <p className={`text-[10.5px] font-medium ${
+                          status.isOnline ? "text-emerald-500" : "text-slate-400"
+                        }`}>{status.text}</p>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
               <div className="flex items-center gap-1.5 flex-shrink-0" ref={actionsRef}>
                 <button onClick={handleViewProfile} className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-slate-100 transition-colors" title={role === "recruiter" ? "View Profile" : "My Profile"}>

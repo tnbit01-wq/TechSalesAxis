@@ -231,7 +231,7 @@ export default function TalentBubbleChart({ data }: TalentBubbleChartProps) {
       
       {hoverNode && (
         <div 
-          className="absolute top-4 left-4 z-50 p-6 bg-gradient-to-br from-[#FF8A00] to-[#FF6B00] backdrop-blur-xl border border-white/20 rounded-2xl shadow-2xl min-w-[280px] animate-in fade-in zoom-in duration-200"
+          className="absolute top-4 left-4 z-50 p-6 bg-gradient-to-br from-[#FF8A00] to-[#FF6B00] backdrop-blur-xl border border-white/20 rounded-2xl shadow-2xl min-w-[280px] animate-in fade-in zoom-in duration-200 pointer-events-none"
         >
           <div className="flex items-center gap-3 mb-5">
             <div className="h-3 w-3 rounded-full animate-pulse bg-white/80" />
@@ -247,7 +247,7 @@ export default function TalentBubbleChart({ data }: TalentBubbleChartProps) {
               </div>
               <div className="bg-white/15 backdrop-blur-sm rounded-xl p-3.5 border border-white/20">
                 <p className="text-[8px] font-bold text-white/70 uppercase tracking-widest mb-2">Avg Salary</p>
-                <p className="text-2xl font-black text-white tracking-tighter">₹{hoverNode.details.avgSal}L</p>
+                <p className="text-2xl font-black text-white tracking-tighter">{"\u20B9"}{hoverNode.details.avgSal}L</p>
               </div>
             </div>
 

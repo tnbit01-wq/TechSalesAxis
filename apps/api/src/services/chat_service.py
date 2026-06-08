@@ -71,7 +71,7 @@ class ChatService:
             raise e
 
     @staticmethod
-    def send_message(db: Session, thread_id: str, sender_id: str, content: str) -> dict:
+    async def send_message(db: Session, thread_id: str, sender_id: str, content: str) -> dict:
         """
         Sends a message within a thread.
         Includes a gate check for Behavioral and Psychometric assessment completion.
@@ -86,6 +86,57 @@ class ChatService:
                 raise ValueError("Cannot send message to an inactive thread.")
 
             candidate_id = thread.candidate_id
+            recruiter_id = thread.recruiter_id
+
+            # AI Safety Filter
+            is_appropriate = True
+            from src.services.recruiter_service import recruiter_service
+            if recruiter_service.openai_key:
+                safety_prompt = f"""
+                Analyze the following chat message to determine if it is appropriate for a professional recruitment platform.
+                Look for slurs, profanity, hate speech, spam, harassment, explicit sexual content, or general abuse.
+                
+                Message: "{content}"
+                
+                Respond with ONLY one word: "APPROPRIATE" or "INAPPROPRIATE".
+                """
+                try:
+                    safety_result = await recruiter_service._call_ai(
+                        safety_prompt,
+                        "You are a professional chat moderator. Classify messages as APPROPRIATE or INAPPROPRIATE."
+                    )
+                    if "INAPPROPRIATE" in (safety_result or "").upper():
+                        is_appropriate = False
+                        print(f"DEBUG: Safety filter flagged message as INAPPROPRIATE: {content}")
+                except Exception as safety_err:
+                    print(f"ERROR running safety filter: {safety_err}")
+            else:
+                # Rule-based fallback check if OpenAI is not available
+                lower_content = content.lower()
+                inappropriate_keywords = [
+                    "abuse", "harass", "fuck", "shit", "bitch", "asshole", "bastard", "nigger", "faggot", "retard",
+                    "cunt", "dick", "pussy", "slut", "whore", "spam", "scam", "crypto double", "send money to", "cash prize"
+                ]
+                if any(kw in lower_content for kw in inappropriate_keywords):
+                    is_appropriate = False
+                    print(f"DEBUG: Safety filter flagged message via fallback keywords: {content}")
+
+            if not is_appropriate:
+                # Auto-report
+                other_party_id = thread.candidate_id if sender_id == thread.recruiter_id else thread.recruiter_id
+                try:
+                    report = ChatReport(
+                        reporter_id=other_party_id,
+                        reported_id=sender_id,
+                        reason=f"System Auto-Report: Inappropriate content blocked. Message: '{content}'"
+                    )
+                    db.add(report)
+                    db.commit()
+                except Exception as rep_err:
+                    db.rollback()
+                    print(f"ERROR saving auto-report: {rep_err}")
+                
+                raise ValueError("Message blocked: inappropriate content detected.")
 
             # 2. Gate Check: Behavioral & Psychometric scores must be >= 50 (DNA Gate)
             session = db.query(AssessmentSession).filter(AssessmentSession.candidate_id == candidate_id).first()
@@ -100,7 +151,6 @@ class ChatService:
                         dna_unlocked = True
 
             # 3. Contextual Status Check (Status Gate)
-            recruiter_id = thread.recruiter_id
             recruiter = db.query(RecruiterProfile).filter(RecruiterProfile.user_id == recruiter_id).first()
             if not recruiter:
                 raise ValueError("Recruiter context not found")
@@ -119,10 +169,81 @@ class ChatService:
             context_unlocked = len(valid_apps) > 0
 
             # 4. Final Unlock Logic (OR)
+            # If the recruiter is sending the message, or has already initiated contact in this thread, it is unlocked.
+            recruiter_initiated = (sender_id == recruiter_id) or (
+                db.query(ChatMessage).filter(
+                    ChatMessage.thread_id == thread_id,
+                    ChatMessage.sender_id == recruiter_id
+                ).first() is not None
+            )
+
+            if recruiter_initiated:
+                context_unlocked = True
+
             if not (dna_unlocked or context_unlocked):
-                # Check if it's the first message from a recruiter (allow initial contact if invited)
-                # But here we stick to the provided logic
                 raise ValueError("Chat Locked: Communications unlock when Candidate DNA Score >= 50 OR Application is Shortlisted/Invited.")
+
+            # 5. Classify candidate's first response to recruiter
+            if sender_id == candidate_id:
+                candidate_msg_count = db.query(ChatMessage).filter(
+                    ChatMessage.thread_id == thread_id,
+                    ChatMessage.sender_id == candidate_id
+                ).count()
+
+                recruiter_msg_count = db.query(ChatMessage).filter(
+                    ChatMessage.thread_id == thread_id,
+                    ChatMessage.sender_id == recruiter_id
+                ).count()
+
+                if candidate_msg_count == 0 and recruiter_msg_count > 0:
+                    is_positive = True
+                    from src.services.recruiter_service import recruiter_service
+                    if recruiter_service.openai_key:
+                        classification_prompt = f"""
+                        Analyze the following message from a candidate in response to a recruiter's job invite.
+                        Determine if the reply is positive (expressing interest, open to connect, scheduling a chat, interested) or negative (expressing disinterest, busy, already accepted another offer, rejecting the invite, no thanks).
+                        
+                        Candidate reply: "{content}"
+                        
+                        Respond with ONLY one word: "POSITIVE" or "NEGATIVE".
+                        """
+                        try:
+                            result_text = await recruiter_service._call_ai(
+                                classification_prompt,
+                                "You are a recruitment classifier. Classify candidate responses as POSITIVE or NEGATIVE."
+                            )
+                            if "NEGATIVE" in (result_text or "").upper():
+                                is_positive = False
+                                print(f"DEBUG: Classified candidate reply as NEGATIVE: {content}")
+                            else:
+                                print(f"DEBUG: Classified candidate reply as POSITIVE: {content}")
+                        except Exception as e:
+                            print(f"ERROR classifying candidate response: {e}")
+                    else:
+                        # Fallback to simple keyword check
+                        lower_content = content.lower()
+                        negative_keywords = ["not interested", "no thanks", "reject", "decline", "busy", "unable", "cannot", "sorry", "accepted another", "no, thank you"]
+                        if any(kw in lower_content for kw in negative_keywords):
+                            is_positive = False
+                            print(f"DEBUG: Classified candidate reply as NEGATIVE via keywords: {content}")
+
+                    if not is_positive:
+                        thread.is_active = False
+                        # Set any active job applications linked to this company to 'rejected'
+                        try:
+                            if company_id:
+                                active_apps = db.query(JobApplication).join(Job, JobApplication.job_id == Job.id)\
+                                    .filter(
+                                        JobApplication.candidate_id == candidate_id,
+                                        Job.company_id == company_id,
+                                        JobApplication.status.in_(['applied', 'shortlisted', 'interview_scheduled', 'recommended', 'invited', 'pending'])
+                                    ).all()
+                                for app in active_apps:
+                                    app.status = 'rejected'
+                                print(f"DEBUG: Set {len(active_apps)} applications to rejected due to candidate negative reply.")
+                        except Exception as app_err:
+                            print(f"ERROR setting applications to rejected: {app_err}")
+
 
             # Insert message
             new_msg = ChatMessage(
@@ -242,71 +363,25 @@ class ChatService:
         Reports a message for abuse.
         """
         try:
+            msg = db.query(ChatMessage).filter(ChatMessage.id == message_id).first()
+            if not msg:
+                raise ValueError("Message not found")
             report = ChatReport(
-                message_id=message_id,
                 reporter_id=user_id,
+                reported_id=msg.sender_id,
                 reason=reason
             )
             db.add(report)
             db.commit()
             db.refresh(report)
-            return {c.name: getattr(report, c.name) for c in report.__table__.columns}
+            return {
+                "id": str(report.id),
+                "reporter_id": str(report.reporter_id),
+                "reported_id": str(report.reported_id),
+                "reason": report.reason,
+                "created_at": report.created_at.isoformat() if report.created_at else None
+            }
         except Exception as e:
             db.rollback()
             raise e
-            
-            threads = db.query(ChatThread)\
-                .filter(field_filter)\
-                .order_by(desc(ChatThread.last_message_at))\
-                .all()
-            
-            results = []
-            for t in threads:
-                t_dict = {c.name: getattr(t, c.name) for c in t.__table__.columns}
-                t_dict["id"] = str(t_dict["id"])
-                
-                # Fetch other party info
-                if role == "recruiter":
-                    other = db.query(CandidateProfile).filter(CandidateProfile.user_id == t.candidate_id).first()
-                    if other:
-                        t_dict["candidate_profiles"] = {
-                            "full_name": other.full_name,
-                            "avatar_url": get_s3_url_with_fallback(getattr(other, "profile_photo_url", None))
-                        }
-                else:
-                    other = db.query(RecruiterProfile).filter(RecruiterProfile.user_id == t.recruiter_id).first()
-                    if other:
-                        t_dict["recruiter_profiles"] = {
-                            "full_name": other.full_name,
-                            "company_id": str(other.company_id) if other.company_id else None
-                        }
-                
-                results.append(t_dict)
-            return results
-        finally:
-            db.close()
 
-    @staticmethod
-    def report_message(message_id: str, reporter_id: str, reason: str) -> dict:
-        """
-        Reports a message for moderation.
-        """
-        db = SessionLocal()
-        try:
-            msg = db.query(ChatMessage).filter(ChatMessage.id == message_id).first()
-            if not msg:
-                 raise ValueError("Message not found")
-                 
-            report = ChatReport(
-                reporter_id=reporter_id,
-                reported_user_id=msg.sender_id,
-                thread_id=msg.thread_id,
-                reason=reason,
-                status="pending"
-            )
-            db.add(report)
-            db.commit()
-            db.refresh(report)
-            return {"id": str(report.id), "status": report.status}
-        finally:
-            db.close()

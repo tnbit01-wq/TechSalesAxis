@@ -16,8 +16,10 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -25,11 +27,94 @@ from sqlalchemy import func, desc, text
 
 from src.core.dependencies import get_current_user
 from src.core.database import SessionLocal
-from src.core.models import Job
+from src.core.models import CandidateProfile, Job, Company, JobApplication, ChatThread, ChatMessage, User, RecruiterProfile, JobView, Interview, ResumeData, ProfileScore
 from src.services.recruiter_service import recruiter_service
 from src.services.candidate_service import CandidateService
+from src.services.notification_service import NotificationService
+from src.services.chat_service import ChatService
+from src.services.s3_service import S3Service
 
 log = logging.getLogger(__name__)
+
+def infer_experience_band_from_prompt(prompt: str, fallback: str) -> str:
+    text = (prompt or "").lower()
+    if not text:
+        return fallback
+
+    explicit_years = [int(value) for value in re.findall(r"(\d+)\+?\s*(?:years?|yrs?)", text)]
+    if explicit_years:
+        max_years = max(explicit_years)
+        if max_years <= 1:
+            return "fresher"
+        if max_years <= 4:
+            return "mid"
+        if max_years <= 9:
+            return "senior"
+        return "leadership"
+
+    band_keywords = [
+        ("leadership", ["leadership", "director", "vp", "vice president", "head of", "principal", "10+ years", "10 years", "12 years"]),
+        ("senior", ["senior", "sr.", "sr ", "7 years", "8 years", "9 years", "5 years", "5+ years"]),
+        ("mid", ["mid", "intermediate", "experienced", "3 years", "4 years", "2 years", "2+ years"]),
+        ("fresher", ["fresher", "entry level", "junior", "intern", "0 years", "1 year", "1+ years"]),
+    ]
+
+    for band, keywords in band_keywords:
+        if any(keyword in text for keyword in keywords):
+            return band
+
+    return fallback
+
+def prompt_contains_job_details(prompt: str, filters: Dict[str, Any]) -> bool:
+    if not prompt:
+        return False
+
+    clean_p = prompt.lower().strip()
+    clean_p = re.sub(r'[^\w\s]', '', clean_p)
+
+    # If the user explicitly stated they want to post/create/publish/hire a role/job/position
+    # without providing the actual description yet, it's just a trigger.
+    # Let's match typical starter phrases:
+    starter_patterns = [
+        r"^i want to (post|create|publish|add)( a)?( new)? (job|role|position|vacancy|opening)",
+        r"^i would like to (post|create|publish|add)( a)?( new)? (job|role|position|vacancy|opening)",
+        r"^(post|create|publish|add)( a)?( new)? (job|role|position|vacancy|opening)",
+        r"^hiring( a)?( new)? (job|role|position|vacancy|opening)",
+        r"^hiring"
+    ]
+    if any(re.search(pat, clean_p) for pat in starter_patterns):
+        return False
+
+    trigger_phrases = {
+        "i would like to post a job", "i want to post a job", "post a job", "create a job", 
+        "post job", "create job", "i want to create a job", "i would like to create a job",
+        "hiring a new role", "hiring", "post new job", "publish a job", "publish job",
+        "i want to post a new role", "post a new role", "i want to publish a role",
+        "publish a new role", "post a role", "create a role", "create a new role",
+        "post a new position", "create a new position", "post new position", "create new position",
+        "post a position", "create a position", "i want to post a position", "i would like to post a new role",
+        "i want to post a role", "hiring a role", "post new role", "publish a role", "publish new role"
+    }
+    
+    if clean_p in trigger_phrases:
+        return False
+
+    # If the LLM successfully extracted title, description, skills, or requirements from the prompt
+    # AND it is not just a basic trigger phrase:
+    if filters:
+        if (filters.get("job_title") or 
+            filters.get("description") or 
+            filters.get("skills") or 
+            filters.get("requirements")):
+            if len(clean_p) > 50:
+                return True
+
+    # If the cleaned prompt is too short, it's highly unlikely to contain useful job details
+    if len(clean_p) < 40:
+        return False
+        
+    return True
+
 router = APIRouter(prefix="/ai/assistant", tags=["AI Assistant"])
 
 # ────────────────────────────────────────────────────────────────
@@ -171,6 +256,7 @@ def _get_user_context(db, user_id: str, role: str) -> Dict:
                         rp.full_name,
                         rp.job_title,
                         c.name                                        AS company_name,
+                        c.profile_score                               AS company_profile_score,
                         (SELECT COUNT(*) FROM jobs
                          WHERE recruiter_id = :uid AND status = 'active')   AS active_jobs,
                         (SELECT COUNT(*) FROM job_applications ja
@@ -243,59 +329,78 @@ def _get_live_market_demand(limit: int = 6) -> List[Dict]:
 # Intent Resolution
 # ────────────────────────────────────────────────────────────────
 
-async def _resolve_intent(prompt: str, role: str, history: List[Dict]) -> Dict:
+async def _resolve_intent(
+    prompt: str,
+    role: str,
+    history: List[Dict],
+    active_workflow: Optional[str] = None,
+    current_slots: Optional[Dict] = None,
+) -> Dict:
     history_snippet = "\n".join(
         f"{m['role'].upper()}: {m['content'][:200]}"
         for m in history[-8:]
     ) or "No prior messages."
 
+    active_workflow_str = f"Active Workflow: {active_workflow}\nCurrent Slots: {json.dumps(current_slots or {})}" if active_workflow else "No active workflow."
+
     intent_prompt = f"""
-You are an intent-classification engine for a hiring platform.
+You are an intent-classification and slot-extraction engine for a hiring platform.
 
 User role : {role}
 Conversation (recent):
 {history_snippet}
 
+Workflow State:
+{active_workflow_str}
+
 Current query: "{prompt}"
+
+Based on the current query, the workflow state, and conversation history, classify and extract slots.
+If there is an active workflow and the user says "yes", "confirm", "publish", "go ahead", "sure", or matches a positive confirmation, classify intent as "confirm_action".
+If the user says "no", "cancel", "stop", "abort", or matches a negative confirmation, classify intent as "cancel_action".
+
+CRITICAL: Determine if the user is switching context. If there is an active workflow but the user's query is completely unrelated (e.g. they want to search candidates/jobs, view organizations, ask a general question like "What is Python?", or start a different task), set "is_context_switch" to true. Otherwise, if they are answering slot questions, giving a JD, or confirming/canceling the workflow, set "is_context_switch" to false.
+
+For "career_readiness", extract and map any availability/mobility/relocation preferences to these exact enum tokens:
+["immediate", "short_notice", "long_notice", "active_job_seeker", "passive_candidate", "between_roles", "laid_off_recently", "willing_to_relocate", "remote_only", "contract_preferred", "flexible", "salary_seeking_raise", "high_fit_by_compensation", "needs_salary_clarification", "requires_visa_sponsorship"].
+
+For "clear_filters", if the user explicitly requests to clear, ignore, or not consider a criteria (e.g. "do not consider experience", "any location", "any salary", "from any location"), populate "clear_filters" with matching tokens from: ["experience", "location", "salary", "skills", "job_type", "career_readiness"].
+
+For "next_steps", suggest 2 to 3 logical, highly contextual next steps/suggested follow-up actions (as short user query strings, e.g. "Invite Sonam Shukla", "Filter by 10+ years experience", "Find candidates in Indore", "View Sonam Shukla's resume", "Browse all active jobs"). These should reflect a natural conversational flow, helping the user proceed directly with actions or refinements.
 
 Classify and return ONLY valid JSON — no markdown, no prose:
 {{
-  "intent": "<one of: candidate_search | job_search | company_search | market_insights | profile_view | resume_view | post_job | application_status | schedule_interview | general | greeting | help>",
+  "intent": "<one of: job_creation | job_application | candidate_invite | application_status_update | view_jobs | view_candidates | candidate_search | job_search | company_search | market_insights | profile_view | resume_view | post_job | application_status | schedule_interview | general | greeting | help | confirm_action | cancel_action | job_status_update | job_delete | job_stats>",
+  "is_context_switch": <boolean>,
   "sub_intent": "<optional short description>",
   "filters": {{
     "skills": [],
     "location": "",
-    "experience_band": "",
+    "experience_band": "<one of: fresher | mid | senior | leadership | all>",
+    "min_experience": null,
+    "max_experience": null,
     "min_salary": null,
+    "max_salary": null,
     "company_name": "",
     "candidate_name": "",
-    "job_title": ""
+    "job_title": "",
+    "job_id": "",
+    "candidate_id": "",
+    "status": "<one of: shortlisted | rejected | selected | hired | pending | applied | active | open | paused | closed>",
+    "job_type": "<one of: onsite | remote | hybrid>",
+    "salary_range": "",
+    "match_type": "<one of: culture_fit | skill_match>",
+    "career_readiness": [],
+    "requirements": [],
+    "description": "",
+    "message": ""
   }},
+  "clear_filters": [],
   "requires_data": true,
   "is_followup": false,
   "references_previous": false,
-  "suggested_redirects": [],
   "next_steps": []
 }}
-
-Redirect paths to use (use most relevant 1-3):
-  Recruiter:
-    /recruiter/candidates          – browse candidates
-    /recruiter/candidates/<id>     – specific candidate profile
-    /recruiter/jobs/create         – post a new job
-    /recruiter/jobs                – manage jobs
-    /recruiter/applications        – view all applications
-    /recruiter/dashboard           – dashboard overview
-  Candidate:
-    /candidate/jobs                – browse jobs
-    /candidate/jobs/<id>           – specific job detail
-    /candidate/applications        – my applications
-    /candidate/profile             – my profile
-    /candidate/dashboard           – dashboard
-
-next_steps: 2-3 natural-language strings describing what the user might do next.
-is_followup: true if this query references something from the history.
-references_previous: true if the answer should incorporate prior search results.
 """
     return await _call_ai_json(intent_prompt, "AI Intent Classification Engine — Hiring Platform")
 
@@ -312,21 +417,132 @@ async def _extract_limit(prompt: str) -> int:
     return min(int(result.get("limit", 10)), 20) if result else 10
 
 
+def _infer_time_label(client_context: Optional[Dict[str, Any]] = None) -> str:
+    context = client_context or {}
+
+    local_hour = context.get("local_hour")
+    if isinstance(local_hour, (int, float)) and 0 <= int(local_hour) <= 23:
+        hour = int(local_hour)
+    else:
+        tz_name = context.get("timezone")
+        if isinstance(tz_name, str) and tz_name.strip():
+            try:
+                hour = datetime.now(ZoneInfo(tz_name.strip())).hour
+            except Exception:
+                hour = datetime.now().hour
+        else:
+            hour = datetime.now().hour
+
+    if hour < 12:
+        return "morning"
+    if hour < 16:
+        return "afternoon"
+    return "evening"
+
+
+def _search_candidates_by_name(candidate_name: str, limit: int = 5) -> List[Dict[str, Any]]:
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(CandidateProfile)
+            .filter(CandidateProfile.full_name.ilike(f"%{candidate_name}%"))
+            .limit(limit)
+            .all()
+        )
+        results = []
+        for row in rows:
+            resume_data_obj = db.query(ResumeData).filter(ResumeData.user_id == row.user_id).first()
+            res_data = None
+            if resume_data_obj:
+                res_data = {
+                    "timeline": resume_data_obj.timeline,
+                    "education": resume_data_obj.education,
+                    "achievements": resume_data_obj.achievements,
+                    "skills": resume_data_obj.skills
+                }
+            results.append({
+                "user_id": str(row.user_id),
+                "full_name": row.full_name,
+                "current_role": row.current_role,
+                "location": row.location,
+                "resume_path": S3Service.get_signed_url(row.resume_path) if row.resume_path else None,
+                "resume_data": res_data
+            })
+        return results
+    finally:
+        db.close()
+
+
 # ────────────────────────────────────────────────────────────────
 # Tool Execution
 # ────────────────────────────────────────────────────────────────
 
-async def _execute_tool(intent: str, filters: Dict, user_id: str, role: str) -> Any:
+async def _execute_tool(intent: str, filters: Dict, user_id: str, role: str, prompt: str = "") -> Any:
     try:
         if intent == "candidate_search" and role == "recruiter":
+            # If not a recommendation request, do pure search/filter
+            if not is_recommendation_request(prompt, filters):
+                return await recruiter_service.search_talent_pool(filters)
+
+            # 1. Resolve filter_type
+            filter_type = filters.get("match_type") or "culture_fit"
+            if filter_type not in ("culture_fit", "skill_match"):
+                filter_type = "culture_fit"
+            
+            # 2. Resolve job_id
+            job_id = filters.get("job_id")
+            job_title = filters.get("job_title")
+            db = SessionLocal()
+            try:
+                if not job_id and job_title:
+                    job_obj = db.query(Job).filter(
+                        Job.recruiter_id == user_id,
+                        Job.title.ilike(f"%{job_title}%"),
+                        Job.status == "active"
+                    ).first()
+                    if job_obj:
+                        job_id = str(job_obj.id)
+                
+                # Default to latest active job if no context was specified
+                if not job_id:
+                    latest_job = db.query(Job).filter(
+                        Job.recruiter_id == user_id,
+                        Job.status == "active"
+                    ).order_by(Job.created_at.desc()).first()
+                    if latest_job:
+                        job_id = str(latest_job.id)
+                    else:
+                        any_job = db.query(Job).filter(
+                            Job.recruiter_id == user_id
+                        ).order_by(Job.created_at.desc()).first()
+                        if any_job:
+                            job_id = str(any_job.id)
+            finally:
+                db.close()
+
+            # 3. Resolve skills list
+            skills_list = []
+            if filters.get("skills"):
+                if isinstance(filters["skills"], list):
+                    skills_list = filters["skills"]
+                elif isinstance(filters["skills"], str):
+                    skills_list = [s.strip() for s in filters["skills"].split(",") if s.strip()]
+
+            # 4. Prepare params
+            params = {
+                "location": filters.get("location"),
+                "max_salary": filters.get("max_salary"),
+                "required_skills": skills_list,
+                "career_readiness": ",".join(filters["career_readiness"]) if isinstance(filters.get("career_readiness"), list) else filters.get("career_readiness"),
+                "experience_band": filters.get("experience_band", "all"),
+            }
+            if job_id:
+                params["job_id"] = job_id
+
             return await recruiter_service.get_recommended_candidates(
                 user_id=user_id,
-                filter_type="skill_match",
-                params={
-                    "required_skills": filters.get("skills", []),
-                    "location": filters.get("location"),
-                    "experience_band": filters.get("experience_band", "all"),
-                },
+                filter_type=filter_type,
+                params=params,
             )
 
         elif intent == "job_search":
@@ -347,6 +563,16 @@ async def _execute_tool(intent: str, filters: Dict, user_id: str, role: str) -> 
         elif intent == "market_insights":
             return _get_live_market_demand(limit=6)
 
+        elif intent in ("profile_view", "resume_view") and role == "recruiter":
+            candidate_name = (filters.get("candidate_name") or "").strip()
+            if candidate_name:
+                return _search_candidates_by_name(candidate_name, limit=5)
+            return await recruiter_service.get_recommended_candidates(
+                user_id=user_id,
+                filter_type="skill_match",
+                params={},
+            )
+
     except Exception as exc:
         log.error("_execute_tool[%s] error: %s", intent, exc)
 
@@ -357,9 +583,13 @@ async def _execute_tool(intent: str, filters: Dict, user_id: str, role: str) -> 
 # Greeting Generator
 # ────────────────────────────────────────────────────────────────
 
-async def _generate_greeting(user_context: Dict, role: str, prev_summary: Optional[str]) -> str:
-    hour = datetime.now().hour
-    time_label = "morning" if hour < 12 else "afternoon" if hour < 17 else "evening"
+async def _generate_greeting(
+    user_context: Dict,
+    role: str,
+    prev_summary: Optional[str],
+    client_context: Optional[Dict[str, Any]] = None,
+) -> str:
+    time_label = _infer_time_label(client_context)
     first_name = (user_context.get("full_name") or "").split()[0] or ""
 
     prev_ref = f'Previously: "{prev_summary}".' if prev_summary else ""
@@ -394,8 +624,24 @@ Rules:
 - Natural tone, not robotic
 - End with a soft open question or offer
 """
-    greeting = await _call_ai("".join(prompt.split()), "Warm professional AI greeter")
+    greeting = await _call_ai(prompt, "Warm professional AI greeter")
     return greeting or f"Good {time_label}{', ' + first_name if first_name else ''}! What can I help you with today?"
+
+
+async def _generate_chat_title(prompt: str) -> str:
+    title_prompt = f"""
+Create a short, concise chat title (maximum 4-5 words, no quotes, no markdown, no punctuation) summarizing this initial user query:
+"{prompt}"
+"""
+    try:
+        title = await _call_ai(title_prompt, "You are a helpful assistant that summarizes queries into brief titles.")
+        title = title.strip().replace('"', '').replace("'", "").strip()
+        if title and len(title) < 50:
+            return title
+    except Exception:
+        pass
+    # Fallback
+    return prompt[:40] + "..." if len(prompt) > 40 else prompt
 
 
 # ────────────────────────────────────────────────────────────────
@@ -442,6 +688,7 @@ STRICT RULES:
 5. No markdown headers, no bullet points, no emoji. Conversational prose only.
 6. Keep response under 220 words.
 7. Do not expose internal filters or JSON to the user.
+8. NEVER print, output, or expose raw S3 URLs, signed S3 URLs, or file paths in the conversation prose. If a resume URL/path is in the results, do not display the string. Suggest that the user click the 'Open Resume' button/card provided below to view the file.
 """
     return await _call_ai(response_prompt, "Precise, conversational AI hiring assistant.")
 
@@ -459,50 +706,107 @@ def _build_action_cards(
 ) -> List[Dict]:
     cards: List[Dict] = []
 
-    first_id = data_results[0].get("id", "") if data_results else ""
+    first_item = data_results[0] if data_results else {}
+    first_id = (
+        first_item.get("id")
+        or first_item.get("user_id")
+        or first_item.get("candidate_id")
+        or first_item.get("job_id")
+        or ""
+    )
+
+    recruiter_profile_url = (
+        f"/dashboard/recruiter/candidate/{first_id}?tab=resume"
+        if first_id
+        else "/dashboard/recruiter/talent-pool"
+    )
+    recruiter_resume_url = (
+        f"/dashboard/recruiter/candidate/{first_id}?tab=original_resume"
+        if first_id
+        else "/dashboard/recruiter/talent-pool"
+    )
 
     routing: Dict[str, List[Dict]] = {
         "candidate_search": [
-            {"label": "View Full Profile", "url": f"/recruiter/candidates/{first_id}", "icon": "user"},
-            {"label": "View Resume",        "url": f"/recruiter/candidates/{first_id}/resume", "icon": "file"},
-            {"label": "Browse All",         "url": "/recruiter/candidates", "icon": "users"},
+            {"label": "View Full Profile", "url": recruiter_profile_url, "icon": "user"},
+            {"label": "View Resume",        "url": recruiter_resume_url, "icon": "file"},
+            {"label": "Browse All",         "url": "/dashboard/recruiter/talent-pool", "icon": "users"},
+        ],
+        "recommendations_locked": [
+            {"label": "Complete DNA Assessment", "url": "/onboarding/recruiter", "icon": "plus"},
         ],
         "job_search": [
-            {"label": "View Job Details",   "url": f"/candidate/jobs/{first_id}", "icon": "briefcase"},
-            {"label": "Apply Now",          "url": f"/candidate/jobs/{first_id}/apply", "icon": "send"},
-            {"label": "Browse All Jobs",    "url": "/candidate/jobs", "icon": "search"},
+            {"label": "View Job Details",   "url": f"/dashboard/candidate/jobs/{first_id}" if first_id else "/dashboard/candidate/jobs", "icon": "briefcase"},
+            {"label": "Apply Now",          "url": f"/dashboard/candidate/jobs/{first_id}" if first_id else "/dashboard/candidate/jobs", "icon": "send"},
+            {"label": "Browse All Jobs",    "url": "/dashboard/candidate/jobs", "icon": "search"},
         ],
         "company_search": [
-            {"label": "View Company",       "url": f"/candidate/companies/{first_id}", "icon": "building"},
-            {"label": "Browse Companies",   "url": "/candidate/companies", "icon": "building2"},
+            {"label": "View Company",       "url": "/dashboard/candidate/jobs", "icon": "building"},
+            {"label": "Browse Companies",   "url": "/dashboard/candidate/jobs", "icon": "building2"},
         ],
         "market_insights": [
-            {"label": "Post a Job",         "url": "/recruiter/jobs/create", "icon": "plus"},
-            {"label": "View Market Trends", "url": "/recruiter/dashboard", "icon": "chart"},
+            {"label": "Post a Job",         "url": "/dashboard/recruiter/hiring/jobs/new", "icon": "plus"},
+            {"label": "View Market Trends", "url": "/dashboard/recruiter", "icon": "chart"},
         ],
         "application_status": [
-            {"label": "View Applications",  "url": f"/{'recruiter' if role == 'recruiter' else 'candidate'}/applications", "icon": "clipboard"},
+            {"label": "View Applications",  "url": "/dashboard/recruiter/hiring/applications" if role == "recruiter" else "/dashboard/candidate/applications", "icon": "clipboard"},
         ],
         "post_job": [
-            {"label": "Post a Job Now",     "url": "/recruiter/jobs/create", "icon": "plus"},
+            {"label": "Post a Job Now",     "url": "/dashboard/recruiter/hiring/jobs/new", "icon": "plus"},
         ],
         "profile_view": [
-            {"label": "View My Profile",    "url": "/candidate/profile", "icon": "user"},
+            {"label": "View Candidate Profile", "url": recruiter_profile_url if role == "recruiter" else "/dashboard/candidate/profile", "icon": "user"},
+        ],
+        "resume_view": [
+            {"label": "Open Resume", "url": recruiter_resume_url if role == "recruiter" else "/dashboard/candidate/profile", "icon": "file"},
         ],
     }
 
-    if intent in routing and data_results:
+    always_show_intents = {"application_status", "post_job", "profile_view", "resume_view", "market_insights", "recommendations_locked"}
+    if intent in routing and (data_results or intent in always_show_intents):
         cards.extend(routing[intent])
 
-    # Add AI-suggested redirects (deduplicated)
-    existing_urls = {c["url"] for c in cards}
-    for url in suggested_redirects[:2]:
-        if url not in existing_urls:
-            label = url.rstrip("/").split("/")[-1].replace("-", " ").title()
-            cards.append({"label": label, "url": url, "icon": "link"})
-            existing_urls.add(url)
+    # NOTE: suggested_redirects suppressed — we prefer only deterministic action cards
+    # (suggested_redirects often include query strings or noisy links that create
+    # transient buttons in the chat UI; removing keeps action cards stable)
 
     return cards[:4]  # Cap at 4 cards
+
+
+def _get_dynamic_next_steps(role: str, intent: str, data_results: List[Dict], next_steps: List[str]) -> List[str]:
+    if role != "recruiter":
+        return next_steps
+
+    dynamic_steps = []
+    if intent in ("candidate_search", "view_candidates") and data_results:
+        for cand in data_results[:2]:
+            c_name = cand.get("full_name") or cand.get("name")
+            if c_name:
+                dynamic_steps.append(f"View profile of {c_name}")
+                dynamic_steps.append(f"View resume of {c_name}")
+        dynamic_steps.append("Filter by 15+ years experience")
+    elif intent in ("profile_view", "resume_view") and data_results:
+        cand = data_results[0]
+        c_name = cand.get("full_name") or cand.get("name")
+        if c_name:
+            dynamic_steps.append(f"Invite {c_name}")
+            dynamic_steps.append(f"Why is {c_name}'s profile strong?")
+            dynamic_steps.append(f"Show candidates similar to {c_name}")
+    elif intent == "application_status" and data_results:
+        app = data_results[0]
+        c_name = app.get("candidate_name")
+        if c_name:
+            dynamic_steps.append(f"Schedule interview with {c_name}")
+            dynamic_steps.append(f"Shortlist {c_name}")
+
+    combined_steps = []
+    seen = set()
+    for step in (dynamic_steps + next_steps):
+        step_clean = step.strip().lower()
+        if step_clean not in seen and len(combined_steps) < 4:
+            combined_steps.append(step)
+            seen.add(step_clean)
+    return combined_steps
 
 
 # ────────────────────────────────────────────────────────────────
@@ -514,7 +818,67 @@ _INTENT_TYPE: Dict[str, str] = {
     "job_search":       "job_list",
     "company_search":   "company_list",
     "market_insights":  "market_data",
+    "profile_view":     "candidate_profile",
+    "resume_view":      "resume_info",
+    "application_status": "application_list",
 }
+
+
+def is_recommendation_request(prompt: str, filters: Dict) -> bool:
+    p_lower = prompt.lower()
+    rec_keywords = ["recommend", "matching", "culture fit", "skill match", "best fit", "suitable candidates", "icp", "dna assessment"]
+    if any(kw in p_lower for kw in rec_keywords):
+        return True
+    if filters.get("match_type") in ("culture_fit", "skill_match") and ("fit" in p_lower or "match" in p_lower):
+        return True
+    return False
+
+def merge_search_filters(old_filters: Dict[str, Any], new_filters: Dict[str, Any], clear_filters: List[str]) -> Dict[str, Any]:
+    merged = dict(old_filters)
+    
+    # 1. Apply clear_filters
+    for cf in (clear_filters or []):
+        if cf == "experience":
+            merged.pop("experience_band", None)
+            merged.pop("min_experience", None)
+            merged.pop("max_experience", None)
+        elif cf == "location":
+            merged.pop("location", None)
+        elif cf == "salary":
+            merged.pop("min_salary", None)
+            merged.pop("max_salary", None)
+            merged.pop("salary_range", None)
+        elif cf == "skills":
+            merged.pop("skills", None)
+        elif cf == "job_type":
+            merged.pop("job_type", None)
+        elif cf == "career_readiness":
+            merged.pop("career_readiness", None)
+            
+    # 2. Merge new filters
+    for k, v in new_filters.items():
+        if k in ("experience_band", "min_experience", "max_experience") and "experience" in (clear_filters or []):
+            continue
+        if k == "location" and "location" in (clear_filters or []):
+            continue
+        if k in ("min_salary", "max_salary", "salary_range") and "salary" in (clear_filters or []):
+            continue
+        if k == "skills" and "skills" in (clear_filters or []):
+            continue
+        if k == "job_type" and "job_type" in (clear_filters or []):
+            continue
+        if k == "career_readiness" and "career_readiness" in (clear_filters or []):
+            continue
+
+        if v is not None and v != "" and v != []:
+            if k == "skills" and isinstance(v, list) and isinstance(merged.get("skills"), list):
+                merged["skills"] = list(set(merged["skills"] + v))
+            elif k == "career_readiness" and isinstance(v, list) and isinstance(merged.get("career_readiness"), list):
+                merged["career_readiness"] = list(set(merged["career_readiness"] + v))
+            else:
+                merged[k] = v
+                
+    return merged
 
 
 # ────────────────────────────────────────────────────────────────
@@ -530,13 +894,54 @@ async def assistant_chat(
     if not prompt:
         raise HTTPException(status_code=400, detail="Prompt is required")
 
-    role    = current_user.get("role", "")
+    role    = current_user.get("role", "").strip().lower()
     user_id = current_user.get("sub", "")
     if not role or not user_id:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     db = SessionLocal()
     try:
+        # If greeting request and no session_id is provided, return greeting without DB persistence
+        if prompt == "__greeting__" and not payload.session_id:
+            last_sess = db.execute(
+                text("""
+                    SELECT last_data_summary 
+                    FROM ai_assistant_sessions 
+                    WHERE user_id = :uid 
+                    ORDER BY updated_at DESC LIMIT 1
+                """),
+                {"uid": user_id}
+            ).fetchone()
+            prev_summary = last_sess[0] if last_sess else None
+            
+            user_context = _get_user_context(db, user_id, role)
+            greeting = await _generate_greeting(
+                user_context=user_context,
+                role=role,
+                prev_summary=prev_summary,
+                client_context=payload.client_context
+            )
+            
+            next_steps = [
+                "Give me candidates from Bengaluru",
+                "Show candidates from Indore",
+                "Browse all candidates in the pool"
+            ] if role == "recruiter" else [
+                "Browse active job postings",
+                "View my job application status"
+            ]
+            
+            return {
+                "session_id":   None,
+                "text":         greeting,
+                "data_type":    "none",
+                "data_results": [],
+                "action_cards": [],
+                "next_steps":   next_steps,
+                "intent":       "greeting",
+                "is_new_session": True,
+            }
+
         # ── 1. Session ──────────────────────────────────────────
         session    = _get_or_create_session(db, user_id, payload.session_id)
         session_id = str(session["id"])
@@ -550,62 +955,1123 @@ async def assistant_chat(
         # ── 2. User Context ─────────────────────────────────────
         user_context = _get_user_context(db, user_id, role)
 
+        # Load session_context from database session
+        session_context = session.get("session_context") or {}
+        if isinstance(session_context, str):
+            try:
+                session_context = json.loads(session_context)
+            except Exception:
+                session_context = {}
+
+        active_workflow = session_context.get("active_workflow")
+        current_slots = session_context.get("slots") or {}
+
         # ── 3. Intent Resolution ────────────────────────────────
-        intent_data        = await _resolve_intent(prompt, role, messages)
+        intent_data        = await _resolve_intent(prompt, role, messages, active_workflow, current_slots)
         intent             = intent_data.get("intent", "general")
         filters            = intent_data.get("filters", {})
         requires_data      = intent_data.get("requires_data", True)
         suggested_redirects= intent_data.get("suggested_redirects", [])
         next_steps         = intent_data.get("next_steps", [])
 
+        # Normalize view_candidates to candidate_search if filters are present
+        if role == "recruiter" and intent == "view_candidates":
+            has_search_criteria = any(
+                filters.get(k) for k in ("skills", "location", "experience_band", "min_experience", "max_experience", "min_salary", "max_salary", "job_title", "career_readiness")
+            )
+            if has_search_criteria:
+                intent = "candidate_search"
+
+        # Sticky candidate search filters merge
+        if role == "recruiter" and intent == "candidate_search":
+            search_filters = session_context.get("search_filters", {})
+            
+            is_followup = intent_data.get("is_followup", False) or intent_data.get("references_previous", False)
+            prompt_lower = prompt.lower().strip()
+            refine_keywords = ["among", "whose", "with", "having", "filter", "restrict", "only", "also", "and", "who ", "immediate joiner", "years of experience", "experience of"]
+            if not is_followup:
+                if any(prompt_lower.startswith(kw) or kw in prompt_lower for kw in refine_keywords):
+                    is_followup = True
+            
+            clear_filters = intent_data.get("clear_filters", [])
+            # Support text-based overrides for clearing
+            if "any location" in prompt_lower or "from any location" in prompt_lower:
+                if "location" not in clear_filters:
+                    clear_filters.append("location")
+            if "do not consider any experience" in prompt_lower or "do not consider experience" in prompt_lower or "no experience" in prompt_lower or "any experience" in prompt_lower or "from any location, do not consider experience" in prompt_lower:
+                if "experience" not in clear_filters:
+                    clear_filters.append("experience")
+
+            if is_followup:
+                search_filters = merge_search_filters(search_filters, filters, clear_filters)
+            else:
+                search_filters = merge_search_filters({}, filters, clear_filters)
+            
+            session_context["search_filters"] = search_filters
+            filters = search_filters
+
         # ── 4. Role-based guard ─────────────────────────────────
         # Candidates cannot trigger recruiter-only intents
-        restricted_for_candidate = {"candidate_search", "post_job"}
+        restricted_for_candidate = {
+            "candidate_search", "post_job", "job_creation", 
+            "candidate_invite", "application_status_update", "view_candidates",
+            "job_status_update", "job_delete", "job_stats"
+        }
         if role == "candidate" and intent in restricted_for_candidate:
             intent = "general"
             requires_data = False
 
-        # ── 5. Limit ────────────────────────────────────────────
+        # Recruiters cannot trigger candidate-only intents
+        restricted_for_recruiter = {"job_application", "job_search"}
+        if role == "recruiter" and intent in restricted_for_recruiter:
+            if intent == "job_application":
+                intent = "application_status"
+            elif intent == "job_search":
+                intent = "view_jobs"
+
+        # ── 5. Workflow State Machine Core ──────────────────────
+        workflow_text = None
+        data_type = "none"
+        data_results = []
+        action_cards = []
+
+        # Company Onboarding Lock Gate for Recruiter Recommendations
+        if role == "recruiter" and intent == "candidate_search":
+            if is_recommendation_request(prompt, intent_data.get("filters", {})):
+                comp_score = user_context.get("company_profile_score")
+                if comp_score is None or comp_score == 0:
+                    workflow_text = "Assessment Locked: Your company recommendations are locked. To unlock recommended candidates, please complete your TechSales Axis DNA Assessment first."
+                    data_type = "recommendations_locked"
+                    data_results = []
+                    requires_data = False
+
+        # Switch to a new workflow if a workflow-triggering intent is detected
+        workflow_intents = {"job_creation", "post_job", "job_application", "candidate_invite", "application_status_update", "job_delete"}
+        
+        is_context_switch = intent_data.get("is_context_switch", False)
+        
+        # Safety fallback: if intent is a clear non-workflow search/help/status intent, force context switch
+        clear_switch_intents = {
+            "candidate_search", "job_search", "company_search", 
+            "market_insights", "view_candidates", "view_jobs", 
+            "greeting", "help", "application_status", "job_status_update", "job_stats"
+        }
+        if intent in clear_switch_intents:
+            is_context_switch = True
+            
+        # If the user is switching context or starting a DIFFERENT workflow, clear the current active workflow
+        if active_workflow and (is_context_switch or intent in (workflow_intents - {active_workflow})):
+            active_workflow = None
+            current_slots = {}
+            session_context["active_workflow"] = None
+            session_context["slots"] = {}
+
+        # Clear search filters on context switch to non-search intents
+        if is_context_switch and intent != "candidate_search":
+            session_context.pop("search_filters", None)
+
+        if intent in workflow_intents:
+            active_workflow = "job_creation" if intent in ("job_creation", "post_job") else intent
+            current_slots = {}
+            session_context["active_workflow"] = active_workflow
+            session_context["slots"] = current_slots
+
+        # Ensure active workflow is safe from role mismatch (run AFTER setting/updating it)
+        if role == "recruiter" and active_workflow in ("job_application", "job_search"):
+            active_workflow = None
+            current_slots = {}
+            session_context["active_workflow"] = None
+            session_context["slots"] = {}
+        if role == "candidate" and active_workflow in ("job_creation", "candidate_invite", "application_status_update", "job_delete"):
+            active_workflow = None
+            current_slots = {}
+            session_context["active_workflow"] = None
+            session_context["slots"] = {}
+
+        # Process active workflows
+        if active_workflow == "job_creation":
+            is_cancel = intent == "cancel_action" or prompt.lower() in ("cancel", "cancel job", "stop", "abort", "no")
+            is_confirm = (
+                intent == "confirm_action" 
+                or prompt.lower() in ("confirm", "publish", "publish job", "yes", "yes, publish", "yes, publish it")
+                or prompt.startswith("confirm publish_job_draft ")
+            )
+
+            if is_cancel:
+                workflow_text = "Job creation workflow has been canceled."
+                active_workflow = None
+                current_slots = {}
+            elif is_confirm:
+                # Intercept edited draft payload
+                if prompt.startswith("confirm publish_job_draft "):
+                    try:
+                        payload_str = prompt[len("confirm publish_job_draft "):].strip()
+                        updated_slots = json.loads(payload_str)
+                        current_slots.update(updated_slots)
+                    except Exception as e:
+                        log.error("Failed to parse edited draft JSON: %s", e)
+
+                if current_slots.get("title") and current_slots.get("description"):
+                    res = await recruiter_service.create_job(user_id, current_slots)
+                    workflow_text = f"Awesome! The job '{current_slots.get('title')}' has been successfully published to the platform."
+                    
+                    # Fetch recruiter's jobs to show
+                    job_list = []
+                    try:
+                        profile = db.query(RecruiterProfile).filter(RecruiterProfile.user_id == user_id).first()
+                        if profile:
+                            jobs = db.query(Job).filter(Job.recruiter_id == user_id).order_by(Job.created_at.desc()).limit(5).all()
+                            job_list = [{
+                                "id": str(j.id),
+                                "title": j.title,
+                                "company_name": user_context.get("company_name", "Your Company"),
+                                "location": j.location,
+                                "salary_range": j.salary_range,
+                                "experience_band": j.experience_band,
+                                "job_type": j.job_type,
+                                "status": j.status
+                            } for j in jobs]
+                    except Exception as e:
+                        log.error("Error fetching jobs: %s", e)
+                    
+                    data_type = "job_list"
+                    data_results = job_list
+                    active_workflow = None
+                    current_slots = {}
+                else:
+                    workflow_text = "I don't have a job draft to publish yet. Please share the job details or description."
+            else:
+                # If they provided non-empty details
+                if len(prompt.strip()) > 3 and prompt_contains_job_details(prompt, filters):
+                    parser_prompt = f"""
+                    Analyze the user prompt or job description and generate/extract structured job details.
+                    USER PROMPT: "{prompt}"
+                    
+                    CRITICAL INSTRUCTIONS:
+                    1. Extract the official title, location, experience band, job type, and salary range if mentioned.
+                    2. If location is not specified, default to "Remote".
+                    3. If job_type is not specified, default to "onsite".
+                    4. Calculate a "salary_range" based on the extracted role, location, and experience band using CURRENT 2026 tech sales industry standards if not explicitly specified.
+                    5. Provide the extracted location in the "location" field.
+                    6. Generate/extract a clean professional description of the job (2-3 paragraphs about company and role). If a detailed description is not provided, generate a compelling one.
+                    7. Extract/generate 5-7 key requirements (as bullet points) in the "requirements" array.
+                    8. Extract/generate top 5 technical/soft skills in the "skills_required" array.
+
+                    Structure the response as a valid JSON object:
+                    {{
+                      "title": "<extracted title>",
+                      "location": "<extracted location or Remote>",
+                      "experience_band": "<fresher | mid | senior | leadership>",
+                      "job_type": "<onsite | remote | hybrid>",
+                      "salary_range": "<extracted/calculated salary range or standard e.g. $80k - $120k>",
+                      "skills_required": ["skill1", "skill2"],
+                      "requirements": ["req1", "req2"],
+                      "description": "<clean professional description>"
+                    }}
+                    """
+                    extracted = await _call_ai_json(parser_prompt, "You are an elite Tech Sales Recruiter AI specialized in market-accurate job generation.")
+                    
+                    # Infer experience band using the robust helper function
+                    inferred_exp = infer_experience_band_from_prompt(prompt, extracted.get("experience_band", "mid"))
+                    extracted["experience_band"] = inferred_exp
+                    
+                    # Merge extracted slots into current_slots
+                    for k in ["title", "location", "experience_band", "job_type", "salary_range", "skills_required", "requirements", "description"]:
+                        if extracted.get(k):
+                            current_slots[k] = extracted[k]
+
+                # Check if we have the minimum required slots to show a draft
+                if current_slots.get("title") and current_slots.get("description"):
+                    workflow_text = "Here is a draft of the job posting. Review the details below and confirm if you want to publish it."
+                    data_type = "job_draft"
+                    data_results = [current_slots]
+                else:
+                    workflow_text = "Sure, I can help you post a job. Please share the job description or details (such as title, location, salary, experience, and requirements) at once, and I will create a draft for you."
+
+        elif active_workflow == "job_application":
+            job_id = current_slots.get("job_id") or filters.get("job_id")
+            job_title = current_slots.get("job_title") or filters.get("job_title")
+
+            if not job_id and job_title:
+                job_obj = db.query(Job, Company).join(Company, Job.company_id == Company.id).filter(Job.title.ilike(f"%{job_title}%"), Job.status == "active").first()
+                if job_obj:
+                    job_id = str(job_obj[0].id)
+                    current_slots["job_id"] = job_id
+                    current_slots["job_title"] = job_obj[0].title
+                    current_slots["company_name"] = job_obj[1].name
+
+            is_cancel = intent == "cancel_action" or prompt.lower() in ("cancel", "no", "cancel application")
+            is_confirm = intent == "confirm_action" or prompt.lower() in ("confirm", "apply", "yes", "confirm application")
+
+            if is_cancel:
+                workflow_text = "Job application canceled."
+                active_workflow = None
+                current_slots = {}
+            elif not job_id:
+                workflow_text = "Which job role would you like to apply for?"
+            else:
+                if is_confirm:
+                    res = await CandidateService.apply_to_job(user_id, job_id)
+                    status = res.get("status")
+                    if status == "success":
+                        workflow_text = f"Your application for '{current_slots.get('job_title')}' has been successfully transmitted to the recruiter."
+                    elif status == "limit_reached":
+                        workflow_text = "Daily transmission limit reached (5/5). Your signal buffer will reset tomorrow."
+                    elif status == "already_applied":
+                        workflow_text = f"You have already applied to the '{current_slots.get('job_title')}' position."
+                    else:
+                        workflow_text = "Failed to submit application. Please try again."
+                    active_workflow = None
+                    current_slots = {}
+                else:
+                    workflow_text = f"Would you like to transmit your profile and apply for the '{current_slots.get('job_title')}' role at {current_slots.get('company_name')}?"
+                    data_type = "application_confirm"
+                    job_obj = db.query(Job, Company).join(Company, Job.company_id == Company.id).filter(Job.id == job_id).first()
+                    if job_obj:
+                        data_results = [{
+                            "id": str(job_obj[0].id),
+                            "title": job_obj[0].title,
+                            "company_name": job_obj[1].name,
+                            "location": job_obj[0].location,
+                            "salary_range": job_obj[0].salary_range,
+                            "experience_band": job_obj[0].experience_band,
+                            "job_type": job_obj[0].job_type
+                        }]
+
+        elif active_workflow == "candidate_invite":
+            candidate_id = current_slots.get("candidate_id") or filters.get("candidate_id")
+            candidate_name = current_slots.get("candidate_name") or filters.get("candidate_name")
+            job_id = current_slots.get("job_id") or filters.get("job_id")
+            job_title = current_slots.get("job_title") or filters.get("job_title")
+            message_text = current_slots.get("message") or filters.get("message")
+
+            if not candidate_id and candidate_name:
+                candidates = _search_candidates_by_name(candidate_name, limit=1)
+                if candidates:
+                    candidate_id = candidates[0]["user_id"]
+                    current_slots["candidate_id"] = candidate_id
+                    current_slots["candidate_name"] = candidates[0]["full_name"]
+
+            # Cooldown guard: Check if recruiter has an inactive thread with candidate within last 30 days
+            if candidate_id:
+                from datetime import timedelta
+                cutoff = datetime.utcnow() - timedelta(days=30)
+                blocked_thread = db.query(ChatThread).filter(
+                    ChatThread.recruiter_id == user_id,
+                    ChatThread.candidate_id == candidate_id,
+                    ChatThread.is_active == False,
+                    ChatThread.last_message_at >= cutoff
+                ).first()
+                if blocked_thread:
+                    workflow_text = f"Invitation blocked: You cannot invite {current_slots.get('candidate_name') or 'this candidate'} because they declined your invitation within the last 30 days."
+                    active_workflow = None
+                    current_slots = {}
+            
+            if active_workflow == "candidate_invite":
+                if not job_id and job_title:
+                    job_obj = db.query(Job).filter(Job.recruiter_id == user_id, Job.title.ilike(f"%{job_title}%"), Job.status == "active").first()
+                    if job_obj:
+                        job_id = str(job_obj.id)
+                        current_slots["job_id"] = job_id
+                        current_slots["job_title"] = job_obj.title
+
+                is_cancel = intent == "cancel_action" or prompt.lower() in ("cancel", "no", "cancel invite")
+                is_confirm = intent == "confirm_action" or prompt.lower() in ("confirm", "invite", "yes", "yes, send invite", "send invite", "send")
+
+                if is_cancel:
+                    workflow_text = "Candidate invite canceled."
+                    active_workflow = None
+                    current_slots = {}
+                elif not candidate_id:
+                    workflow_text = "Which candidate would you like to invite?"
+                else:
+                    # If not confirm/cancel and prompt has actual text, treat as custom message update
+                    if not is_confirm and len(prompt.strip()) > 3 and not prompt.lower().startswith("invite") and not prompt.lower().startswith("show profile"):
+                        message_text = prompt
+                        current_slots["message"] = message_text
+
+                    if is_confirm:
+                        target_name = current_slots.get("candidate_name")
+                        invite_msg = message_text or f"Hi {target_name}, we're interested in connecting with you about exciting opportunities!"
+                        
+                        # Fetch or create thread
+                        thread_data = ChatService.get_or_create_thread(db, user_id, candidate_id)
+                        thread_id = thread_data["id"]
+
+                        new_msg = ChatMessage(
+                            thread_id=thread_id,
+                            sender_id=user_id,
+                            text=f"[Job Invite] {invite_msg}"
+                        )
+                        db.add(new_msg)
+                        
+                        thread = db.query(ChatThread).filter(ChatThread.id == thread_id).first()
+                        if thread:
+                            thread.last_message_at = datetime.utcnow()
+                            thread.is_active = True # Ensure thread is active upon invite
+                        
+                        # Create notification
+                        NotificationService.create_notification(
+                            candidate_id,
+                            "job_invite",
+                            "New recruiter interest",
+                            invite_msg,
+                            {"job_id": job_id or "", "recruiter_id": user_id},
+                            db,
+                        )
+                        db.commit()
+
+                        workflow_text = f"Invite sent successfully to {target_name}!"
+                        active_workflow = None
+                        current_slots = {}
+                    else:
+                        target_name = current_slots.get("candidate_name")
+                        preview_msg = message_text or f"Hi {target_name}, we're interested in connecting with you about exciting opportunities!"
+                        workflow_text = f"Here is a preview of the invitation message for {target_name}:\n\n" \
+                                        f"\"{preview_msg}\"\n\n" \
+                                        f"Reply with a custom message to change it, or reply 'confirm' to send the invitation."
+
+        elif active_workflow == "application_status_update":
+            candidate_id = current_slots.get("candidate_id") or filters.get("candidate_id")
+            candidate_name = current_slots.get("candidate_name") or filters.get("candidate_name")
+            job_id = current_slots.get("job_id") or filters.get("job_id")
+            job_title = current_slots.get("job_title") or filters.get("job_title")
+            status = current_slots.get("status") or filters.get("status")
+            application_id = current_slots.get("application_id")
+
+            if not application_id:
+                query = db.query(JobApplication).join(Job, JobApplication.job_id == Job.id).filter(Job.recruiter_id == user_id)
+                if candidate_id:
+                    query = query.filter(JobApplication.candidate_id == candidate_id)
+                elif candidate_name:
+                    cand_profile = db.query(CandidateProfile).filter(CandidateProfile.full_name.ilike(f"%{candidate_name}%")).first()
+                    if cand_profile:
+                        candidate_id = str(cand_profile.user_id)
+                        current_slots["candidate_id"] = candidate_id
+                        current_slots["candidate_name"] = cand_profile.full_name
+                        query = query.filter(JobApplication.candidate_id == candidate_id)
+                
+                if job_id:
+                    query = query.filter(JobApplication.job_id == job_id)
+                elif job_title:
+                    job_obj = db.query(Job).filter(Job.recruiter_id == user_id, Job.title.ilike(f"%{job_title}%")).first()
+                    if job_obj:
+                        job_id = str(job_obj.id)
+                        current_slots["job_id"] = job_id
+                        current_slots["job_title"] = job_obj.title
+                        query = query.filter(JobApplication.job_id == job_id)
+                    
+                    app_obj = query.first()
+                    if app_obj:
+                        application_id = str(app_obj.id)
+                        current_slots["application_id"] = application_id
+                        if not candidate_name:
+                            cand_profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == app_obj.candidate_id).first()
+                            if cand_profile:
+                                current_slots["candidate_name"] = cand_profile.full_name
+                        if not job_title:
+                            job_obj = db.query(Job).filter(Job.id == app_obj.job_id).first()
+                            if job_obj:
+                                current_slots["job_title"] = job_obj.title
+
+            is_cancel = intent == "cancel_action" or prompt.lower() in ("cancel", "no", "cancel status update")
+            is_confirm = intent == "confirm_action" or prompt.lower() in ("confirm", "yes", "update status")
+
+            if is_cancel:
+                workflow_text = "Application status update canceled."
+                active_workflow = None
+                current_slots = {}
+            elif not application_id:
+                workflow_text = "Which candidate application would you like to update?"
+            elif not status:
+                workflow_text = f"What status would you like to set for {current_slots.get('candidate_name')}? (shortlisted, selected, or rejected)"
+            else:
+                if is_confirm:
+                    app = db.query(JobApplication).filter(JobApplication.id == application_id).first()
+                    if app:
+                        old_status = app.status
+                        app.status = status
+                        
+                        if status == "shortlisted" and old_status != "shortlisted":
+                            chat = db.query(ChatThread).filter(
+                                ChatThread.candidate_id == app.candidate_id,
+                                ChatThread.recruiter_id == user_id
+                            ).first()
+                            if chat:
+                                chat.is_active = True
+                            else:
+                                new_chat = ChatThread(
+                                    candidate_id=app.candidate_id,
+                                    recruiter_id=user_id,
+                                    is_active=True
+                                )
+                                db.add(new_chat)
+                            
+                            NotificationService.create_notification(
+                                user_id=app.candidate_id,
+                                type="APPLICATION_SHORTLISTED",
+                                title="Congratulations! You've been shortlisted",
+                                message=f"You have been shortlisted for the {current_slots.get('job_title')} position. The recruiter can now message you directly.",
+                                metadata={"application_id": str(app.id), "job_id": str(app.job_id), "job_title": current_slots.get("job_title")},
+                                db=db
+                            )
+                        db.commit()
+
+                        # Fetch updated applications for this job (or all)
+                        query = db.query(JobApplication, Job, CandidateProfile, ProfileScore, User).join(
+                            Job, JobApplication.job_id == Job.id
+                        ).join(
+                            CandidateProfile, JobApplication.candidate_id == CandidateProfile.user_id
+                        ).join(
+                            User, JobApplication.candidate_id == User.id
+                        ).outerjoin(
+                            ProfileScore, JobApplication.candidate_id == ProfileScore.user_id
+                        ).filter(
+                            Job.recruiter_id == user_id
+                        )
+                        
+                        target_job_id = current_slots.get("job_id")
+                        if target_job_id:
+                            query = query.filter(Job.id == target_job_id)
+                            
+                        apps = query.order_by(JobApplication.created_at.desc()).all()
+                        data_results = []
+                        for ap in apps:
+                            # Fetch scheduled/pending interviews
+                            interviews = db.query(Interview).filter(Interview.application_id == ap[0].id).all()
+                            int_list = [{
+                                "id": str(i.id),
+                                "round_name": i.round_name,
+                                "round_number": i.round_number,
+                                "format": i.format,
+                                "location": i.location,
+                                "meeting_link": i.meeting_link,
+                                "status": i.status
+                            } for i in interviews]
+                            
+                            # Fetch resume data if available
+                            resume_data_obj = db.query(ResumeData).filter(ResumeData.user_id == ap[2].user_id).first()
+                            res_data = None
+                            if resume_data_obj:
+                                res_data = {
+                                    "timeline": resume_data_obj.timeline,
+                                    "education": resume_data_obj.education,
+                                    "achievements": resume_data_obj.achievements,
+                                    "skills": resume_data_obj.skills
+                                }
+                                
+                            data_results.append({
+                                "id": str(ap[0].id),
+                                "candidate_id": str(ap[2].user_id),
+                                "candidate_name": ap[2].full_name,
+                                "candidate_role": ap[2].current_role,
+                                "candidate_location": ap[2].location or "Remote",
+                                "job_id": str(ap[1].id),
+                                "job_title": ap[1].title,
+                                "status": ap[0].status,
+                                "created_at": ap[0].created_at.isoformat() if ap[0].created_at else None,
+                                "match_score": ap[3].final_score if ap[3] else None,
+                                "resume_path": S3Service.get_signed_url(ap[2].resume_path) if ap[2].resume_path else None,
+                                "candidate_email": ap[4].email,
+                                "interviews": int_list,
+                                "resume_data": res_data
+                            })
+                        data_type = "application_cards"
+
+                    workflow_text = f"Successfully updated {current_slots.get('candidate_name')}'s application status to '{status}'."
+                    active_workflow = None
+                    current_slots = {}
+                else:
+                    workflow_text = f"Do you want to update {current_slots.get('candidate_name')}'s status for the '{current_slots.get('job_title')}' role to '{status}'?"
+
+        elif active_workflow == "job_delete" or (intent == "job_delete" and role == "recruiter"):
+            # If we are already in the job_delete workflow, check confirmation
+            is_cancel = intent == "cancel_action" or prompt.lower() in ("cancel", "no", "abort")
+            is_confirm = intent == "confirm_action" or prompt.lower() in ("confirm", "yes", "delete", "yes, delete")
+            
+            # Check if user is trying to delete a different job
+            is_new_delete_request = False
+            if active_workflow == "job_delete":
+                p_lower = prompt.lower()
+                if any(x in p_lower for x in ("delete", "remove", "kill")):
+                    is_new_delete_request = True
+                else:
+                    # Check if the prompt contains any of the recruiter's other job titles
+                    recruiter_jobs = db.query(Job).filter(Job.recruiter_id == user_id).all()
+                    for rj in recruiter_jobs:
+                        if str(rj.id) != current_slots.get("job_id") and rj.title.lower() in p_lower:
+                            is_new_delete_request = True
+                            break
+            
+            if active_workflow == "job_delete" and current_slots.get("job_id") and not is_new_delete_request:
+                if is_cancel:
+                    workflow_text = "Job deletion canceled."
+                    active_workflow = None
+                    current_slots = {}
+                elif is_confirm:
+                    target_job_id = current_slots.get("job_id")
+                    job = db.query(Job).filter(Job.id == target_job_id, Job.recruiter_id == user_id).first()
+                    if job:
+                        db.delete(job)
+                        db.commit()
+                        workflow_text = f"Successfully deleted the job posting for '{current_slots.get('job_title')}'."
+                        
+                        # Fetch updated job list to show
+                        jobs = db.query(Job).filter(Job.recruiter_id == user_id).order_by(Job.created_at.desc()).all()
+                        data_results = [{
+                            "id": str(j.id),
+                            "title": j.title,
+                            "company_name": user_context.get("company_name", "Your Company"),
+                            "location": j.location,
+                            "salary_range": j.salary_range,
+                            "experience_band": j.experience_band or "mid",
+                            "job_type": j.job_type or "onsite",
+                            "status": j.status
+                        } for j in jobs]
+                        data_type = "job_list"
+                    else:
+                        workflow_text = "Failed to delete: Job not found or unauthorized."
+                    active_workflow = None
+                    current_slots = {}
+                else:
+                    workflow_text = f"Are you sure you want to permanently delete the job posting for '{current_slots.get('job_title')}'? This action cannot be undone. Reply 'confirm' or 'cancel'."
+            else:
+                # We are initiating job_delete (either first time, or switching to a new delete request)
+                job_title = filters.get("job_title")
+                job_id = filters.get("job_id")
+                
+                if not job_title and not job_id:
+                    # Clean prompt for fallback matching
+                    clean_prompt = prompt.lower()
+                    for prefix in ["delete job ", "delete posting ", "delete role ", "delete ", "remove job ", "remove "]:
+                        if clean_prompt.startswith(prefix):
+                            clean_prompt = clean_prompt[len(prefix):].strip()
+                            break
+                    
+                    recruiter_jobs = db.query(Job).filter(Job.recruiter_id == user_id).all()
+                    # Try exact match first
+                    for rj in recruiter_jobs:
+                        if rj.title.lower() == clean_prompt:
+                            job_id = str(rj.id)
+                            job_title = rj.title
+                            break
+                            
+                    # Try substring match
+                    if not job_id:
+                        for rj in recruiter_jobs:
+                            if rj.title.lower() in clean_prompt or clean_prompt in rj.title.lower():
+                                job_id = str(rj.id)
+                                job_title = rj.title
+                                break
+
+                if not job_title and not job_id:
+                    workflow_text = "Which job posting would you like to delete?"
+                else:
+                    # Find the job
+                    query = db.query(Job).filter(Job.recruiter_id == user_id)
+                    if job_id:
+                        job = query.filter(Job.id == job_id).first()
+                    else:
+                        job = query.filter(Job.title.ilike(f"%{job_title}%")).first()
+
+                    if not job:
+                        workflow_text = f"Could not find a job matching '{job_title}' among your postings."
+                    else:
+                        active_workflow = "job_delete"
+                        current_slots = {"job_id": str(job.id), "job_title": job.title}
+                        session_context["active_workflow"] = active_workflow
+                        session_context["slots"] = current_slots
+                        workflow_text = f"Are you sure you want to permanently delete the job posting for '{job.title}'? This action cannot be undone. Reply 'confirm' or 'cancel'."
+
+        elif intent == "job_status_update" and role == "recruiter":
+            job_title = filters.get("job_title")
+            job_id = filters.get("job_id")
+            status = filters.get("status")
+            
+            # Map common statuses
+            if status:
+                status = status.lower().strip()
+                if status in ("open", "active", "publish", "unpause"):
+                    status = "active"
+                elif status in ("pause", "paused", "hold", "on hold"):
+                    status = "paused"
+                elif status in ("close", "closed", "finish", "stop"):
+                    status = "closed"
+            
+            if not job_title and not job_id:
+                # Try to extract matching job title from the prompt directly
+                recruiter_jobs = db.query(Job).filter(Job.recruiter_id == user_id).all()
+                for rj in recruiter_jobs:
+                    if rj.title.lower() in prompt.lower():
+                        job_id = str(rj.id)
+                        job_title = rj.title
+                        break
+
+            # Try to extract status from prompt if not in filters
+            if not status:
+                p_lower = prompt.lower()
+                if any(x in p_lower for x in ("open", "active", "publish", "unpause")):
+                    status = "active"
+                elif any(x in p_lower for x in ("pause", "paused", "hold", "on hold")):
+                    status = "paused"
+                elif any(x in p_lower for x in ("close", "closed")):
+                    status = "closed"
+
+            if not job_title and not job_id:
+                workflow_text = "Which job posting would you like to update?"
+            elif not status:
+                workflow_text = f"What status would you like to set for '{job_title or 'this job'}'? (open, paused, or closed)"
+            else:
+                # Find the job
+                query = db.query(Job).filter(Job.recruiter_id == user_id)
+                if job_id:
+                    job = query.filter(Job.id == job_id).first()
+                else:
+                    job = query.filter(Job.title.ilike(f"%{job_title}%")).first()
+
+                if not job:
+                    workflow_text = f"Could not find a job matching '{job_title}' among your postings."
+                else:
+                    job.status = status
+                    db.commit()
+                    workflow_text = f"Successfully updated the status of '{job.title}' to '{status}' (Open/Active)." if status == "active" else f"Successfully updated the status of '{job.title}' to '{status}'."
+                    
+                    # Fetch updated job list to show
+                    jobs = db.query(Job).filter(Job.recruiter_id == user_id).order_by(Job.created_at.desc()).all()
+                    data_results = [{
+                        "id": str(j.id),
+                        "title": j.title,
+                        "company_name": user_context.get("company_name", "Your Company"),
+                        "location": j.location,
+                        "salary_range": j.salary_range,
+                        "experience_band": j.experience_band or "mid",
+                        "job_type": j.job_type or "onsite",
+                        "status": j.status
+                    } for j in jobs]
+                    data_type = "job_list"
+
+        elif intent == "job_stats" and role == "recruiter":
+            recruiter_jobs = db.query(Job).filter(Job.recruiter_id == user_id).all()
+            job_ids = [job.id for job in recruiter_jobs]
+            
+            total = len(recruiter_jobs)
+            active = sum(1 for j in recruiter_jobs if j.status == "active")
+            paused = sum(1 for j in recruiter_jobs if j.status == "paused")
+            closed = sum(1 for j in recruiter_jobs if j.status == "closed")
+            
+            total_views = 0
+            if job_ids:
+                total_views = db.query(JobView).filter(JobView.job_id.in_(job_ids)).count()
+                
+            workflow_text = f"Here is a summary of your job board status:\n\n" \
+                            f"• Total Job Listings: {total}\n" \
+                            f"• Open/Active Roles: {active}\n" \
+                            f"• Paused Roles: {paused}\n" \
+                            f"• Closed Roles: {closed}\n" \
+                            f"• Total Candidate Views: {total_views}\n\n" \
+                            f"You can ask me to change status (open/pause/close) or delete any specific job."
+                            
+            # Let's also output the job list so they can see all jobs
+            data_results = [{
+                "id": str(j.id),
+                "title": j.title,
+                "company_name": user_context.get("company_name", "Your Company"),
+                "location": j.location,
+                "salary_range": j.salary_range,
+                "experience_band": j.experience_band or "mid",
+                "job_type": j.job_type or "onsite",
+                "status": j.status
+            } for j in recruiter_jobs]
+            data_type = "job_list"
+
+        elif intent == "view_candidates" and role == "recruiter":
+            candidates = await recruiter_service.get_talent_pool()
+            workflow_text = "Here is the talent pool with all active candidates."
+            data_type = "candidate_list"
+            data_results = candidates[:10]  # Show top 10 in chat
+
+        elif intent == "application_status":
+            if role == "recruiter":
+                profile = db.query(RecruiterProfile).filter(RecruiterProfile.user_id == user_id).first()
+                if profile:
+                    query = db.query(JobApplication, Job, CandidateProfile, ProfileScore, User).join(
+                        Job, JobApplication.job_id == Job.id
+                    ).join(
+                        CandidateProfile, JobApplication.candidate_id == CandidateProfile.user_id
+                    ).join(
+                        User, JobApplication.candidate_id == User.id
+                    ).outerjoin(
+                        ProfileScore, JobApplication.candidate_id == ProfileScore.user_id
+                    ).filter(
+                        Job.recruiter_id == user_id
+                    )
+                    
+                    job_title = filters.get("job_title")
+                    job_id = filters.get("job_id")
+                    
+                    if not job_title and not job_id:
+                        recruiter_jobs = db.query(Job).filter(Job.recruiter_id == user_id).all()
+                        for rj in recruiter_jobs:
+                            if rj.title.lower() in prompt.lower():
+                                job_id = str(rj.id)
+                                job_title = rj.title
+                                break
+                                
+                    if job_id:
+                        query = query.filter(Job.id == job_id)
+                        workflow_text = f"Here are the applications for the job role '{job_title or 'Selected Job'}':"
+                    elif job_title:
+                        query = query.filter(Job.title.ilike(f"%{job_title}%"))
+                        workflow_text = f"Here are the applications for the job role '{job_title}':"
+                    else:
+                        workflow_text = "Here are the applications for the jobs posted by you:"
+                        
+                    apps = query.order_by(JobApplication.created_at.desc()).all()
+                    data_results = []
+                    for app in apps:
+                        # Fetch scheduled/pending interviews
+                        interviews = db.query(Interview).filter(Interview.application_id == app[0].id).all()
+                        int_list = [{
+                            "id": str(i.id),
+                            "round_name": i.round_name,
+                            "round_number": i.round_number,
+                            "format": i.format,
+                            "location": i.location,
+                            "meeting_link": i.meeting_link,
+                            "status": i.status
+                        } for i in interviews]
+                        
+                        # Fetch resume data if available
+                        resume_data_obj = db.query(ResumeData).filter(ResumeData.user_id == app[2].user_id).first()
+                        res_data = None
+                        if resume_data_obj:
+                            res_data = {
+                                "timeline": resume_data_obj.timeline,
+                                "education": resume_data_obj.education,
+                                "achievements": resume_data_obj.achievements,
+                                "skills": resume_data_obj.skills
+                            }
+                            
+                        data_results.append({
+                            "id": str(app[0].id),
+                            "candidate_id": str(app[2].user_id),
+                            "candidate_name": app[2].full_name,
+                            "candidate_role": app[2].current_role,
+                            "candidate_location": app[2].location or "Remote",
+                            "job_id": str(app[1].id),
+                            "job_title": app[1].title,
+                            "status": app[0].status,
+                            "created_at": app[0].created_at.isoformat() if app[0].created_at else None,
+                            "match_score": app[3].final_score if app[3] else None,
+                            "resume_path": S3Service.get_signed_url(app[2].resume_path) if app[2].resume_path else None,
+                            "candidate_email": app[4].email,
+                            "interviews": int_list,
+                            "resume_data": res_data
+                        })
+                    data_type = "application_cards"
+                else:
+                    workflow_text = "Could not find recruiter profile details."
+                    data_type = "none"
+            else:
+                query = db.query(JobApplication, Job, Company).join(
+                    Job, JobApplication.job_id == Job.id
+                ).join(
+                    Company, Job.company_id == Company.id
+                ).filter(
+                    JobApplication.candidate_id == user_id
+                )
+                apps = query.order_by(JobApplication.created_at.desc()).all()
+                data_results = [{
+                    "id": str(app[0].id),
+                    "company_name": app[2].name,
+                    "job_title": app[1].title,
+                    "status": app[0].status
+                } for app in apps]
+                workflow_text = "Here is the status of your job applications:"
+                data_type = "application_list"
+
+        elif intent == "view_jobs":
+            if role == "recruiter":
+                profile = db.query(RecruiterProfile).filter(RecruiterProfile.user_id == user_id).first()
+                if profile:
+                    query = db.query(Job).filter(Job.recruiter_id == user_id)
+                    job_title = filters.get("job_title")
+                    if not job_title:
+                        # Try to extract matching job title from the prompt directly
+                        recruiter_jobs = db.query(Job).filter(Job.recruiter_id == user_id).all()
+                        for rj in recruiter_jobs:
+                            if rj.title.lower() in prompt.lower():
+                                job_title = rj.title
+                                break
+                    
+                    if job_title:
+                        query = query.filter(Job.title.ilike(f"%{job_title}%"))
+                        workflow_text = f"Here are your posted jobs matching '{job_title}':"
+                    else:
+                        workflow_text = "Here are the jobs currently posted by you."
+                        
+                    jobs = query.order_by(Job.created_at.desc()).all()
+                    data_results = [{
+                        "id": str(job.id),
+                        "title": job.title,
+                        "company_name": user_context.get("company_name", "Your Company"),
+                        "location": job.location,
+                        "salary_range": job.salary_range,
+                        "experience_band": job.experience_band or "mid",
+                        "job_type": job.job_type or "onsite",
+                        "status": job.status
+                    } for job in jobs]
+                    data_type = "job_list"
+                else:
+                    workflow_text = "Could not find recruiter profile details."
+                    data_type = "none"
+            else:
+                jobs = await CandidateService.list_available_jobs(user_id)
+                data_results = jobs[:10]
+                workflow_text = "Here are the active job postings available on the platform."
+                data_type = "job_list"
+
+        elif intent == "schedule_interview" and role == "recruiter":
+            application_id = filters.get("application_id")
+            candidate_id = filters.get("candidate_id")
+            candidate_name = filters.get("candidate_name")
+            job_id = filters.get("job_id")
+            job_title = filters.get("job_title")
+
+            # Try to resolve application_id or candidate details
+            query = db.query(JobApplication, Job, CandidateProfile, User).join(
+                Job, JobApplication.job_id == Job.id
+            ).join(
+                CandidateProfile, JobApplication.candidate_id == CandidateProfile.user_id
+            ).join(
+                User, JobApplication.candidate_id == User.id
+            ).filter(
+                Job.recruiter_id == user_id
+            )
+
+            if application_id:
+                query = query.filter(JobApplication.id == application_id)
+            else:
+                if candidate_id:
+                    query = query.filter(JobApplication.candidate_id == candidate_id)
+                elif candidate_name:
+                    query = query.filter(CandidateProfile.full_name.ilike(f"%{candidate_name}%"))
+                
+                if job_id:
+                    query = query.filter(JobApplication.job_id == job_id)
+                elif job_title:
+                    query = query.filter(Job.title.ilike(f"%{job_title}%"))
+
+            app_obj = query.order_by(JobApplication.created_at.desc()).first()
+            if app_obj:
+                # Get existing scheduled/pending interviews
+                interviews = db.query(Interview).filter(Interview.application_id == app_obj[0].id).all()
+                int_list = [{
+                    "id": str(i.id),
+                    "round_name": i.round_name,
+                    "round_number": i.round_number,
+                    "format": i.format,
+                    "location": i.location,
+                    "meeting_link": i.meeting_link,
+                    "status": i.status
+                } for i in interviews]
+
+                # Outer join ProfileScore if it exists
+                profile_score = db.query(ProfileScore).filter(ProfileScore.user_id == app_obj[2].user_id).first()
+                match_score = profile_score.final_score if profile_score else None
+
+                # Get resume timeline if exists
+                resume_data_obj = db.query(ResumeData).filter(ResumeData.user_id == app_obj[2].user_id).first()
+                res_data = None
+                if resume_data_obj:
+                    res_data = {
+                        "timeline": resume_data_obj.timeline,
+                        "education": resume_data_obj.education,
+                        "achievements": resume_data_obj.achievements,
+                        "skills": resume_data_obj.skills
+                    }
+
+                data_results = [{
+                    "id": str(app_obj[0].id),
+                    "candidate_id": str(app_obj[2].user_id),
+                    "candidate_name": app_obj[2].full_name,
+                    "candidate_role": app_obj[2].current_role,
+                    "candidate_location": app_obj[2].location or "Remote",
+                    "job_id": str(app_obj[1].id),
+                    "job_title": app_obj[1].title,
+                    "status": app_obj[0].status,
+                    "created_at": app_obj[0].created_at.isoformat() if app_obj[0].created_at else None,
+                    "match_score": match_score,
+                    "resume_path": S3Service.get_signed_url(app_obj[2].resume_path) if app_obj[2].resume_path else None,
+                    "candidate_email": app_obj[3].email,
+                    "interviews": int_list,
+                    "resume_data": res_data
+                }]
+                workflow_text = f"Ready to schedule an interview with {app_obj[2].full_name} for the '{app_obj[1].title}' position."
+                data_type = "schedule_interview"
+            else:
+                workflow_text = "Could not find a matching active candidate application to schedule an interview for."
+                data_type = "none"
+
+        elif intent in ("profile_view", "resume_view") and role == "recruiter":
+            candidate_id = filters.get("candidate_id")
+            candidate_name = filters.get("candidate_name")
+
+            if not candidate_id and candidate_name:
+                clean_name = candidate_name.strip()
+                cand_profile = db.query(CandidateProfile).filter(CandidateProfile.full_name.ilike(f"%{clean_name}%")).first()
+                if cand_profile:
+                    candidate_id = str(cand_profile.user_id)
+
+            if not candidate_id:
+                # Try fallback parsing from prompt
+                clean_prompt = prompt.lower()
+                for prefix in ["show profile of ", "show profile for ", "view profile of ", "view profile for ", "profile of ", "profile for ", "show resume of ", "show resume for ", "view resume of ", "view resume for ", "resume of ", "resume for "]:
+                    if clean_prompt.startswith(prefix):
+                        cand_name = prompt[len(prefix):].strip()
+                        cand_name = re.sub(r'[?.!]$', '', cand_name).strip()
+                        cand_profile = db.query(CandidateProfile).filter(CandidateProfile.full_name.ilike(f"%{cand_name}%")).first()
+                        if cand_profile:
+                            candidate_id = str(cand_profile.user_id)
+                            break
+
+            if not candidate_id:
+                workflow_text = "Which candidate's profile would you like to view?" if intent == "profile_view" else "Which candidate's resume would you like to view?"
+                data_type = "none"
+            else:
+                cand_profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == candidate_id).first()
+                if not cand_profile:
+                    workflow_text = "Could not find the specified candidate."
+                    data_type = "none"
+                else:
+                    user_obj = db.query(User).filter(User.id == candidate_id).first()
+                    score_obj = db.query(ProfileScore).filter(ProfileScore.user_id == candidate_id).first()
+                    resume_data_obj = db.query(ResumeData).filter(ResumeData.user_id == candidate_id).first()
+                    
+                    res_data = None
+                    if resume_data_obj:
+                        res_data = {
+                            "timeline": resume_data_obj.timeline,
+                            "education": resume_data_obj.education,
+                            "achievements": resume_data_obj.achievements,
+                            "skills": resume_data_obj.skills
+                        }
+                    
+                    data_results = [{
+                        "user_id": str(cand_profile.user_id),
+                        "full_name": cand_profile.full_name,
+                        "email": user_obj.email if user_obj else None,
+                        "phone": cand_profile.phone_number if cand_profile.phone_number else None,
+                        "phone_number": cand_profile.phone_number if cand_profile.phone_number else None,
+                        "location": cand_profile.location or "Remote",
+                        "current_role": cand_profile.current_role or "IT Sales Professional",
+                        "skills": cand_profile.skills or [],
+                        "years_of_experience": cand_profile.years_of_experience or 0,
+                        "profile_strength": cand_profile.profile_strength or "Good",
+                        "expected_salary": float(cand_profile.expected_salary) if cand_profile.expected_salary else None,
+                        "gender": cand_profile.gender if cand_profile.gender else None,
+                        "bio": cand_profile.bio if cand_profile.bio else None,
+                        "resume_path": S3Service.get_signed_url(cand_profile.resume_path) if cand_profile.resume_path else None,
+                        "match_score": score_obj.final_score if score_obj else None,
+                        "resume_data": res_data
+                    }]
+                    data_type = "candidate_profile" if intent == "profile_view" else "resume_info"
+
+        # Update workflow slots & state in session context
+        session_context["active_workflow"] = active_workflow
+        session_context["slots"] = current_slots
+
+        # ── 6. Limit (Fallback) ─────────────────────────────────
         limit = await _extract_limit(prompt)
 
-        # ── 6. Tool Execution ───────────────────────────────────
-        raw_data = None
-        if requires_data and intent not in ("general", "greeting", "help"):
-            raw_data = await _execute_tool(intent, filters, user_id, role)
+        # ── 7. Tool Execution & Response Generation (Fallback) ───
+        if not workflow_text:
+            raw_data = None
+            if requires_data and intent not in ("general", "greeting", "help") and not data_results:
+                raw_data = await _execute_tool(intent, filters, user_id, role, prompt=prompt)
 
-        # Normalise results
-        data_results: List[Dict] = []
-        if raw_data:
-            if isinstance(raw_data, dict):
-                data_results = raw_data.get("data") or raw_data.get("results") or []
-            elif isinstance(raw_data, list):
-                data_results = raw_data
-        data_results = data_results[:limit]
+            # Normalise results
+            if raw_data:
+                if isinstance(raw_data, dict):
+                    data_results = raw_data.get("data") or raw_data.get("results") or []
+                elif isinstance(raw_data, list):
+                    data_results = raw_data
+            data_results = data_results[:limit]
+            data_type = _INTENT_TYPE.get(intent, "none") if data_results else "none"
 
-        data_type = _INTENT_TYPE.get(intent, "none") if data_results else "none"
+            next_steps = _get_dynamic_next_steps(role, intent, data_results, next_steps)
 
-        # ── 7. AI Response ──────────────────────────────────────
-        final_text = await _generate_response(
-            prompt=prompt,
-            role=role,
-            intent=intent,
-            filters=filters,
-            data_results=data_results,
-            limit=limit,
-            history=messages,
-            next_steps=next_steps,
-            user_context=user_context,
-        )
+            final_text = await _generate_response(
+                prompt=prompt,
+                role=role,
+                intent=intent,
+                filters=filters,
+                data_results=data_results,
+                limit=limit,
+                history=messages,
+                next_steps=next_steps,
+                user_context=user_context,
+            )
+        else:
+            final_text = workflow_text
+            next_steps = _get_dynamic_next_steps(role, intent, data_results, next_steps)
 
         # ── 8. Greeting prefix for new sessions ─────────────────
-        if is_new_session:
-            greeting = await _generate_greeting(user_context, role, prev_summary)
+        if is_new_session and prompt == "__greeting__":
+            greeting = await _generate_greeting(
+                user_context,
+                role,
+                prev_summary,
+                payload.client_context,
+            )
             final_text = f"{greeting}\n\n{final_text}"
 
         # ── 9. Action Cards ─────────────────────────────────────
+        action_cards_intent = "recommendations_locked" if data_type == "recommendations_locked" else intent
         action_cards = _build_action_cards(
-            intent, data_results, suggested_redirects, next_steps, role
+            action_cards_intent, data_results, suggested_redirects, next_steps, role
         )
+
+        # Trigger recruiter-specific notifications for searches and views
+        if role == "recruiter" and data_results:
+            try:
+                if intent in ("candidate_search", "view_candidates"):
+                    match_count = len(data_results)
+                    location_str = filters.get("location") or ""
+                    loc_part = f" in {location_str}" if location_str else ""
+                    NotificationService.create_notification(
+                        user_id=user_id,
+                        type="info",
+                        title="Candidate Search Fit",
+                        message=f"Found {match_count} candidate matching results{loc_part}.",
+                        metadata={"session_id": session_id, "filters": filters},
+                        db=db
+                    )
+                    db.commit()
+                elif intent == "profile_view":
+                    cand_name = data_results[0].get("full_name") or "Candidate"
+                    NotificationService.create_notification(
+                        user_id=user_id,
+                        type="info",
+                        title="Profile Viewed",
+                        message=f"You viewed {cand_name}'s profile details conversationally.",
+                        metadata={"candidate_id": data_results[0].get("user_id"), "session_id": session_id},
+                        db=db
+                    )
+                    db.commit()
+                elif intent == "resume_view":
+                    cand_name = data_results[0].get("full_name") or "Candidate"
+                    NotificationService.create_notification(
+                        user_id=user_id,
+                        type="info",
+                        title="Resume Viewed",
+                        message=f"You conversationally opened {cand_name}'s resume preview.",
+                        metadata={"candidate_id": data_results[0].get("user_id"), "session_id": session_id},
+                        db=db
+                    )
+                    db.commit()
+            except Exception as notif_err:
+                log.warning("Could not create recruiter notification: %s", notif_err)
 
         # ── 10. Persist session ─────────────────────────────────
         data_summary = (
@@ -614,16 +2080,37 @@ async def assistant_chat(
             else f"No results for {intent}"
         )
 
-        # Auto-title: use first user message as session title
-        session_title = session.get("session_title") or prompt[:60]
+        # Auto-title: use first user message as session title (summarized by LLM)
+        session_title = session.get("session_title")
+        if not session_title or session_title in ("__greeting__", "New Chat", "New Session", ""):
+            if prompt and prompt != "__greeting__":
+                session_title = await _generate_chat_title(prompt)
+            else:
+                session_title = "New Chat"
 
-        messages.append({"role": "user",      "content": prompt,     "timestamp": datetime.now().isoformat()})
-        messages.append({"role": "assistant",  "content": final_text, "timestamp": datetime.now().isoformat()})
+        messages.append({
+            "role": "user",
+            "content": prompt,
+            "timestamp": datetime.now().isoformat(),
+        })
+
+        # Persist assistant reply with rich metadata so UI can rehydrate cards after reload
+        messages.append({
+            "role": "assistant",
+            "content": final_text,
+            "timestamp": datetime.now().isoformat(),
+            "intent": intent,
+            "data_type": data_type,
+            "data_results": data_results,
+            "action_cards": action_cards,
+            "feature_prompts": next_steps if next_steps else [],
+            "next_steps": next_steps,
+        })
         messages = messages[-30:]  # keep rolling window of 30 messages
 
         _update_session(
             db, session_id, messages, intent, filters,
-            data_summary, user_context, session_title
+            data_summary, session_context, session_title
         )
 
         return {
@@ -705,6 +2192,46 @@ async def get_session_messages(
             "last_intent":   row._mapping.get("last_intent"),
             "messages":      messages,
         }
+    finally:
+        db.close()
+
+
+class UpdateMessagesRequest(BaseModel):
+    messages: List[Dict[str, Any]]
+
+@router.put("/sessions/{session_id}/messages")
+async def update_session_messages(
+    session_id: str,
+    payload: UpdateMessagesRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    user_id = current_user.get("sub")
+    db = SessionLocal()
+    try:
+        _ensure_sessions_table(db)
+        row = db.execute(
+            text("SELECT user_id FROM ai_assistant_sessions WHERE id = :sid AND user_id = :uid"),
+            {"sid": session_id, "uid": user_id},
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Session not found")
+            
+        db.execute(
+            text("""
+                UPDATE ai_assistant_sessions
+                SET messages = :messages,
+                    message_count = :count,
+                    updated_at = NOW()
+                WHERE id = :sid
+            """),
+            {
+                "messages": json.dumps(payload.messages),
+                "count": len(payload.messages),
+                "sid": session_id,
+            }
+        )
+        db.commit()
+        return {"success": True}
     finally:
         db.close()
 

@@ -23,8 +23,10 @@ import {
   Search,
   SlidersHorizontal,
   X,
+  Share2,
 } from "lucide-react";
 import CompanyCultureGallery from "@/components/CompanyCultureGallery";
+import ShareJobModal from "@/components/ShareJobModal";
 
 interface Job {
   id: string;
@@ -54,6 +56,7 @@ export default function CandidateJobsPage() {
   const [saving, setSaving] = useState<string | null>(null);
   const [assessmentStatus, setAssessmentStatus] = useState<string>("not_started");
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [sharingJob, setSharingJob] = useState<Job | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState<"all" | "saved" | "applied">("all");
   const [filterJobType, setFilterJobType] = useState<string>("all");
@@ -599,10 +602,23 @@ export default function CandidateJobsPage() {
                   )}
                   {selectedJob.is_saved ? "Saved" : "Save Job"}
                 </button>
+                <button
+                  onClick={() => setSharingJob(selectedJob)}
+                  className="h-14 px-8 rounded-2xl font-bold uppercase tracking-widest text-xs border border-slate-200 hover:bg-slate-50 text-slate-500 transition-all flex items-center justify-center gap-2"
+                >
+                  <Share2 className="h-4 w-4" />
+                  Share
+                </button>
               </div>
             </div>
           </div>
         </div>
+      )}
+      {sharingJob && (
+        <ShareJobModal
+          job={sharingJob}
+          onClose={() => setSharingJob(null)}
+        />
       )}
     </div>
   );

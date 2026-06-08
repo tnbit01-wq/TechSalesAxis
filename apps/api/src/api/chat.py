@@ -81,10 +81,31 @@ async def send_message(
     
     # 3. Send Message
     try:
-        message = ChatService.send_message(db, target_thread_id, user_id, content)
+        message = await ChatService.send_message(db, target_thread_id, user_id, content)
         return {"status": "success", "message": message}
     except ValueError as e:
         raise HTTPException(status_code=403, detail=str(e))
+
+def cleanup_expired_negative_threads(db: Session):
+    try:
+        from datetime import datetime, timedelta
+        cutoff = datetime.utcnow() - timedelta(minutes=5)
+        expired_threads = db.query(ChatThread).filter(
+            ChatThread.is_active == False,
+            ChatThread.negative_reply_read_at != None,
+            ChatThread.negative_reply_read_at <= cutoff
+        ).all()
+        
+        if expired_threads:
+            for thread in expired_threads:
+                # Delete messages
+                db.query(ChatMessage).filter(ChatMessage.thread_id == thread.id).delete()
+                # Delete thread
+                db.delete(thread)
+            db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"ERROR cleaning up expired negative threads: {e}")
 
 @router.get("/threads")
 async def get_threads(
@@ -95,6 +116,7 @@ async def get_threads(
     """
     Returns chat threads for the logged-in user.
     """
+    cleanup_expired_negative_threads(db)
     user_id = current_user.get("sub")
     role = current_user.get("role")
     threads = ChatService.get_user_threads(db, user_id, role, show_archived=show_archived)
@@ -105,6 +127,20 @@ async def get_messages(thread_id: str, limit: int = 50, current_user: dict = Dep
     """
     Returns message history for a thread.
     """
+    cleanup_expired_negative_threads(db)
+    
+    # Check if thread exists and if recruiter is reading it
+    thread = db.query(ChatThread).filter(ChatThread.id == thread_id).first()
+    if thread and not thread.is_active:
+        user_id = current_user.get("sub")
+        role = current_user.get("role")
+        if role == "recruiter" and str(thread.recruiter_id) == str(user_id):
+            if thread.negative_reply_read_at is None:
+                from datetime import datetime
+                thread.negative_reply_read_at = datetime.utcnow()
+                db.commit()
+                print(f"DEBUG: Recruiter read negative reply thread {thread_id}. Deletion scheduled in 5 minutes.")
+
     messages = ChatService.get_thread_messages(db, thread_id, limit)
     return messages
 

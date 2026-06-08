@@ -429,8 +429,8 @@ export default function ComprehensiveDataTable({ files, batchName, batchId }: Pr
                         {col.id === 'status' ? (
                           <span className={`inline-flex items-center px-2.5 py-1 text-xs font-bold rounded-full ${
                             isSuccessfullyParsed(file.status) ? 'bg-emerald-100 text-emerald-700' :
-                            file.status === 'error' || file.status === 'failed' ? 'bg-red-100 text-red-700' :
-                            file.status === 'scanning' || file.status === 'processing' ? 'bg-amber-100 text-amber-700' :
+                            file.status === 'error' ? 'bg-red-100 text-red-700' :
+                            (file.status as string) === 'scanning' || (file.status as string) === 'processing' ? 'bg-amber-100 text-amber-700' :
                             'bg-blue-50 text-[#1a56db]'
                           }`}>
                             {file.status}
