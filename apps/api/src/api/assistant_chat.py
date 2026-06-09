@@ -364,6 +364,8 @@ CRITICAL: Determine if the user is switching context. If there is an active work
 For "career_readiness", extract and map any availability/mobility/relocation preferences to these exact enum tokens:
 ["immediate", "short_notice", "long_notice", "active_job_seeker", "passive_candidate", "between_roles", "laid_off_recently", "willing_to_relocate", "remote_only", "contract_preferred", "flexible", "salary_seeking_raise", "high_fit_by_compensation", "needs_salary_clarification", "requires_visa_sponsorship"].
 
+For expected/budget salary, populate "min_salary" and "max_salary". For current earnings/salary (e.g. 'earning under 10L', 'current salary 8-12 LPA'), populate "min_current_salary" and "max_current_salary".
+
 For "clear_filters", if the user explicitly requests to clear, ignore, or not consider a criteria (e.g. "do not consider experience", "any location", "any salary", "from any location"), populate "clear_filters" with matching tokens from: ["experience", "location", "salary", "skills", "job_type", "career_readiness"].
 
 For "next_steps", suggest 2 to 3 logical, highly contextual next steps/suggested follow-up actions (as short user query strings, e.g. "Invite Sonam Shukla", "Filter by 10+ years experience", "Find candidates in Indore", "View Sonam Shukla's resume", "Browse all active jobs"). These should reflect a natural conversational flow, helping the user proceed directly with actions or refinements.
@@ -381,6 +383,8 @@ Classify and return ONLY valid JSON — no markdown, no prose:
     "max_experience": null,
     "min_salary": null,
     "max_salary": null,
+    "min_current_salary": null,
+    "max_current_salary": null,
     "company_name": "",
     "candidate_name": "",
     "job_title": "",
@@ -485,7 +489,14 @@ async def _execute_tool(intent: str, filters: Dict, user_id: str, role: str, pro
                 return await recruiter_service.search_talent_pool(filters)
 
             # 1. Resolve filter_type
-            filter_type = filters.get("match_type") or "culture_fit"
+            filter_type = filters.get("match_type")
+            if not filter_type:
+                prompt_lower = prompt.lower()
+                if "skill" in prompt_lower or "overlap" in prompt_lower or "matching candidate" in prompt_lower or "match candidate" in prompt_lower or "matching for the role" in prompt_lower or ("role" in prompt_lower and "match" in prompt_lower):
+                    filter_type = "skill_match"
+                else:
+                    filter_type = "culture_fit"
+            
             if filter_type not in ("culture_fit", "skill_match"):
                 filter_type = "culture_fit"
             
@@ -532,6 +543,8 @@ async def _execute_tool(intent: str, filters: Dict, user_id: str, role: str, pro
             params = {
                 "location": filters.get("location"),
                 "max_salary": filters.get("max_salary"),
+                "min_current_salary": filters.get("min_current_salary"),
+                "max_current_salary": filters.get("max_current_salary"),
                 "required_skills": skills_list,
                 "career_readiness": ",".join(filters["career_readiness"]) if isinstance(filters.get("career_readiness"), list) else filters.get("career_readiness"),
                 "experience_band": filters.get("experience_band", "all"),
@@ -831,6 +844,8 @@ def is_recommendation_request(prompt: str, filters: Dict) -> bool:
         return True
     if filters.get("match_type") in ("culture_fit", "skill_match") and ("fit" in p_lower or "match" in p_lower):
         return True
+    if filters.get("job_title") or filters.get("job_id"):
+        return True
     return False
 
 def merge_search_filters(old_filters: Dict[str, Any], new_filters: Dict[str, Any], clear_filters: List[str]) -> Dict[str, Any]:
@@ -847,6 +862,8 @@ def merge_search_filters(old_filters: Dict[str, Any], new_filters: Dict[str, Any
         elif cf == "salary":
             merged.pop("min_salary", None)
             merged.pop("max_salary", None)
+            merged.pop("min_current_salary", None)
+            merged.pop("max_current_salary", None)
             merged.pop("salary_range", None)
         elif cf == "skills":
             merged.pop("skills", None)
@@ -861,7 +878,7 @@ def merge_search_filters(old_filters: Dict[str, Any], new_filters: Dict[str, Any
             continue
         if k == "location" and "location" in (clear_filters or []):
             continue
-        if k in ("min_salary", "max_salary", "salary_range") and "salary" in (clear_filters or []):
+        if k in ("min_salary", "max_salary", "min_current_salary", "max_current_salary", "salary_range") and "salary" in (clear_filters or []):
             continue
         if k == "skills" and "skills" in (clear_filters or []):
             continue
@@ -974,12 +991,27 @@ async def assistant_chat(
         suggested_redirects= intent_data.get("suggested_redirects", [])
         next_steps         = intent_data.get("next_steps", [])
 
+        # Force requires_data to True for search, view, and statistics intents that need data
+        data_fetching_intents = {
+            "candidate_search", "job_search", "company_search", "market_insights",
+            "profile_view", "resume_view", "application_status", "view_candidates",
+            "view_jobs", "job_stats"
+        }
+        if intent in data_fetching_intents:
+            requires_data = True
+
         # Normalize view_candidates to candidate_search if filters are present
         if role == "recruiter" and intent == "view_candidates":
             has_search_criteria = any(
-                filters.get(k) for k in ("skills", "location", "experience_band", "min_experience", "max_experience", "min_salary", "max_salary", "job_title", "career_readiness")
+                filters.get(k) for k in ("skills", "location", "experience_band", "min_experience", "max_experience", "min_salary", "max_salary", "min_current_salary", "max_current_salary", "job_title", "career_readiness")
             )
             if has_search_criteria:
+                intent = "candidate_search"
+
+        # Override intent to candidate_search if recruiter is searching for candidates/talent
+        if role == "recruiter" and intent in ("view_jobs", "job_search", "general", "greeting", "view_candidates"):
+            prompt_lower = prompt.lower()
+            if "candidate" in prompt_lower or "talent" in prompt_lower or "people" in prompt_lower or "resume" in prompt_lower:
                 intent = "candidate_search"
 
         # Sticky candidate search filters merge

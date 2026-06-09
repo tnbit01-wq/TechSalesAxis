@@ -130,21 +130,34 @@ def _candidate_matches_readiness(candidate: CandidateProfile, readiness: str, ro
     willing_relocate = bool(candidate.willing_to_relocate)
     readiness_meta = candidate.career_readiness_metadata or {}
     work_location_preference = str(readiness_meta.get("work_location_preference") or "").strip().lower()
+    role_urgency_level = (candidate.role_urgency_level or "").strip().lower()
+    employment_readiness_status = (candidate.employment_readiness_status or "").strip().lower()
+    notice_period_days = candidate.notice_period_days
 
     readiness = (readiness or "").strip().lower()
     if not readiness:
         return True
 
+    # Frontend / visual status enums compatibility
+    if readiness == "active":
+        return job_search_mode == "active" or "active" in role_urgency_level or "active" in employment_readiness_status
+    if readiness == "exploring":
+        return "exploring" in job_search_mode or "exploring" in role_urgency_level or "exploring" in employment_readiness_status
+    if readiness == "passive":
+        return "passive" in job_search_mode or "passive" in role_urgency_level or "passive" in employment_readiness_status
+    if readiness in ("urgent_30days", "urgent_immediate"):
+        return "urgent" in role_urgency_level or "immediate" in role_urgency_level or notice_period_days == 0
+
     if readiness == "immediate":
-        return job_search_mode == "active" or (candidate.notice_period_days == 0)
+        return job_search_mode == "active" or notice_period_days == 0 or "immediate" in role_urgency_level or "urgent" in role_urgency_level
     if readiness == "short_notice":
-        return candidate.notice_period_days is not None and 0 < candidate.notice_period_days <= 30
+        return (notice_period_days is not None and 0 < notice_period_days <= 30) or "30days" in role_urgency_level or "urgent" in role_urgency_level
     if readiness == "long_notice":
-        return candidate.notice_period_days is not None and candidate.notice_period_days >= 60
+        return notice_period_days is not None and notice_period_days >= 60
     if readiness == "active_job_seeker":
-        return job_search_mode == "active"
+        return job_search_mode == "active" or "active" in role_urgency_level or "active" in employment_readiness_status
     if readiness == "passive_candidate":
-        return job_search_mode == "passive"
+        return job_search_mode == "passive" or "passive" in role_urgency_level or "passive" in employment_readiness_status
     if readiness == "between_roles":
         return employment_status in {"between", "between_roles"}
     if readiness == "laid_off_recently":
@@ -177,11 +190,7 @@ def _candidate_matches_readiness(candidate: CandidateProfile, readiness: str, ro
 
     # Backward-compatible aliases from the prior UI
     if readiness == "actively_looking":
-        return job_search_mode == "active"
-    if readiness == "exploring":
-        return job_search_mode == "exploring"
-    if readiness == "passive":
-        return job_search_mode == "passive"
+        return job_search_mode == "active" or "active" in role_urgency_level or "active" in employment_readiness_status
 
     return True
 
@@ -1208,6 +1217,37 @@ Respond with ONLY the domain in format: domain.com (no https://, no www., just t
                     )
                 )
 
+            min_current_salary = params.get("min_current_salary")
+            max_current_salary = params.get("max_current_salary")
+
+            if min_current_salary is not None:
+                try:
+                    val = float(min_current_salary)
+                    if val < 100:
+                        min_current_salary = val * 100000.0
+                    query = query.filter(
+                        and_(
+                            CandidateProfile.current_salary.isnot(None),
+                            CandidateProfile.current_salary >= min_current_salary
+                        )
+                    )
+                except ValueError:
+                    pass
+
+            if max_current_salary is not None:
+                try:
+                    val = float(max_current_salary)
+                    if val < 100:
+                        max_current_salary = val * 100000.0
+                    query = query.filter(
+                        and_(
+                            CandidateProfile.current_salary.isnot(None),
+                            CandidateProfile.current_salary <= max_current_salary
+                        )
+                    )
+                except ValueError:
+                    pass
+
             career_readiness_values = [
                 value.strip().lower()
                 for value in str(params.get("career_readiness") or "").split(",")
@@ -1313,7 +1353,7 @@ Respond with ONLY the domain in format: domain.com (no https://, no www., just t
                         continue
                     match_ratio = len(skill_overlap) / len(target_skills_lower)
                     deterministic_score = int(round(match_ratio * 100))
-                    if match_ratio >= 0.75:
+                    if match_ratio > 0.65:
                         score, reasoning = self._score_skill_match(c, target_skills, target_exp_band, target_max_salary, is_shadow)
                         results.append({
                             "user_id": str(c.user_id),
@@ -1335,13 +1375,6 @@ Respond with ONLY the domain in format: domain.com (no https://, no www., just t
                             "deterministic_skill_score": deterministic_score,
                         })
                         existing_result_ids.add(str(c.user_id))
-                    elif match_ratio >= 0.60:
-                        borderline_candidates.append({
-                            "candidate": c,
-                            "match_ratio": match_ratio,
-                            "matched_skills": skill_overlap,
-                            "missing_skills": target_skills_lower - skill_overlap,
-                        })
                     continue
                 else:
                     # **CULTURE FIT (Default)**
@@ -1798,6 +1831,10 @@ Rate ICP alignment on 0-100. Output format: SCORE: [number] | REASON: [one sente
                     "location": c.location or "Remote",
                     "location_tier": c.location_tier or getCityTier(c.location or "Remote"),
                     "expected_salary": float(c.expected_salary) if c.expected_salary else 0.0,
+                    "current_salary": float(c.current_salary) if c.current_salary else 0.0,
+                    "career_readiness_score": float(c.career_readiness_score) if c.career_readiness_score else 0.0,
+                    "role_urgency_level": c.role_urgency_level or "passive",
+                    "employment_readiness_status": c.employment_readiness_status or "not_specified",
                     "skills": c.skills or [],
                     "target_role": c.target_role,
                     "current_role": c.current_role,
@@ -1891,6 +1928,8 @@ Rate ICP alignment on 0-100. Output format: SCORE: [number] | REASON: [one sente
             experience_band = params.get("experience_band")
             min_salary = params.get("min_salary")
             max_salary = params.get("max_salary")
+            min_current_salary = params.get("min_current_salary")
+            max_current_salary = params.get("max_current_salary")
             skills = params.get("skills") or []
             job_type = params.get("job_type")
             career_readiness = params.get("career_readiness") or []
@@ -1916,6 +1955,26 @@ Rate ICP alignment on 0-100. Output format: SCORE: [number] | REASON: [one sente
                         max_salary = val
                 except ValueError:
                     max_salary = None
+
+            if min_current_salary is not None:
+                try:
+                    val = float(min_current_salary)
+                    if val < 100:
+                        min_current_salary = val * 100000.0
+                    else:
+                        min_current_salary = val
+                except ValueError:
+                    min_current_salary = None
+
+            if max_current_salary is not None:
+                try:
+                    val = float(max_current_salary)
+                    if val < 100:
+                        max_current_salary = val * 100000.0
+                    else:
+                        max_current_salary = val
+                except ValueError:
+                    max_current_salary = None
             
             loc_search = str(location).strip().lower() if location else None
             loc_equivalents = {loc_search} if loc_search else set()
@@ -1970,13 +2029,13 @@ Rate ICP alignment on 0-100. Output format: SCORE: [number] | REASON: [one sente
                     except ValueError:
                         pass
                 
-                # 3. Filter: Experience Band
-                if experience_band and experience_band != "all":
+                # 3. Filter: Experience Band (only apply if numeric range is not specified)
+                if experience_band and experience_band != "all" and min_experience is None and max_experience is None:
                     c_band = get_exp_band(c_years)
                     if c_band != experience_band:
                         continue
-                
-                # 4. Filter: Salary Range
+                        
+                # 4. Filter: Expected Salary Range
                 c_salary = float(c.expected_salary) if c.expected_salary is not None else None
                 if min_salary is not None:
                     try:
@@ -1990,6 +2049,22 @@ Rate ICP alignment on 0-100. Output format: SCORE: [number] | REASON: [one sente
                             continue
                     except ValueError:
                         pass
+
+                # 4b. Filter: Current Salary Range
+                c_current_salary = float(c.current_salary) if c.current_salary is not None else None
+                if c_current_salary is not None and c_current_salary > 0:
+                    if min_current_salary is not None:
+                        try:
+                            if c_current_salary < float(min_current_salary):
+                                continue
+                        except ValueError:
+                            pass
+                    if max_current_salary is not None:
+                        try:
+                            if c_current_salary > float(max_current_salary):
+                                continue
+                        except ValueError:
+                            pass
                 
                 # 5. Filter: Job Type
                 if job_type:
@@ -2174,6 +2249,10 @@ Rate ICP alignment on 0-100. Output format: SCORE: [number] | REASON: [one sente
                     "identity_verified": c.identity_verified or False,
                     "profile_strength": "Lead" if c.is_shadow_profile else (c.profile_strength or "Moderate"),
                     "expected_salary": float(c.expected_salary or 0.0),
+                    "current_salary": float(c.current_salary or 0.0),
+                    "career_readiness_score": float(c.career_readiness_score or 0.0),
+                    "role_urgency_level": c.role_urgency_level or "passive",
+                    "employment_readiness_status": c.employment_readiness_status or "not_specified",
                     "is_shadow": c.is_shadow_profile or False,
                     "assessment_status": c.assessment_status or "not_started",
                     "culture_match_score": final_match_score,

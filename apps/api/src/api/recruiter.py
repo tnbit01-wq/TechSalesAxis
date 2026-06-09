@@ -1001,7 +1001,7 @@ async def get_candidate(candidate_id: str, db: Session = Depends(get_db)):
         "birthdate": candidate.birthdate,
         "profile_photo_url": get_s3_url_with_fallback(candidate.profile_photo_url) or f"https://api.dicebear.com/7.x/avataaars/svg?seed={(candidate.full_name or 'User').replace(' ', '%20')}",
         "resume_path": get_s3_url_with_fallback(candidate.resume_path),
-        "skills": resume.skills if resume else [],
+        "skills": resume.skills if (resume and resume.skills) else (candidate.skills if candidate.skills else []),
         "resume_data": {
             "timeline": resume.timeline if resume else None,
             "education": resume.education if resume else None,
