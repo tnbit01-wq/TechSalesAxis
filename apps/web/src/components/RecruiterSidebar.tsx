@@ -18,6 +18,7 @@ import {
   Zap,
   Plus,
   Sparkles,
+  Bell,
 } from "lucide-react";
 
 interface RecruiterSidebarProps {
@@ -55,6 +56,7 @@ export default function RecruiterSidebar({ teamRole, profileScore = 0 }: Recruit
       items: [
         { label: "Messages", href: "/dashboard/recruiter/messages", icon: MessageSquare },
         { label: "Community", href: "/dashboard/recruiter/organization/community", icon: Users },
+        { label: "Notifications", href: "/dashboard/recruiter/account/notifications", icon: Bell },
       ],
     },
   ];

@@ -18,6 +18,7 @@ const pageTitles: Record<string, { title: string; sub: string }> = {
   "/dashboard/candidate/gps": { title: "Career GPS", sub: "Plan your career path" },
   "/dashboard/candidate/messages": { title: "Messages", sub: "Chat with recruiters" },
   "/dashboard/candidate/community": { title: "Community", sub: "Connect with peers" },
+  "/dashboard/candidate/notifications": { title: "Notifications", sub: "Your latest alerts and updates" },
   "/dashboard/candidate/profile": { title: "Profile", sub: "Manage your profile" },
   "/dashboard/candidate/settings": { title: "Settings", sub: "Account preferences" },
 };

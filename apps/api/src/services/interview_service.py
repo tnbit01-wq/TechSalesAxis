@@ -68,6 +68,37 @@ class InterviewService:
             db=db
         )
         
+        # 5. Send Email Notification
+        try:
+            from src.services.email_service import send_interview_proposed_email
+            from src.core.models import User, CandidateProfile, Company
+            candidate_user = db.query(User).filter(User.id == app.candidate_id).first()
+            candidate_profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == app.candidate_id).first()
+            
+            if candidate_user:
+                c_name = candidate_profile.full_name if (candidate_profile and candidate_profile.full_name) else (candidate_user.full_name or "Candidate")
+                
+                # Format slots details
+                slots_list = []
+                for s in request.slots:
+                    start_str = s.start_time.strftime('%d %b %Y, %I:%M %p')
+                    slots_list.append(start_str)
+                slots_details = ", ".join(slots_list)
+                
+                company = db.query(Company).filter(Company.id == job.company_id).first()
+                company_name = company.name if (company and company.name) else "TechSales Axis"
+                
+                send_interview_proposed_email(
+                    recipient=candidate_user.email,
+                    candidate_name=c_name,
+                    job_title=job.title,
+                    round_name=request.round_name,
+                    slots_details=slots_details,
+                    company_name=company_name
+                )
+        except Exception as e:
+            print(f"Error sending proposed interview email: {e}")
+
         db.commit()
         db.refresh(new_interview)
 
@@ -156,27 +187,36 @@ class InterviewService:
         db.refresh(slot)
         db.refresh(interview)
 
-        # 5. Notify Recruiter (Critical for smooth flow)
+        # 5. Notify Recruiter (Critical for smooth flow) and Send Emails
         try:
             from src.services.notification_service import NotificationService
-            from src.core.models import User
+            from src.core.models import User, RecruiterProfile, CandidateProfile, Job
+            from src.services.email_service import send_interview_confirmed_email
             import pytz
             
-            # Try to get candidate name for a better message
             candidate = db.query(User).filter(User.id == user_id).first()
-            candidate_name = candidate.email.split('@')[0] if candidate else "A candidate"
+            candidate_profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == user_id).first()
+            candidate_name = candidate_profile.full_name if (candidate_profile and candidate_profile.full_name) else (candidate.full_name or candidate.email.split('@')[0])
             
+            recruiter_user = db.query(User).filter(User.id == interview.recruiter_id).first()
+            recruiter_profile = db.query(RecruiterProfile).filter(RecruiterProfile.user_id == interview.recruiter_id).first()
+            recruiter_name = recruiter_profile.full_name if (recruiter_profile and recruiter_profile.full_name) else (recruiter_user.full_name or "Recruiter")
+            
+            job = db.query(Job).filter(Job.id == interview.job_id).first()
+            job_title = job.title if job else "Position"
+
             print(f"DEBUG: Notifying recruiter {interview.recruiter_id} about confirmation from {candidate_name}")
 
             # Convert UTC slot time to IST (Asia/Kolkata)
             ist = pytz.timezone('Asia/Kolkata')
             start_ist = slot.start_time.replace(tzinfo=pytz.UTC).astimezone(ist)
+            time_str = f"{start_ist.strftime('%d/%m/%Y, %I:%M %p')} IST"
             
             notif = NotificationService.create_notification(
                 user_id=interview.recruiter_id,
                 type="INTERVIEW_CONFIRMED",
                 title="Interview Confirmed",
-                message=f"{candidate_name} matches your transmission! {interview.round_name} scheduled for {start_ist.strftime('%d/%m/%Y, %I:%M %p')} IST.",
+                message=f"{candidate_name} matches your transmission! {interview.round_name} scheduled for {time_str}.",
                 metadata={
                     "interview_id": str(interview.id),
                     "slot_id": str(slot.id),
@@ -186,9 +226,40 @@ class InterviewService:
                 db=db
             )
             print(f"DEBUG: Notification creation triggered.")
+            
+            # Send email to Recruiter
+            from src.core.models import Company
+            company = db.query(Company).filter(Company.id == job.company_id).first() if job else None
+            company_name = company.name if (company and company.name) else "TechSales Axis"
+
+            if recruiter_user:
+                send_interview_confirmed_email(
+                    recipient=recruiter_user.email,
+                    recipient_name=recruiter_name,
+                    other_name=candidate_name,
+                    job_title=job_title,
+                    round_name=interview.round_name,
+                    time_str=time_str,
+                    meeting_link=interview.meeting_link,
+                    is_recruiter=True,
+                    company_name=company_name
+                )
+                
+            # Send email to Candidate
+            if candidate:
+                send_interview_confirmed_email(
+                    recipient=candidate.email,
+                    recipient_name=candidate_name,
+                    other_name=recruiter_name,
+                    job_title=job_title,
+                    round_name=interview.round_name,
+                    time_str=time_str,
+                    meeting_link=interview.meeting_link,
+                    is_recruiter=False,
+                    company_name=company_name
+                )
         except Exception as e:
-            print(f"NOTIFICATION ERROR: {e}")
-            # Don't fail the whole transaction if notification fails
+            print(f"NOTIFICATION/EMAIL ERROR: {e}")
         
         # Second commit for notification record
         db.commit()
@@ -339,6 +410,48 @@ class InterviewService:
             db=db
         )
         
+        # Send Email Notification to Candidate based on the decision
+        try:
+            from src.services.email_service import send_offer_email, send_rejection_email, send_shortlist_email, send_templated_email
+            from src.core.models import User, CandidateProfile, Job, Company
+            candidate_user = db.query(User).filter(User.id == interview.candidate_id).first()
+            candidate_profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == interview.candidate_id).first()
+            job = db.query(Job).filter(Job.id == interview.job_id).first()
+            
+            if candidate_user and job:
+                c_name = candidate_profile.full_name if (candidate_profile and candidate_profile.full_name) else (candidate_user.full_name or "Candidate")
+                c_email = candidate_user.email
+                j_title = job.title
+                company = db.query(Company).filter(Company.id == job.company_id).first()
+                company_name = company.name if (company and company.name) else "TechSales Axis"
+                
+                if next_status == "offered":
+                    send_offer_email(c_email, c_name, j_title, feedback, company_name=company_name)
+                elif next_status in ["rejected", "no_show"]:
+                    send_rejection_email(c_email, c_name, j_title, feedback, company_name=company_name)
+                elif next_status == "shortlisted":
+                    send_shortlist_email(c_email, c_name, j_title, f"You have cleared the {interview.round_name}! Feedback: {feedback}", company_name=company_name)
+                elif next_status == "not_conducted":
+                    cancel_subj = f"Interview Update: {interview.round_name} rescheduled at {company_name}"
+                    cancel_html = f"""
+                    <html>
+                    <body style="font-family: Arial, sans-serif; padding: 20px; background-color: #f7fafc;">
+                        <div style="max-width: 600px; margin: 0 auto; background: white; padding: 40px; border-radius: 16px; border: 1px solid #e2e8f0;">
+                            <h2>Interview Update</h2>
+                            <p>Hi {c_name},</p>
+                            <p>Your <strong>{interview.round_name}</strong> for <strong>{j_title}</strong> at <strong>{company_name}</strong> was marked as not conducted due to technical issues or scheduling conflicts.</p>
+                            <p>We will be rescheduling this round. Please check your dashboard for updates.</p>
+                            <div style="text-align: center; margin: 30px 0;">
+                                <a href="{FRONTEND_URL}/dashboard/candidate/applications" style="background-color: #4a5568; color: white; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Go to Dashboard</a>
+                            </div>
+                        </div>
+                    </body>
+                    </html>
+                    """
+                    send_templated_email(c_email, "", {}, cancel_subj, cancel_html)
+        except Exception as e:
+            print(f"Error sending interview decision email: {e}")
+
         db.commit()
         return {"status": "feedback_submitted", "next_app_status": app.status if app else None}
 

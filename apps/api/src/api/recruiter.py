@@ -724,8 +724,9 @@ async def applications_pipeline(user: dict = Depends(get_current_user), db: Sess
 
 @router.post("/applications/bulk-status")
 async def bulk_application_status(data: BulkApplicationStatusUpdate, db: Session = Depends(get_db)):
-    from src.core.models import JobApplication, Job, ChatThread
+    from src.core.models import JobApplication, Job, ChatThread, User, CandidateProfile
     from src.services.notification_service import NotificationService
+    from src.services.email_service import send_shortlist_email, send_rejection_email
     
     updated_count = 0
     for application_id in data.application_ids:
@@ -733,41 +734,85 @@ async def bulk_application_status(data: BulkApplicationStatusUpdate, db: Session
         if app:
             old_status = app.status
             app.status = data.status
+            if data.feedback:
+                app.feedback = data.feedback
             updated_count += 1
             
-            # Logic for shortlisting
-            if data.status == "shortlisted" and old_status != "shortlisted":
-                job = db.query(Job).filter(Job.id == app.job_id).first()
+            # Retrieve candidate details for email
+            candidate_user = db.query(User).filter(User.id == app.candidate_id).first()
+            candidate_profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == app.candidate_id).first()
+            job = db.query(Job).filter(Job.id == app.job_id).first()
+            
+            if candidate_user and job:
+                candidate_name = candidate_profile.full_name if (candidate_profile and candidate_profile.full_name) else (candidate_user.full_name or "Candidate")
+                candidate_email = candidate_user.email
+                job_title = job.title
                 
-                # 1. Open/Create Chat Thread
-                chat = db.query(ChatThread).filter(
-                    ChatThread.candidate_id == app.candidate_id,
-                    ChatThread.recruiter_id == job.recruiter_id
-                ).first()
-                
-                if chat:
-                    chat.is_active = True
-                else:
-                    new_chat = ChatThread(
-                        candidate_id=app.candidate_id,
-                        recruiter_id=job.recruiter_id,
-                        is_active=True
+                # Logic for shortlisting
+                if data.status == "shortlisted" and old_status != "shortlisted":
+                    # 1. Open/Create Chat Thread
+                    chat = db.query(ChatThread).filter(
+                        ChatThread.candidate_id == app.candidate_id,
+                        ChatThread.recruiter_id == job.recruiter_id
+                    ).first()
+                    
+                    if chat:
+                        chat.is_active = True
+                    else:
+                        new_chat = ChatThread(
+                            candidate_id=app.candidate_id,
+                            recruiter_id=job.recruiter_id,
+                            is_active=True
+                        )
+                        db.add(new_chat)
+                    
+                    # 2. Send Notification to Candidate
+                    NotificationService.create_notification(
+                        user_id=app.candidate_id,
+                        type="APPLICATION_SHORTLISTED",
+                        title="Congratulations! You've been shortlisted",
+                        message=f"You have been shortlisted for the {job.title} position. The recruiter can now message you directly.",
+                        metadata={
+                            "application_id": str(app.id),
+                            "job_id": str(job.id),
+                            "job_title": job.title
+                        },
+                        db=db
                     )
-                    db.add(new_chat)
+                    
+                    # 3. Send Email Notification
+                    try:
+                        from src.core.models import Company
+                        company = db.query(Company).filter(Company.id == job.company_id).first()
+                        company_name = company.name if (company and company.name) else "TechSales Axis"
+                        send_shortlist_email(candidate_email, candidate_name, job_title, data.feedback, company_name=company_name)
+                    except Exception as e:
+                        print(f"Error sending shortlist email: {e}")
                 
-                # 2. Send Notification to Candidate
-                NotificationService.create_notification(
-                    user_id=app.candidate_id,
-                    type="APPLICATION_SHORTLISTED",
-                    title="Congratulations! You've been shortlisted",
-                    message=f"You have been shortlisted for the {job.title} position. The recruiter can now message you directly.",
-                    metadata={
-                        "application_id": str(app.id),
-                        "job_id": str(job.id),
-                        "job_title": job.title
-                    },
-                    db=db
-                )
+                # Logic for rejection
+                elif data.status == "rejected" and old_status != "rejected":
+                    # 1. Send Notification to Candidate
+                    NotificationService.create_notification(
+                        user_id=app.candidate_id,
+                        type="APPLICATION_REJECTED",
+                        title="Application Update",
+                        message=f"Thank you for your interest in the {job.title} position. We have updated your application status.",
+                        metadata={
+                            "application_id": str(app.id),
+                            "job_id": str(job.id),
+                            "job_title": job.title
+                        },
+                        db=db
+                    )
+                    
+                    # 2. Send Email Notification
+                    try:
+                        from src.core.models import Company
+                        company = db.query(Company).filter(Company.id == job.company_id).first()
+                        company_name = company.name if (company and company.name) else "TechSales Axis"
+                        send_rejection_email(candidate_email, candidate_name, job_title, data.feedback, company_name=company_name)
+                    except Exception as e:
+                        print(f"Error sending rejection email: {e}")
                 
     db.commit()
     return {"status": "updated", "count": updated_count}
@@ -1075,6 +1120,26 @@ async def invite_candidate(candidate_id: str, data: JobInviteRequest, user: dict
         {"job_id": data.job_id, "recruiter_id": user_id, "custom_role_title": data.custom_role_title},
         db,
     )
+
+    # 4. Send Email Notification
+    try:
+        from src.services.email_service import send_job_invite_email
+        from src.core.models import User, CandidateProfile, RecruiterProfile, Job, Company
+        candidate_user = db.query(User).filter(User.id == candidate_id).first()
+        candidate_profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == candidate_id).first()
+        recruiter_profile = db.query(RecruiterProfile).filter(RecruiterProfile.user_id == user_id).first()
+        job = db.query(Job).filter(Job.id == data.job_id).first()
+        
+        if candidate_user and job:
+            c_name = candidate_profile.full_name if (candidate_profile and candidate_profile.full_name) else (candidate_user.full_name or "Candidate")
+            r_name = recruiter_profile.full_name if (recruiter_profile and recruiter_profile.full_name) else "A Recruiter"
+            j_title = job.title
+            company = db.query(Company).filter(Company.id == job.company_id).first()
+            company_name = company.name if (company and company.name) else "TechSales Axis"
+            send_job_invite_email(candidate_user.email, c_name, r_name, j_title, invite_msg, company_name=company_name)
+    except Exception as e:
+        print(f"Failed to send invite email: {e}")
+
     return {"status": "invited"}
 
 @router.patch("/team/{member_id}/role")

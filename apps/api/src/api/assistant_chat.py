@@ -1403,7 +1403,6 @@ async def assistant_chat(
                 if job_id:
                     # Update job in database!
                     try:
-                        from src.core.models import Job, RecruiterProfile
                         profile = db.query(RecruiterProfile).filter(RecruiterProfile.user_id == user_id).first()
                         job = db.query(Job).filter(Job.id == job_id).first()
                         if profile and job and job.company_id == profile.company_id:
@@ -1437,7 +1436,6 @@ async def assistant_chat(
                     search_title = filters.get("job_title") or current_slots.get("job_title") or prompt
                     # If search_title is just a generic word, clean it
                     try:
-                        from src.core.models import Job, RecruiterProfile
                         profile = db.query(RecruiterProfile).filter(RecruiterProfile.user_id == user_id).first()
                         if profile:
                             # Try to match the title

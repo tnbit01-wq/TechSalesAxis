@@ -25,6 +25,7 @@ export default function RejectionModal({
   count,
 }: RejectionModalProps) {
   const [selectedReason, setSelectedReason] = useState("");
+  const [customFeedback, setCustomFeedback] = useState("");
 
   if (!isOpen) return null;
 
@@ -34,7 +35,7 @@ export default function RejectionModal({
         {/* Sticky Header */}
         <div className="px-6 py-5 border-b border-orange-100/50 flex items-center justify-between bg-gradient-to-r from-orange-50/30 to-transparent">
           <div>
-            <h3 className="text-lg font-black text-slate-950 tracking-tight">
+            <h3 className="text-lg font-black text-slate-955 tracking-tight">
               Reject Candidate
             </h3>
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
@@ -61,7 +62,7 @@ export default function RejectionModal({
 
           <div>
             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] mb-3">
-              Select Ethical Reason
+              Select Objective Reason
             </label>
             <div className="space-y-2">
               {ETHICAL_REASONS.map((reason) => {
@@ -89,6 +90,19 @@ export default function RejectionModal({
               })}
             </div>
           </div>
+
+          {/* Personalized Feedback */}
+          <div className="space-y-2.5">
+            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] px-1">
+              Personalized Note / Feedback (Optional)
+            </label>
+            <textarea
+              value={customFeedback}
+              onChange={(e) => setCustomFeedback(e.target.value)}
+              placeholder="Provide constructive feedback or specific notes for this candidate..."
+              className="w-full h-24 bg-slate-50 border border-slate-200/60 rounded-2xl p-4 text-xs font-semibold text-slate-700 focus:bg-white focus:ring-2 focus:ring-red-500/10 focus:border-red-500 focus:outline-none transition-all placeholder:text-slate-400 resize-none"
+            />
+          </div>
         </div>
 
         {/* Sticky Footer */}
@@ -101,7 +115,7 @@ export default function RejectionModal({
           </button>
           <button
             disabled={!selectedReason}
-            onClick={() => onConfirm(selectedReason)}
+            onClick={() => onConfirm(customFeedback.trim() ? `${selectedReason}. Note: ${customFeedback.trim()}` : selectedReason)}
             className="flex-1 py-3 px-4 bg-red-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-red-700 transition-all active:scale-95 shadow-lg shadow-red-600/10 disabled:opacity-50 disabled:shadow-none disabled:pointer-events-none"
           >
             Confirm Rejection

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Image from "next/image";
 import {
   X,
+  AlertCircle,
   Mail,
   Phone,
   MapPin,
@@ -200,6 +201,27 @@ export default function CandidateProfileModal({
     parsedDetails?.bio ||
     "Candidate has not provided a professional bio yet.";
 
+  const skillsList = (() => {
+    if (candidate.skills) {
+      if (Array.isArray(candidate.skills)) {
+        if (candidate.skills.length > 0) return candidate.skills;
+      } else if (typeof candidate.skills === "string") {
+        const parts = (candidate.skills as string)
+          .split(",")
+          .map((s) => s.trim())
+          .filter((s) => s !== "");
+        if (parts.length > 0) return parts;
+      }
+    }
+    if (normalizedResume && Array.isArray(normalizedResume.skills)) {
+      if (normalizedResume.skills.length > 0) return normalizedResume.skills;
+    }
+    if (parsedDetails && Array.isArray(parsedDetails.skills)) {
+      if (parsedDetails.skills.length > 0) return parsedDetails.skills;
+    }
+    return [];
+  })();
+
   // Years of Experience calculation
   const yearsOfExp = (() => {
     if (timeline && timeline.length > 0) {
@@ -226,7 +248,7 @@ export default function CandidateProfileModal({
     return "Leadership";
   };
 
-  const isUnlocked = status && status !== "rejected";
+  const isUnlocked = !!(candidate.email && candidate.email.includes("@")) && status !== "rejected";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-955/40 backdrop-blur-sm p-2 sm:p-4 overflow-hidden">
@@ -291,13 +313,13 @@ export default function CandidateProfileModal({
                   alert("Candidate email not found.");
                 }
               }}
-              disabled={status === "rejected" || !status}
+              disabled={!isUnlocked}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all shadow-sm active:scale-95 border ${
-                status && status !== "rejected"
+                isUnlocked
                   ? "bg-[#FF8A00] hover:bg-[#E67A00] text-white border-[#FF8A00] shadow-orange-600/10"
                   : "bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed"
               }`}
-              title={!status || status === "rejected" ? "Not available for this candidate" : "Send email to candidate"}
+              title={!isUnlocked ? "Not available for this candidate" : "Send email to candidate"}
             >
               <Mail className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Send Email</span>
@@ -472,14 +494,12 @@ export default function CandidateProfileModal({
                       <h3 className="text-[10px] font-black text-[#FF8A00] uppercase tracking-[0.18em]">
                         Expertise Areas
                       </h3>
-                      {(candidate.skills?.length > 0 || (parsedDetails?.skills?.length ?? 0) > 0) ? (
+                      {skillsList.length > 0 ? (
                         <div className="flex flex-wrap gap-2">
-                          {(
-                            candidate.skills || parsedDetails?.skills || []
-                          ).map((skill: string, i: number) => (
+                          {skillsList.map((skill: string, i: number) => (
                             <span
                               key={i}
-                              className="px-3 py-1.5 bg-orange-50/40 text-[#FF8A00] text-[10px] font-bold rounded-xl border border-orange-100/50"
+                              className="px-3 py-1.5 bg-orange-50/40 text-[#FF8A00] text-[10px] font-bold rounded-xl border border-orange-100/50 hover:bg-[#FF8A00] hover:text-white transition-all duration-200 cursor-default"
                             >
                               {skill}
                             </span>
@@ -775,38 +795,51 @@ export default function CandidateProfileModal({
                             const isActive = nowInBrowser >= allowedStart && nowInBrowser <= allowedEnd;
 
                             return (
-                              <button
-                                disabled={!isActive}
-                                onClick={async () => {
-                                  try {
-                                    const token = awsAuth.getToken();
-                                    if (token) {
-                                      apiClient.post(`/interviews/${activeInterview.id}/join-event`, { role: "recruiter" }, token);
+                              <div className="space-y-3 w-full">
+                                {/* Jitsi Recruiter Warning Banner */}
+                                <div className="p-4 rounded-2xl bg-amber-50/40 border border-amber-100/50 text-slate-700 text-[11px] space-y-1">
+                                  <p className="font-bold text-[#FF8A00] flex items-center gap-1.5">
+                                    <AlertCircle className="w-3.5 h-3.5 text-[#FF8A00]" />
+                                    Jitsi Meet Host Instructions
+                                  </p>
+                                  <p className="leading-relaxed">
+                                    As the host (recruiter), you may need to <strong>sign in on the Jitsi interface</strong> to start and moderate the video call. If prompted, click &quot;I am the host&quot; and sign in to open the room for the candidate.
+                                  </p>
+                                </div>
+
+                                <button
+                                  disabled={!isActive}
+                                  onClick={async () => {
+                                    try {
+                                      const token = awsAuth.getToken();
+                                      if (token) {
+                                        apiClient.post(`/interviews/${activeInterview.id}/join-event`, { role: "recruiter" }, token);
+                                      }
+                                    } catch (err) {
+                                      console.error("Failed to signal join:", err);
                                     }
-                                  } catch (err) {
-                                    console.error("Failed to signal join:", err);
-                                  }
-                                  window.open(activeInterview.meeting_link, "_blank");
-                                }}
-                                className={`w-full py-3.5 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm transition-all flex items-center justify-center gap-1.5 border ${
-                                  isActive 
-                                    ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600 shadow-emerald-600/10" 
-                                    : "bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed"
-                                }`}
-                              >
-                                <Video className="w-3.5 h-3.5" />
-                                {isActive 
-                                  ? activeInterview.recruiter_joined_at ? "Return to Live Session" : "Join Video Call"
-                                  : nowInBrowser < allowedStart 
-                                    ? `Locked: Opens ${Math.round((allowedStart.getTime() - nowInBrowser.getTime()) / 60000)}m Early` 
-                                    : nowInBrowser > end
-                                      ? "Meeting Link Expired"
-                                      : "Late: Window Closed (5m Limit)"}
-                              </button>
+                                    window.open(activeInterview.meeting_link, "_blank");
+                                  }}
+                                  className={`w-full py-3.5 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm transition-all flex items-center justify-center gap-1.5 border ${
+                                    isActive 
+                                      ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600 shadow-emerald-600/10" 
+                                      : "bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed"
+                                  }`}
+                                >
+                                  <Video className="w-3.5 h-3.5" />
+                                  {isActive 
+                                    ? activeInterview.recruiter_joined_at ? "Return to Live Session" : "Join Video Call"
+                                    : nowInBrowser < allowedStart 
+                                      ? `Locked: Opens ${Math.round((allowedStart.getTime() - nowInBrowser.getTime()) / 60000)}m Early` 
+                                      : nowInBrowser > end
+                                        ? "Meeting Link Expired"
+                                        : "Late: Window Closed (5m Limit)"}
+                                </button>
+                              </div>
                             );
                           })()}
                           
-                          {activeInterview.recruiter_joined_at && (
+                          {activeInterview.status === "scheduled" && (
                             <button
                               onClick={() => setShowFeedbackModal(true)}
                               className="w-full bg-slate-900 hover:bg-slate-800 text-white py-3.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 shadow-sm"

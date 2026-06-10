@@ -16,6 +16,7 @@ import {
   MapPin,
   Compass,
   Sparkles,
+  Bell,
 } from "lucide-react";
 
 interface CandidateSidebarProps {
@@ -39,6 +40,7 @@ const navGroups = [
     items: [
       { label: "Messages", href: "/dashboard/candidate/messages", icon: MessageSquare },
       { label: "Community", href: "/dashboard/candidate/community", icon: Radio },
+      { label: "Notifications", href: "/dashboard/candidate/notifications", icon: Bell },
     ],
   },
 ];

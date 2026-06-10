@@ -47,11 +47,11 @@ export default function CandidateDashboard() {
       const [s, p, j] = await Promise.all([
         apiClient.get("/candidate/stats", token),
         apiClient.get("/candidate/profile", token).catch(() => null),
-        apiClient.get("/candidate/recommended-jobs?limit=4", token).catch(() => null),
+        apiClient.get("/candidate/recommended-jobs?limit=3", token).catch(() => null),
       ]);
       setStats(s);
       if (p?.full_name) setUserName(p.full_name.split(" ")[0]);
-      setJobs((j?.data || j?.recommended_jobs || j?.recommendations || []).slice(0, 4));
+      setJobs((j?.data || j?.recommended_jobs || j?.recommendations || []).slice(0, 3));
 
       const assessmentCompleted = (s?.assessment_status || "").toLowerCase() === "completed";
 
@@ -95,15 +95,13 @@ export default function CandidateDashboard() {
   const hasApps = stats.applications_count > 0 || stats.saved_jobs_count > 0 || stats.shortlisted_count > 0 || stats.invites_received > 0;
   const expPct = Math.min(100, stats.completion_score);
   const skillPct = isVerified ? 100 : 0;
-  const idPct = stats.identity_verified ? 100 : 0;
-
-  return (
-    <div className="min-h-[calc(100vh-64px)] bg-[#F8F9FC] overflow-y-auto overflow-x-hidden">
-      <div className="min-h-[calc(100vh-64px)] p-5 flex flex-col gap-4 pb-8">
+  const idPct = stats.identity_verified ? 100 : 0;  return (
+    <div className="w-full bg-[#F8F9FC]">
+      <div className="p-4 sm:p-5 flex flex-col gap-4 pb-8">
         {/* ── TOP ROW: Welcome (narrow) + 4 KPIs ── */}
-        <div className="flex gap-4 flex-shrink-0">
+        <div className="flex flex-col xl:flex-row gap-4 flex-shrink-0">
           {/* Welcome — compact horizontal strip */}
-          <div className="relative overflow-hidden bg-gradient-to-r from-[#0F172A] via-[#1a2744] to-[#1E293B] rounded-2xl px-6 py-4 flex items-center gap-6 min-w-[340px] shadow-[0_4px_20px_rgba(15,23,42,0.2)]">
+          <div className="relative overflow-hidden bg-gradient-to-r from-[#0F172A] via-[#1a2744] to-[#1E293B] rounded-2xl px-6 py-4 flex items-center gap-6 xl:min-w-[380px] shadow-[0_4px_20px_rgba(15,23,42,0.2)]">
             <div className="absolute -top-10 -right-10 h-32 w-32 rounded-full bg-white/[0.03]" />
             <div className="absolute bottom-0 right-12 h-20 w-20 rounded-full bg-[#FF8A00]/10" />
             <div className="relative z-10 flex-1">
@@ -117,7 +115,7 @@ export default function CandidateDashboard() {
             </div>
           </div>
           {/* 4 KPI cards */}
-          <div className="flex-1 grid grid-cols-4 gap-3">
+          <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-3">
             <KpiCard icon={Eye} value={stats.profile_views_count ?? 0} label="Profile Views" trend="up" accent="violet" />
             <KpiCard icon={Target} value={stats.applications_count} label="Applications" trend={stats.applications_count > 0 ? "up" : "neutral"} accent="blue" />
             <KpiCard icon={Sparkles} value={jobs.length} label="Job Matches" trend="up" accent="amber" />
@@ -126,7 +124,7 @@ export default function CandidateDashboard() {
         </div>
 
         {/* ── MAIN CONTENT ROW ── */}
-        <div className="flex gap-4 flex-1 min-h-0">
+        <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0">
           {/* Left — 60% — stacked: Recommended Roles + Onboarding */}
           <div className="flex-[3] flex flex-col gap-4 min-h-0">
             {/* Recommended Roles */}
@@ -137,7 +135,7 @@ export default function CandidateDashboard() {
               </div>
               <div className="flex-1 overflow-hidden">
                 {jobs.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center">
+                  <div className="h-full flex flex-col items-center justify-center py-8">
                     <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center mb-3 border border-slate-200/50"><Briefcase className="h-6 w-6 text-slate-300" strokeWidth={1.5} /></div>
                     <p className="text-[14px] font-bold text-[#0F172A]">No matches yet</p>
                     <p className="text-[12px] text-slate-400 mt-1 max-w-[280px] text-center leading-relaxed">Complete your profile and assessment to get AI-powered job recommendations.</p>
@@ -145,9 +143,9 @@ export default function CandidateDashboard() {
                   </div>
                 ) : jobs.map((job: any, i: number) => (
                   <Link key={job.job_id} href="/dashboard/candidate/jobs">
-                    <div className={`flex items-center gap-4 px-5 py-3.5 hover:bg-[#FAFBFC] transition-all cursor-pointer group ${i < jobs.length - 1 ? "border-b border-slate-100/70" : ""}`}>
-                      <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200/50 flex-shrink-0 flex items-center justify-center overflow-hidden">
-                        {job.company_logo_url ? <img src={job.company_logo_url} className="h-7 w-7 object-contain" alt="" /> : <Building2 className="h-4 w-4 text-slate-300" />}
+                    <div className={`flex items-center gap-4 px-4 py-2.5 hover:bg-[#FAFBFC] transition-all cursor-pointer group ${i < jobs.length - 1 ? "border-b border-slate-100/70" : ""}`}>
+                      <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200/50 flex-shrink-0 flex items-center justify-center overflow-hidden">
+                        {job.company_logo_url ? <img src={job.company_logo_url} className="h-6 w-6 object-contain" alt="" /> : <Building2 className="h-3.5 w-3.5 text-slate-300" />}
                       </div>
                       <div className="flex-1 min-w-0">
                         <h3 className="text-[13px] font-semibold text-[#0F172A] truncate group-hover:text-[#FF8A00] transition-colors">{job.title}</h3>
@@ -166,25 +164,35 @@ export default function CandidateDashboard() {
               </div>
             </div>
             {/* Onboarding checklist — compact horizontal strip */}
-            <div className="flex-shrink-0 bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_3px_rgba(0,0,0,0.04),0_6px_24px_rgba(0,0,0,0.04)] px-5 py-3">
-              <div className="flex items-center gap-6">
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <h2 className="text-[13px] font-bold text-[#0F172A]">Setup</h2>
-                  <div className="flex items-center gap-0.5">
-                    {tasks.map((t, i) => <div key={i} className={`h-1.5 w-6 rounded-full ${t.done ? "bg-emerald-400" : "bg-slate-200"}`} />)}
-                  </div>
-                  <span className="text-[10px] font-bold text-slate-400 ml-1">{doneCount}/{tasks.length}</span>
-                </div>
-                <div className="flex items-center gap-4 flex-1 overflow-hidden">
-                  {tasks.map(task => (
-                    <div key={task.label} className="flex items-center gap-1.5 cursor-pointer group flex-shrink-0" onClick={() => !task.done && router.push(task.href)}>
-                      {task.done ? <CheckCircle2 className="h-4 w-4 text-emerald-500" strokeWidth={2} /> : <Circle className="h-4 w-4 text-slate-300 group-hover:text-slate-400" strokeWidth={1.8} />}
-                      <span className={`text-[11px] font-medium whitespace-nowrap ${task.done ? "text-emerald-600" : "text-slate-500 group-hover:text-[#0F172A]"}`}>{task.label}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+            <div className="flex-shrink-0 bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_3px_rgba(0,0,0,0.04),0_6px_24px_rgba(0,0,0,0.04)] px-4 py-3.5">
+               <div className="flex flex-col xl:flex-row xl:items-center gap-4 justify-between">
+                 <div className="flex items-center gap-2 flex-shrink-0">
+                   <h2 className="text-[13px] font-bold text-[#0F172A] tracking-tight">Setup Progress</h2>
+                   <div className="flex items-center gap-0.5">
+                     {tasks.map((t, i) => <div key={i} className={`h-1.5 w-4 rounded-full ${t.done ? "bg-emerald-400" : "bg-slate-200"}`} />)}
+                   </div>
+                   <span className="text-[10px] font-bold text-slate-400 ml-1">{doneCount}/{tasks.length}</span>
+                 </div>
+                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full xl:w-auto">
+                   {tasks.map(task => (
+                     <div
+                       key={task.label}
+                       className="flex items-center gap-2 cursor-pointer group p-2 bg-slate-50 hover:bg-slate-100/80 rounded-xl transition-all border border-slate-100/50"
+                       onClick={() => !task.done && router.push(task.href)}
+                     >
+                       {task.done ? (
+                         <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" strokeWidth={2.5} />
+                       ) : (
+                         <Circle className="h-4 w-4 text-slate-400 group-hover:text-[#FF8A00] shrink-0" strokeWidth={1.8} />
+                       )}
+                       <span className={`text-[11px] font-semibold truncate ${task.done ? "text-emerald-600" : "text-slate-500 group-hover:text-[#0F172A]"}`}>
+                         {task.label}
+                       </span>
+                     </div>
+                   ))}
+                 </div>
+               </div>
+             </div>
           </div>
 
           {/* Right — 40% — Profile Score + Application Status */}
@@ -222,81 +230,68 @@ export default function CandidateDashboard() {
               </div>
             </div>
 
-            {/* Assessment Feedback */}
+            {/* Assessment Feedback (Compact Summary Card) */}
             <div className="flex-shrink-0 bg-white rounded-2xl border border-slate-200/60 shadow-[0_1px_3px_rgba(0,0,0,0.04),0_6px_24px_rgba(0,0,0,0.04)] overflow-hidden">
               <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100/80">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <Sparkles className="h-4 w-4 text-[#FF8A00]" strokeWidth={2} />
-                    <h2 className="text-[14px] font-bold text-[#0F172A] tracking-tight">Assessment Feedback</h2>
-                  </div>
-                  <p className="text-[11px] text-slate-400">Category-level coaching and your 30-day improvement plan</p>
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-[#FF8A00]" strokeWidth={2} />
+                  <h2 className="text-[14px] font-bold text-[#0F172A] tracking-tight">Assessment Feedback</h2>
                 </div>
                 <Link href="/assessment/candidate" className="text-[11px] font-semibold text-[#FF8A00] hover:text-[#E67A00] transition-colors">Retake flow</Link>
               </div>
 
-              <div className="p-5 space-y-4">
+              <div className="p-5">
                 {feedbackLoading ? (
-                  <div className="flex items-center gap-3 text-slate-500 text-[12px]">
+                  <div className="flex items-center gap-3 text-slate-500 text-[12px] py-4 justify-center">
                     <div className="h-4 w-4 rounded-full border-2 border-slate-200 border-t-[#FF8A00] animate-spin" />
                     Loading feedback...
                   </div>
                 ) : feedback ? (
-                  <>
-                    <div className="rounded-2xl bg-gradient-to-br from-orange-50 to-amber-50 border border-orange-100 p-4">
-                      <div className="flex items-center justify-between gap-3 mb-2">
+                  <div className="space-y-4">
+                    <div className="rounded-xl bg-gradient-to-br from-orange-50/60 to-amber-50/60 border border-orange-100/50 p-4">
+                      <div className="flex items-center justify-between gap-3">
                         <div>
-                          <p className="text-[10px] font-bold text-[#FF8A00] uppercase tracking-[0.14em]">{feedback.overall_tier || "Assessment"}</p>
-                          <p className="text-[13px] font-semibold text-[#0F172A] mt-1">{feedback.llm_feedback?.overall_summary || feedback.score_explanation || "Your assessment feedback is ready."}</p>
+                          <p className="text-[9px] font-bold text-[#FF8A00] uppercase tracking-[0.14em]">{feedback.overall_tier || "Verified Tier"}</p>
+                          <h3 className="text-[13px] font-extrabold text-[#0F172A] mt-1">Coaching Report Ready</h3>
                         </div>
-                        <div className="text-right shrink-0">
-                          <span className="text-[28px] font-black text-[#0F172A] leading-none">{feedback.final_score ?? score}</span>
-                          <span className="text-[12px] font-bold text-slate-400">/100</span>
+                        <div className="text-right shrink-0 bg-white/90 rounded-lg px-2.5 py-1 border border-orange-100 flex items-baseline gap-0.5">
+                          <span className="text-[20px] font-black text-[#0F172A] leading-none">{feedback.final_score ?? score}</span>
+                          <span className="text-[10px] font-bold text-slate-400">/100</span>
                         </div>
                       </div>
-                      {feedback.visibility_impact && (
-                        <p className="text-[11px] text-slate-600 leading-relaxed">{feedback.visibility_impact}</p>
-                      )}
+                      <p className="text-[11.5px] text-slate-600 mt-2 line-clamp-2 leading-relaxed">
+                        {feedback.llm_feedback?.overall_summary || feedback.score_explanation || "Your customized coaching analysis is ready."}
+                      </p>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                      <FeedbackList title="Strengths" items={feedback.strengths || []} tone="emerald" />
-                      <FeedbackList title="Improve" items={feedback.improvement_areas || []} tone="amber" />
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {Object.entries(feedback.llm_feedback?.category_feedback || {}).slice(0, 4).map(([category, item]) => (
-                        <div key={category} className="rounded-2xl border border-slate-100 bg-slate-50/70 p-3.5">
-                          <div className="flex items-center justify-between mb-1">
-                            <p className="text-[11px] font-bold text-[#0F172A] capitalize">{category}</p>
-                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.12em]">Coach tip</span>
-                          </div>
-                          <p className="text-[11px] text-slate-600 leading-relaxed">{item?.summary || item?.next_move || item?.practice || "Keep improving this category."}</p>
-                        </div>
-                      ))}
-                    </div>
-
-                    {(feedback.llm_feedback?.["30_day_plan"] || feedback.recommendations || feedback.next_steps) && (
-                      <div className="rounded-2xl border border-slate-100 p-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="text-[11px] font-bold text-[#0F172A] uppercase tracking-[0.14em]">30-day plan</p>
-                          <span className="text-[10px] font-semibold text-slate-400">Retake after 30 days</span>
-                        </div>
-                        <ol className="space-y-2">
-                          {(feedback.llm_feedback?.["30_day_plan"] || feedback.recommendations || feedback.next_steps || []).slice(0, 4).map((item: string, index: number) => (
-                            <li key={`${index}-${item}`} className="flex gap-2 text-[11px] text-slate-600 leading-relaxed">
-                              <span className="mt-0.5 h-5 w-5 rounded-full bg-[#FF8A00]/10 text-[#FF8A00] flex items-center justify-center text-[10px] font-bold shrink-0">{index + 1}</span>
-                              <span>{item}</span>
-                            </li>
-                          ))}
-                        </ol>
+                    <div className="flex gap-2 text-center">
+                      <div className="flex-1 bg-emerald-50/40 border border-emerald-100/40 rounded-xl py-2 px-1">
+                        <p className="text-[14px] font-extrabold text-emerald-600">{(feedback.strengths || []).length}</p>
+                        <p className="text-[9px] font-bold text-emerald-600/70 uppercase">Strengths</p>
                       </div>
-                    )}
-                  </>
+                      <div className="flex-1 bg-amber-50/40 border border-amber-100/40 rounded-xl py-2 px-1">
+                        <p className="text-[14px] font-extrabold text-amber-600">{(feedback.improvement_areas || []).length}</p>
+                        <p className="text-[9px] font-bold text-amber-600/70 uppercase">To Improve</p>
+                      </div>
+                      <div className="flex-1 bg-blue-50/40 border border-blue-100/40 rounded-xl py-2 px-1">
+                        <p className="text-[14px] font-extrabold text-blue-600">
+                          {Object.keys(feedback.llm_feedback?.category_feedback || {}).length}
+                        </p>
+                        <p className="text-[9px] font-bold text-blue-600/70 uppercase">Domains</p>
+                      </div>
+                    </div>
+
+                    <Link href="/dashboard/candidate/feedback">
+                      <button className="w-full py-2.5 bg-[#0F172A] hover:bg-slate-800 text-white rounded-xl text-[12px] font-bold transition-all flex items-center justify-center gap-1.5 shadow-md shadow-slate-900/10">
+                        View Detailed Coaching Report
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </button>
+                    </Link>
+                  </div>
                 ) : (
-                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-center">
-                    <p className="text-[13px] font-semibold text-[#0F172A]">No feedback yet</p>
-                    <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">Complete your assessment to unlock category feedback and a 30-day improvement plan.</p>
+                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-center py-6">
+                    <p className="text-[12.5px] font-bold text-[#0F172A]">No feedback yet</p>
+                    <p className="text-[11px] text-slate-505 mt-1 leading-relaxed">Complete your assessment to unlock category feedback and coaching plan.</p>
                     <Link href="/assessment/candidate">
                       <button className="mt-3 px-4 py-2 rounded-xl bg-[#FF8A00] text-white text-[11px] font-semibold hover:bg-[#E67A00] transition-all">Go to assessment</button>
                     </Link>
@@ -313,7 +308,7 @@ export default function CandidateDashboard() {
               </div>
               <div className="flex-1 flex flex-col justify-center px-5 py-4">
                 {!hasApps ? (
-                  <div className="text-center">
+                  <div className="text-center py-4">
                     <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200/50 flex items-center justify-center mx-auto mb-3"><Inbox className="h-5 w-5 text-slate-300" strokeWidth={1.5} /></div>
                     <p className="text-[13px] font-bold text-[#0F172A]">No applications yet</p>
                     <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">Start applying to track your progress</p>

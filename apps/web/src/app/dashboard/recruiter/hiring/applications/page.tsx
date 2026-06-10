@@ -21,8 +21,10 @@ import {
 import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import RejectionModal from "@/components/RejectionModal";
+import ShortlistModal from "@/components/ShortlistModal";
 import InterviewScheduler from "@/components/InterviewScheduler";
 import CandidateProfileModal from "@/components/CandidateProfileModal";
+import InterviewFeedbackModal from "@/components/InterviewFeedbackModal";
 import LockedView from "@/components/dashboard/LockedView";
 
 interface Application {
@@ -84,7 +86,25 @@ export default function ApplicationsPipelinePage() {
   const [loading, setLoading] = useState(true);
   const [selectedApps, setSelectedApps] = useState<string[]>([]);
   const [isRejectionModalOpen, setIsRejectionModalOpen] = useState(false);
+  const [isShortlistModalOpen, setIsShortlistModalOpen] = useState(false);
   const [isInterviewModalOpen, setIsInterviewModalOpen] = useState(false);
+  const [feedbackModal, setFeedbackModal] = useState<{
+    isOpen: boolean;
+    interviewId: string;
+    applicationId: string;
+    candidateName: string;
+    roundName: string;
+    recruiterJoinedAt: string | null;
+    candidateJoinedAt: string | null;
+  }>({
+    isOpen: false,
+    interviewId: "",
+    applicationId: "",
+    candidateName: "",
+    roundName: "",
+    recruiterJoinedAt: null,
+    candidateJoinedAt: null,
+  });
   const [activeApplicationId, setActiveApplicationId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
@@ -196,6 +216,7 @@ export default function ApplicationsPipelinePage() {
       );
 
       setIsRejectionModalOpen(false);
+      setIsShortlistModalOpen(false);
       setSelectedApps([]);
       setActiveApplicationId(null);
       fetchApplications();
@@ -556,7 +577,10 @@ export default function ApplicationsPipelinePage() {
                     </span>
                     <button
                       disabled={!applications.filter((app) => selectedApps.includes(app.id)).every((app) => app.status === "applied")}
-                      onClick={() => handleBulkStatusChange("shortlisted")}
+                      onClick={() => {
+                        setActiveApplicationId(null);
+                        setIsShortlistModalOpen(true);
+                      }}
                       className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1 text-[9px] font-black uppercase tracking-wider text-white transition hover:bg-[#FF8A00] disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <UserCheck className="h-3 w-3" />
@@ -602,11 +626,13 @@ export default function ApplicationsPipelinePage() {
               ) : (
                 <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
                   {sortedApplications.map((app) => {
-                    const hasScheduledInterview = app.interviews?.some((item: any) => item.status === "scheduled");
-                    const hasInterviewFlow = app.interviews?.some((item: any) => ["pending_confirmation", "scheduled"].includes(item.status));
-                    const canSchedule = ["shortlisted", "interview_scheduled"].includes(app.status);
-                    const canReject = !["rejected", "offered", "closed"].includes(app.status);
+                    const activeInterview = app.interviews?.find((item: any) => ["scheduled", "pending_confirmation"].includes(item.status));
+                    const hasScheduledInterview = activeInterview?.status === "scheduled";
+                    const isPendingConfirmation = activeInterview?.status === "pending_confirmation";
+                    
                     const canShortlist = app.status === "applied";
+                    const canSchedule = app.status === "shortlisted" || (app.status === "interview_scheduled" && isPendingConfirmation);
+                    const canReject = ["applied", "shortlisted"].includes(app.status) || (app.status === "interview_scheduled" && isPendingConfirmation);
 
                       return (
                         <article
@@ -678,7 +704,7 @@ export default function ApplicationsPipelinePage() {
                               <button
                                 onClick={() => {
                                   setActiveApplicationId(app.id);
-                                  handleBulkStatusChange("shortlisted");
+                                  setIsShortlistModalOpen(true);
                                 }}
                                 className="inline-flex h-8 items-center justify-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-1 text-[10px] font-black uppercase tracking-wider text-white transition hover:bg-[#FF8A00] active:scale-95"
                               >
@@ -696,32 +722,73 @@ export default function ApplicationsPipelinePage() {
                                 className="inline-flex h-8 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1 text-[10px] font-black uppercase tracking-wider text-slate-700 transition hover:border-[#FF8A00] hover:text-[#FF8A00] active:scale-95"
                               >
                                 <Calendar className="h-3.5 w-3.5" />
-                                {hasInterviewFlow ? "Update" : "Interview"}
+                                {isPendingConfirmation ? "Update Slots" : "Schedule Interview"}
                               </button>
                             )}
 
-                            {app.status === "interview_scheduled" && hasScheduledInterview && (
-                              <button
-                                onClick={() => {
-                                  trackProfileView(app.candidate_id, app.job_id);
-                                  setProfileModal({
-                                    isOpen: true,
-                                    candidate: app.candidate_profiles,
-                                    resumeData: app.resume_data,
-                                    jobTitle: app.jobs.title,
-                                    appliedDate: app.created_at,
-                                    score: app.profile_scores?.final_score || 0,
-                                    status: app.status,
-                                    initialTab: "interview",
-                                    applicationId: app.id,
-                                    interviews: app.interviews,
-                                  });
-                                }}
-                                className="inline-flex h-8 items-center justify-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-blue-700 transition hover:bg-blue-100 active:scale-95"
-                              >
-                                <Video className="h-3.5 w-3.5" />
-                                Details
-                              </button>
+                            {app.status === "interview_scheduled" && hasScheduledInterview && activeInterview && (
+                              <>
+                                {activeInterview.meeting_link && (
+                                  <button
+                                    onClick={async () => {
+                                      try {
+                                        const token = awsAuth.getToken();
+                                        if (token) {
+                                          apiClient.post(`/interviews/${activeInterview.id}/join-event`, { role: "recruiter" }, token);
+                                        }
+                                      } catch (err) {
+                                        console.error("Failed to signal join:", err);
+                                      }
+                                      window.open(activeInterview.meeting_link, "_blank");
+                                    }}
+                                    className="inline-flex h-8 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-1 text-[10px] font-black uppercase tracking-wider text-white transition hover:bg-emerald-700 active:scale-95 shadow-md shadow-emerald-600/10"
+                                  >
+                                    <Video className="h-3.5 w-3.5" />
+                                    Join Call
+                                  </button>
+                                )}
+
+                                <button
+                                  onClick={() => {
+                                    trackProfileView(app.candidate_id, app.job_id);
+                                    setProfileModal({
+                                      isOpen: true,
+                                      candidate: app.candidate_profiles,
+                                      resumeData: app.resume_data,
+                                      jobTitle: app.jobs.title,
+                                      appliedDate: app.created_at,
+                                      score: app.profile_scores?.final_score || 0,
+                                      status: app.status,
+                                      initialTab: "interview",
+                                      applicationId: app.id,
+                                      interviews: app.interviews,
+                                    });
+                                  }}
+                                  className="inline-flex h-8 items-center justify-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-blue-700 transition hover:bg-blue-100 active:scale-95"
+                                >
+                                  <Video className="h-3.5 w-3.5" />
+                                  Details
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    trackProfileView(app.candidate_id, app.job_id);
+                                    setFeedbackModal({
+                                      isOpen: true,
+                                      interviewId: activeInterview.id,
+                                      applicationId: app.id,
+                                      candidateName: app.candidate_profiles.full_name || "Candidate",
+                                      roundName: activeInterview.round_name,
+                                      recruiterJoinedAt: activeInterview.recruiter_joined_at,
+                                      candidateJoinedAt: activeInterview.candidate_joined_at,
+                                    });
+                                  }}
+                                  className="inline-flex h-8 items-center justify-center gap-1.5 rounded-xl border border-orange-200 bg-orange-50 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-[#C96B00] transition hover:bg-orange-100 active:scale-95"
+                                >
+                                  <ClipboardList className="h-3.5 w-3.5" />
+                                  Log Feedback
+                                </button>
+                              </>
                             )}
 
                             <button
@@ -779,6 +846,33 @@ export default function ApplicationsPipelinePage() {
         onConfirm={(reason) => handleBulkStatusChange("rejected", reason)}
         count={activeApplicationId ? 1 : selectedApps.length}
       />
+
+      <ShortlistModal
+        isOpen={isShortlistModalOpen}
+        onClose={() => {
+          setIsShortlistModalOpen(false);
+          setActiveApplicationId(null);
+        }}
+        onConfirm={(feedback) => handleBulkStatusChange("shortlisted", feedback)}
+        count={activeApplicationId ? 1 : selectedApps.length}
+      />
+
+      {feedbackModal.isOpen && (
+        <InterviewFeedbackModal
+          isOpen={feedbackModal.isOpen}
+          onClose={() => setFeedbackModal({ ...feedbackModal, isOpen: false })}
+          interviewId={feedbackModal.interviewId}
+          applicationId={feedbackModal.applicationId}
+          candidateName={feedbackModal.candidateName}
+          roundName={feedbackModal.roundName}
+          recruiterJoinedAt={feedbackModal.recruiterJoinedAt}
+          candidateJoinedAt={feedbackModal.candidateJoinedAt}
+          onSuccess={() => {
+            setFeedbackModal({ ...feedbackModal, isOpen: false });
+            fetchApplications();
+          }}
+        />
+      )}
 
       {isInterviewModalOpen && activeApplicationId && (
         <InterviewScheduler

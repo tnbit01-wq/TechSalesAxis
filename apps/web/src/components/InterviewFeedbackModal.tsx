@@ -89,10 +89,10 @@ export default function InterviewFeedbackModal({
         <div className="p-6 border-b border-orange-100/50 flex items-center justify-between bg-gradient-to-r from-orange-50/20 to-transparent shrink-0">
           <div>
             <h2 className="text-lg font-black text-slate-955 tracking-tight">
-              Post-Interview Evaluation
+              Log Interview Feedback
             </h2>
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
-              Mission Debrief: {candidateName} — {roundName}
+              Evaluation Session: {candidateName} — {roundName}
             </p>
           </div>
           <button
@@ -118,7 +118,7 @@ export default function InterviewFeedbackModal({
               <div>
                 <p className="font-black text-[#FF8A00] uppercase tracking-wider">Attendance Required</p>
                 <p className="font-medium text-orange-900 mt-1 leading-relaxed">
-                  You must attend the interview session to submit evaluation results. Select &quot;Not Conducted&quot; if you missed the session or it did not happen.
+                  You must attend the interview session to submit evaluation results. Select &quot;Meeting Canceled&quot; if you missed the session or it did not happen.
                 </p>
               </div>
             </div>
@@ -127,7 +127,7 @@ export default function InterviewFeedbackModal({
           {/* Decision Selector */}
           <div className="space-y-3">
             <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] px-1">
-              Select Strategic Decision
+              Choose Next Step
             </h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
               <button
@@ -145,7 +145,7 @@ export default function InterviewFeedbackModal({
               >
                 <CheckCircle2 className={`h-5 w-5 ${decision === "offered" ? "text-emerald-500" : "text-slate-300 group-hover:text-emerald-400"}`} />
                 <span className="text-[9px] font-black uppercase tracking-wider">
-                  Make Offer
+                  Recommend Offer
                 </span>
               </button>
 
@@ -164,7 +164,7 @@ export default function InterviewFeedbackModal({
               >
                 <FastForward className={`h-5 w-5 ${decision === "shortlisted" ? "text-[#FF8A00]" : "text-slate-300 group-hover:text-[#FF8A00]"}`} />
                 <span className="text-[9px] font-black uppercase tracking-wider">
-                  Next Round
+                  Pass to Next Round
                 </span>
               </button>
 
@@ -183,18 +183,18 @@ export default function InterviewFeedbackModal({
               >
                 <XCircle className={`h-5 w-5 ${decision === "rejected" ? "text-red-500" : "text-slate-300 group-hover:text-red-400"}`} />
                 <span className="text-[9px] font-black uppercase tracking-wider">
-                  Reject
+                  Reject Candidate
                 </span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setDecision("no_show")}
-                disabled={!recruiterAttended}
-                title={!recruiterAttended ? "You must attend the interview to report candidate no-show" : ""}
+                disabled={!recruiterAttended || candidateAttended}
+                title={candidateAttended ? "Candidate attended the session" : !recruiterAttended ? "You must attend the interview to report candidate no-show" : ""}
                 className={`
                   p-3 rounded-2xl border transition-all flex flex-col items-center gap-2 group text-center
-                  ${!recruiterAttended ? "opacity-30 cursor-not-allowed" : "cursor-pointer"}
+                  ${(!recruiterAttended || candidateAttended) ? "opacity-30 cursor-not-allowed" : "cursor-pointer"}
                   ${decision === "no_show" 
                     ? "border-amber-500 bg-amber-50/50 text-amber-955 shadow-sm" 
                     : "border-slate-200/60 hover:border-amber-200 bg-white text-slate-500 hover:text-slate-700"}
@@ -202,7 +202,7 @@ export default function InterviewFeedbackModal({
               >
                 <Clock className={`h-5 w-5 ${decision === "no_show" ? "text-amber-500" : "text-slate-300 group-hover:text-amber-400"}`} />
                 <span className="text-[9px] font-black uppercase tracking-wider">
-                  No Show
+                  Candidate No Show
                 </span>
               </button>
 
@@ -221,7 +221,7 @@ export default function InterviewFeedbackModal({
               >
                 <AlertTriangle className={`h-5 w-5 ${decision === "not_conducted" ? "text-purple-500" : "text-slate-300 group-hover:text-purple-400"}`} />
                 <span className="text-[9px] font-black uppercase tracking-wider">
-                  Not Conducted
+                  Meeting Canceled
                 </span>
               </button>
             </div>
@@ -231,7 +231,7 @@ export default function InterviewFeedbackModal({
           <div className="space-y-3">
             <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] px-1 flex items-center gap-2">
               <MessageCircle className="h-4 w-4 text-[#FF8A00]" />
-              Detailed Feedback / Candidate Debrief
+              Interview Notes & Feedback
             </h3>
             <div className="relative flex">
               <Quote className="absolute top-4 left-4 h-4 w-4 text-slate-200" />
@@ -243,7 +243,7 @@ export default function InterviewFeedbackModal({
               />
             </div>
             <p className="text-[8px] text-slate-400 font-bold uppercase tracking-wider italic text-center">
-              &quot;Signals sent here will be logged for candidate verification.&quot;
+              &quot;This feedback will be visible to the candidate and the hiring team.&quot;
             </p>
           </div>
         </div>
@@ -271,10 +271,10 @@ export default function InterviewFeedbackModal({
             {loading ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Processing Signal...
+                Submitting...
               </>
             ) : (
-              "Transmit Evaluation"
+              "Submit Feedback"
             )}
           </button>
         </div>

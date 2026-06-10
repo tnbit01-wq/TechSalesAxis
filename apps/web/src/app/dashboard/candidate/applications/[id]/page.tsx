@@ -286,6 +286,17 @@ export default function ApplicationDetailPage() {
                             <p className="text-sm font-semibold text-slate-900">{activeInterview.interviewer_names.join(", ")}</p>
                           </div>
                         )}
+                        {/* Jitsi Meet Warning Banner */}
+                        <div className="p-4 rounded-xl bg-purple-50/60 border border-purple-100/50 text-slate-700 text-xs mb-3 space-y-1">
+                          <p className="font-bold text-purple-700 flex items-center gap-1.5">
+                            <AlertCircle className="w-4 h-4 text-purple-600" />
+                            Important Joining Note
+                          </p>
+                          <p className="leading-relaxed">
+                            Jitsi Meet may require the host (recruiter) to log in to start the session. If you see a &quot;Waiting for host&quot; screen, please wait—the meeting will start as soon as the recruiter logs in and joins the call.
+                          </p>
+                        </div>
+
                         <button
                           disabled={!isActive}
                           onClick={async () => {

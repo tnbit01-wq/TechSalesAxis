@@ -20,6 +20,7 @@ const pageTitles: Record<string, { title: string; sub: string }> = {
   "/dashboard/recruiter/organization/team": { title: "Team", sub: "Manage your team" },
   "/dashboard/recruiter/messages": { title: "Messages", sub: "Chat with candidates" },
   "/dashboard/recruiter/organization/community": { title: "Community", sub: "Engage with talent" },
+  "/dashboard/recruiter/account/notifications": { title: "Notifications", sub: "Alerts from your hiring activity" },
   "/dashboard/recruiter/account/profile": { title: "Profile", sub: "Your recruiter profile" },
   "/dashboard/recruiter/account/settings": { title: "Settings", sub: "Company & account settings" },
 };

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import { useRouter } from "next/navigation";
-import { Briefcase, Users, Building2, Zap, Target, UserCheck, MessageSquare, ArrowRight, Plus, MapPin, CheckCircle, Eye, TrendingUp, ChevronRight, Sparkles, Award } from "lucide-react";
+import { Briefcase, Users, Building2, Zap, Target, UserCheck, MessageSquare, ArrowRight, Plus, MapPin, CheckCircle, Eye, TrendingUp, ChevronRight, Sparkles, Award, FileText } from "lucide-react";
 
 interface Company { id: string; name: string; profile_score: number; logo_url?: string; }
 interface RecruiterProfile {
@@ -29,15 +29,24 @@ export default function RecruiterDashboard() {
     try {
       const token = awsAuth.getToken();
       if (!token) { router.replace("/login"); return; }
-      const [p, s, j, pipeline] = await Promise.all([
+      const [p, s, j, pipeline, viewsData] = await Promise.all([
         apiClient.get("/recruiter/profile", token),
         apiClient.get("/recruiter/stats", token).catch(() => null),
         apiClient.get("/recruiter/jobs", token).catch(() => null),
         apiClient.get("/recruiter/applications/pipeline", token).catch(() => null),
+        apiClient.get("/analytics/recruiter/recent-job-views", token).catch(() => null),
       ]);
       setProfile(p);
       if (p?.full_name) setUserName(p.full_name.split(" ")[0]);
-      if (s) setStats(s);
+      
+      const viewsCount = viewsData?.total_views ?? 0;
+      
+      if (s) {
+        setStats({
+          ...s,
+          total_views: viewsCount,
+        });
+      }
 
       const jobsList = Array.isArray(j) ? j : [];
       setJobs(jobsList.slice(0, 4));
@@ -63,8 +72,14 @@ export default function RecruiterDashboard() {
         if (s && !s.funnel_data) {
           setStats(prev => ({
             ...prev,
+            total_views: viewsCount,
             funnel_data: { applied, shortlisted, interviewed, offered: 0, hired },
             pending_applications_count: pipeline.length,
+          }));
+        } else if (s) {
+          setStats(prev => ({
+            ...prev,
+            total_views: viewsCount,
           }));
         }
       }
@@ -86,11 +101,11 @@ export default function RecruiterDashboard() {
   const benefitsPct = Math.min(100, Math.round(companyScore * 1.1));
 
   return (
-    <div className="h-[calc(100vh-64px)] bg-[#F8F9FC] overflow-hidden">
-      <div className="h-full p-5 flex flex-col gap-4">
+    <div className="w-full bg-[#F8F9FC]">
+      <div className="p-4 sm:p-5 flex flex-col gap-4 pb-8">
         {/* ── TOP ROW: Welcome + 4 KPIs ── */}
-        <div className="flex gap-4 flex-shrink-0">
-          <div className="relative overflow-hidden bg-gradient-to-r from-[#0F172A] via-[#1a2744] to-[#1E293B] rounded-2xl px-6 py-4 flex items-center gap-6 min-w-[340px] shadow-[0_4px_20px_rgba(15,23,42,0.2)]">
+        <div className="flex flex-col xl:flex-row gap-4 flex-shrink-0">
+          <div className="relative overflow-hidden bg-gradient-to-r from-[#0F172A] via-[#1a2744] to-[#1E293B] rounded-2xl px-6 py-4 flex items-center gap-6 xl:min-w-[380px] shadow-[0_4px_20px_rgba(15,23,42,0.2)]">
             <div className="absolute -top-10 -right-10 h-32 w-32 rounded-full bg-white/[0.03]" />
             <div className="absolute bottom-0 right-12 h-20 w-20 rounded-full bg-[#FF8A00]/10" />
             <div className="relative z-10 flex-1">
@@ -102,7 +117,7 @@ export default function RecruiterDashboard() {
               <Link href="/dashboard/recruiter/hiring/jobs/new"><button className="flex items-center gap-1.5 px-4 py-2 bg-[#FF8A00] hover:bg-[#e67a00] text-white rounded-xl text-[11px] font-bold transition-all active:scale-95 shadow-lg shadow-orange-900/25"><Plus className="h-3.5 w-3.5" strokeWidth={2.5} />Post Job</button></Link>
             </div>
           </div>
-          <div className="flex-1 grid grid-cols-4 gap-3">
+          <div className="flex-grow grid grid-cols-2 sm:grid-cols-4 gap-3">
             <KpiCard icon={Users} value={totalApps} label="New Applicants" accent="blue" />
             <KpiCard icon={Briefcase} value={stats?.active_jobs_count ?? 0} label="Active Postings" accent="violet" />
             <KpiCard icon={MessageSquare} value={funnel.interviewed} label="Interviews" accent="emerald" />
@@ -111,7 +126,7 @@ export default function RecruiterDashboard() {
         </div>
 
         {/* ── MAIN CONTENT ── */}
-        <div className="flex gap-4 flex-1 min-h-0">
+        <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0">
           {/* Left — 60% — Jobs + Pipeline */}
           <div className="flex-[3] flex flex-col gap-4 min-h-0">
             {/* Active Jobs */}
@@ -122,7 +137,7 @@ export default function RecruiterDashboard() {
               </div>
               <div className="flex-1 overflow-hidden">
                 {jobs.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center">
+                  <div className="h-full flex flex-col items-center justify-center py-8">
                     <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200/50 flex items-center justify-center mb-3"><Briefcase className="h-6 w-6 text-slate-300" strokeWidth={1.5} /></div>
                     <p className="text-[14px] font-bold text-[#0F172A]">No active postings</p>
                     <p className="text-[12px] text-slate-400 mt-1 max-w-[280px] text-center leading-relaxed">Post your first job to start building your candidate pipeline.</p>
@@ -173,7 +188,7 @@ export default function RecruiterDashboard() {
               <div className="bg-gradient-to-br from-[#FFF6ED] to-[#FFF0E0] border border-orange-100/80 rounded-xl p-5 text-center">
                 <div className="h-10 w-10 rounded-xl bg-white/70 border border-orange-100 flex items-center justify-center mx-auto mb-2.5 shadow-sm"><Sparkles className="h-5 w-5 text-[#FF8A00]" strokeWidth={1.5} /></div>
                 <p className="text-[13px] font-bold text-[#0F172A]">Unlock AI Sourcing</p>
-                <p className="text-[11px] text-slate-500 mt-1 leading-relaxed max-w-[220px] mx-auto">Post a job and our AI will identify top talent automatically.</p>
+                <p className="text-[11px] text-slate-505 mt-1 leading-relaxed max-w-[220px] mx-auto">Post a job and our AI will identify top talent automatically.</p>
                 <Link href="/dashboard/recruiter/talent-pool">
                   <button className="mt-3 w-full py-2.5 bg-[#FF8A00] hover:bg-[#E67A00] text-white rounded-xl text-[11px] font-bold transition-all shadow-sm flex items-center justify-center gap-1.5"><Users className="h-3.5 w-3.5" />Browse Talent Pool</button>
                 </Link>
@@ -210,8 +225,9 @@ export default function RecruiterDashboard() {
                   </div>
                 </div>
                 {/* Metrics */}
-                <div className="flex-1 flex flex-col justify-center gap-2">
-                  <BrandRow icon={Eye} label="Total Applications" sub="All time" value={`${totalApps}`} />
+                <div className="flex-grow flex flex-col gap-2">
+                  <BrandRow icon={Eye} label="Company Job Views" sub="All time views" value={`${stats?.total_views ?? 0}`} />
+                  <BrandRow icon={FileText} label="Total Applications" sub="All time applications" value={`${totalApps}`} />
                   <BrandRow icon={TrendingUp} label="Conversion Rate" sub="Applications → Hires" value={`${conversionRate}%`} />
                 </div>
                 {profile.completion_score < 100 && (
