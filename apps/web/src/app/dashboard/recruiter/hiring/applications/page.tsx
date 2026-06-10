@@ -784,6 +784,7 @@ export default function ApplicationsPipelinePage() {
         <InterviewScheduler
           candidateName={applications.find((item) => item.id === activeApplicationId)?.candidate_profiles.full_name || "Candidate"}
           applicationId={activeApplicationId}
+          jobTitle={applications.find((item) => item.id === activeApplicationId)?.jobs?.title}
           initialRoundNumber={(applications.find((item) => item.id === activeApplicationId)?.interviews?.length || 0) + 1}
           onClose={() => {
             setIsInterviewModalOpen(false);

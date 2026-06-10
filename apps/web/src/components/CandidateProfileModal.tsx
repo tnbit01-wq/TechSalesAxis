@@ -19,7 +19,10 @@ import {
   Send,
   Building2,
   BrainCircuit,
-  Zap
+  Zap,
+  Lock,
+  Unlock,
+  Award
 } from "lucide-react";
 import { format } from "date-fns";
 import { apiClient } from "@/lib/apiClient";
@@ -102,14 +105,12 @@ export default function CandidateProfileModal({
   const [showScheduler, setShowScheduler] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(initialFeedbackOpen);
 
-  // Find the active (scheduled or pending) interview
   const activeInterview = (interviews || []).find(i => 
     i.status === "scheduled" || i.status === "pending_confirmation"
   );
   const completedInterviews = (interviews || []).filter(i => i.status === "completed")
     .sort((a, b) => b.round_number - a.round_number);
   
-  // SUPPORT BOTH interview_slots AND slots (API Parity)
   const confirmedSlot = activeInterview?.interview_slots?.find((s: any) => s.is_selected) || 
                         activeInterview?.slots?.find((s: any) => s.is_selected);
 
@@ -128,26 +129,28 @@ export default function CandidateProfileModal({
 
   if (!isOpen) return null;
 
-  const accent = "#FF8A00";
-
   const tabs = [
     {
+      id: "resume",
+      label: "Profile",
+      icon: User,
+    },
+    {
       id: "application",
-      label: "Job Application",
+      label: "Application",
       icon: ClipboardList,
       hidden: isDiscovery,
     },
     {
       id: "interview",
-      label: "Interview Info",
+      label: "Interviews",
       icon: Video,
       hidden: !activeInterview && completedInterviews.length === 0,
     },
-    { id: "resume", label: "Candidate Profile", icon: FileText },
     {
       id: "original_resume",
       label: "Original PDF",
-      icon: Download,
+      icon: FileText,
       hidden: !candidate.resume_path,
     },
   ].filter((t) => !t.hidden);
@@ -157,8 +160,6 @@ export default function CandidateProfileModal({
     (candidate as any).resume_data
   ) as Record<string, unknown> | undefined;
 
-  // Extraction logic with fallbacks to parsed resume details
-  // Note: if raw_text contains a JSON string, we attempt to use it
   let parsedDetails: ParsedResume = {};
   if (
     typeof normalizedResume?.raw_text === "string" &&
@@ -177,7 +178,6 @@ export default function CandidateProfileModal({
     ? normalizedResume.timeline
     : [];
 
-  // Education fallbacks: Resume Table -> Parsed JSON
   const eduInstitution =
     (normalizedResume?.education as Record<string, string>)?.institution ||
     parsedDetails?.education?.institution ||
@@ -191,7 +191,6 @@ export default function CandidateProfileModal({
     parsedDetails?.education?.year ||
     "N/A";
 
-  // Contact/Bio fallbacks
   const displayLocation =
     candidate.location || parsedDetails?.location || "Not Provided";
   const displayPhone =
@@ -201,67 +200,81 @@ export default function CandidateProfileModal({
     parsedDetails?.bio ||
     "Candidate has not provided a professional bio yet.";
 
+  // Years of Experience calculation
+  const yearsOfExp = (() => {
+    if (timeline && timeline.length > 0) {
+      const startDates = timeline
+        .map(e => e.start ? parseInt(e.start.split('-')[0]) : null)
+        .filter(Boolean) as number[];
+      const endDates = timeline
+        .map(e => e.end && e.end.toLowerCase() !== 'present' ? parseInt(e.end.split('-')[0]) : new Date().getFullYear())
+        .filter(Boolean) as number[];
+      
+      if (startDates.length > 0) {
+        const minStart = Math.min(...startDates);
+        const maxEnd = Math.max(...endDates);
+        return Math.max(0, maxEnd - minStart);
+      }
+    }
+    return 0;
+  })();
+
+  const getExperienceLevel = (years: number) => {
+    if (years < 2) return "Fresher";
+    if (years < 5) return "Mid-Level";
+    if (years < 10) return "Senior";
+    return "Leadership";
+  };
+
+  const isUnlocked = status && status !== "rejected";
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 overflow-y-auto">
-      <style>{`
-        .candidate-modal-scroll {
-          scrollbar-width: thin;
-          scrollbar-color: #cbd5e1 transparent;
-        }
-        .candidate-modal-scroll::-webkit-scrollbar {
-          width: 4px;
-          height: 4px;
-        }
-        .candidate-modal-scroll::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .candidate-modal-scroll::-webkit-scrollbar-thumb {
-          background: #cbd5e1;
-          border-radius: 999px;
-        }
-        .candidate-modal-scroll::-webkit-scrollbar-thumb:hover {
-          background: #94a3b8;
-        }
-      `}</style>
-      <div className="bg-[#FFFDF9] rounded-[28px] shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200 border border-orange-100/80">
-        {/* Compact Header */}
-        <div className="bg-gradient-to-r from-[#FFF6ED] via-white to-white px-5 py-3 flex items-center justify-between border-b border-orange-100/70">
-          <div className="flex items-center gap-3.5">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-955/40 backdrop-blur-sm p-2 sm:p-4 overflow-hidden">
+      <div className="bg-[#FFFDF9] rounded-3xl shadow-2xl w-full max-w-5xl h-[95vh] md:h-[85vh] flex flex-col overflow-hidden border border-orange-100/80 animate-in fade-in zoom-in-95 duration-200">
+        
+        {/* Modern Compact Header */}
+        <div className="bg-gradient-to-r from-orange-50/20 via-[#FFFDF9] to-[#FFFDF9] px-5 py-4 flex items-center justify-between border-b border-orange-100/50 shrink-0">
+          <div className="flex items-center gap-3.5 min-w-0">
             <div className="relative shrink-0">
               {candidate.profile_photo_url ? (
                 <Image
                   src={candidate.profile_photo_url}
                   alt={candidate.full_name}
-                  width={44}
-                  height={44}
-                  className="rounded-full object-cover ring-2 ring-slate-50"
+                  width={46}
+                  height={46}
+                  className="rounded-full object-cover ring-2 ring-orange-100"
                 />
               ) : (
-                <div className="w-11 h-11 rounded-full bg-slate-100 flex items-center justify-center ring-2 ring-slate-50">
-                  <User className="w-5 h-5 text-slate-400" />
+                <div className="w-11 h-11 rounded-full bg-orange-50 flex items-center justify-center ring-2 ring-orange-100">
+                  <User className="w-5 h-5 text-[#FF8A00]" />
                 </div>
               )}
-              <div className="absolute -bottom-0.5 -right-0.5 bg-white rounded-full p-0.5 shadow-xs">
+              <div className="absolute -bottom-0.5 -right-0.5 bg-[#FFFDF9] rounded-full p-0.5 shadow-sm">
                 <div className="w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white" />
               </div>
             </div>
 
-            <div>
-              <h2 className="text-base font-black text-slate-900 leading-tight tracking-tight">
-                {candidate.full_name}
+            <div className="min-w-0">
+              <h2 className="text-base font-black text-slate-955 leading-tight tracking-tight flex items-center gap-2">
+                <span className="truncate">{candidate.full_name}</span>
+                {status && (
+                  <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full shrink-0 border ${
+                    status === "rejected"
+                      ? "bg-red-50 text-red-600 border-red-100"
+                      : "bg-orange-50 text-[#FF8A00] border-orange-100"
+                  }`}>
+                    {status}
+                  </span>
+                )}
               </h2>
-              <div className="flex gap-3 mt-0.5 text-[9px] text-slate-500 font-bold uppercase tracking-widest">
-                <div className="flex flex-col">
-                  <span className="text-slate-400 text-[7px] font-black leading-none mb-0.5">
-                    Applied at
-                  </span>
-                  {format(new Date(appliedDate), "dd MMM, yyyy")}
+              <div className="flex items-center gap-3 mt-1 text-[9px] text-slate-500 font-bold uppercase tracking-widest min-w-0">
+                <div className="flex flex-col shrink-0">
+                  <span className="text-slate-400 text-[7px] font-black leading-none mb-0.5">Applied</span>
+                  <span>{format(new Date(appliedDate), "dd MMM, yyyy")}</span>
                 </div>
-                <div className="flex flex-col border-l border-slate-200 pl-3">
-                  <span className="text-slate-400 text-[7px] font-black leading-none mb-0.5">
-                    Target Position
-                  </span>
-                  <span className="text-slate-900 truncate max-w-50">
+                <div className="flex flex-col border-l border-slate-200 pl-3 min-w-0">
+                  <span className="text-slate-400 text-[7px] font-black leading-none mb-0.5">Role</span>
+                  <span className="text-slate-900 truncate max-w-[150px] sm:max-w-[250px]">
                     {jobTitle}
                   </span>
                 </div>
@@ -269,7 +282,7 @@ export default function CandidateProfileModal({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => {
                 if (candidate.email) {
@@ -279,124 +292,184 @@ export default function CandidateProfileModal({
                 }
               }}
               disabled={status === "rejected" || !status}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all shadow-md active:scale-95 ${
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all shadow-sm active:scale-95 border ${
                 status && status !== "rejected"
-                  ? "bg-[#FF8A00] hover:bg-[#E67A00] text-white"
-                  : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                  ? "bg-[#FF8A00] hover:bg-[#E67A00] text-white border-[#FF8A00] shadow-orange-600/10"
+                  : "bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed"
               }`}
               title={!status || status === "rejected" ? "Not available for this candidate" : "Send email to candidate"}
             >
-              <Mail className="w-3 h-3" />
-              Send Email
+              <Mail className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Send Email</span>
             </button>
             <button
               onClick={onClose}
-              className="p-1.5 bg-slate-50 hover:bg-slate-100 rounded-lg transition-all border border-slate-200"
+              className="p-2 bg-white hover:bg-slate-50 rounded-xl transition-all border border-slate-200/60 shadow-sm"
             >
               <X className="w-4 h-4 text-slate-400" />
             </button>
           </div>
         </div>
 
-        {/* Main Body */}
-        <div className="flex-1 flex overflow-hidden min-h-0">
-          {/* Main Workspace (Scrollable) */}
-          <div className="flex-1 flex flex-col bg-slate-50/50 p-4 min-w-0">
-            {/* View Switching Tabs */}
-            <div className="flex items-center gap-0.5 mb-3 bg-slate-200/40 p-1 rounded-xl self-start">
-              {tabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
-                    activeTab === tab.id
-                      ? "bg-white text-[#FF8A00] shadow-sm"
-                      : "text-slate-500 hover:bg-slate-300/50"
-                  }`}
-                >
-                  <tab.icon
-                    className={`w-3 h-3 ${activeTab === tab.id ? "text-[#FF8A00]" : "text-slate-400"}`}
-                  />
-                  {tab.label}
-                </button>
-              ))}
+        {/* Workspace Body: Responsive Layout */}
+        <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
+          
+          {/* Desktop Left Profile Sidebar (collapses/hides on small viewports) */}
+          <div className="hidden md:flex w-76 border-r border-orange-100/50 flex-col shrink-0 bg-[#FFFDF9]/30 overflow-y-auto candidate-modal-scroll p-5 space-y-5">
+            
+            {/* Match Score Gauge */}
+            <div className="bg-orange-50/20 rounded-2xl border border-orange-100/50 p-4 flex items-center gap-3.5">
+              <div className="relative w-12 h-12 flex items-center justify-center shrink-0">
+                <svg className="w-12 h-12 transform -rotate-90">
+                  <circle cx="24" cy="24" r="20" stroke="#FFEEDB" strokeWidth="4.5" fill="transparent" />
+                  <circle cx="24" cy="24" r="20" stroke="#FF8A00" strokeWidth="4.5" fill="transparent"
+                    strokeDasharray={`${2 * Math.PI * 20}`}
+                    strokeDashoffset={`${2 * Math.PI * 20 * (1 - score / 100)}`}
+                    strokeLinecap="round" />
+                </svg>
+                <span className="absolute text-[10px] font-black text-slate-900">
+                  {(score / 20).toFixed(1)}
+                </span>
+              </div>
+              <div>
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">
+                  Match Score
+                </h4>
+                <p className="text-[11px] font-bold text-slate-700">
+                  Strong Match
+                </p>
+              </div>
             </div>
 
-            {/* Display Layer */}
-            <div className="flex-1 bg-white rounded-[20px] border border-orange-100/70 shadow-sm overflow-hidden flex flex-col min-h-0">
+            {/* Quick Metrics Grid */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-orange-50/30 rounded-2xl p-4 border border-orange-100/40 text-center">
+                <p className="text-[8px] font-black text-[#FF8A00] uppercase tracking-widest mb-1.5">Experience</p>
+                <p className="text-xl font-black text-slate-900 leading-none mb-1">{yearsOfExp}</p>
+                <p className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">Years</p>
+              </div>
+              <div className="bg-slate-50/50 rounded-2xl p-4 border border-slate-200/50 text-center">
+                <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Level</p>
+                <p className="text-xs font-black text-slate-900 leading-none mb-1 truncate">{getExperienceLevel(yearsOfExp)}</p>
+                <p className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">Bracket</p>
+              </div>
+            </div>
+
+            {/* Location & Compensation */}
+            <div className="bg-slate-50/50 rounded-2xl p-4 border border-slate-200/50 space-y-3">
+              <div>
+                <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Location</p>
+                <p className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <span className="truncate">{displayLocation}</span>
+                </p>
+              </div>
+              <div>
+                <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Expected Comp</p>
+                <p className="text-xs font-bold text-slate-800">
+                  Not Provided
+                </p>
+              </div>
+            </div>
+
+            {/* Privacy Status */}
+            <div className={`p-4 rounded-2xl border text-center ${
+              isUnlocked ? "bg-emerald-50/20 border-emerald-100/50" : "bg-slate-50 border-slate-200"
+            }`}>
+              <div className="flex items-center justify-center gap-1.5 mb-1.5">
+                {isUnlocked ? (
+                  <>
+                    <Unlock className="w-3.5 h-3.5 text-emerald-600" />
+                    <span className="text-[9px] font-black text-emerald-700 uppercase tracking-wider">Unlocked</span>
+                  </>
+                ) : (
+                  <>
+                    <Lock className="w-3.5 h-3.5 text-slate-400" />
+                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider">Locked Info</span>
+                  </>
+                )}
+              </div>
+              <p className="text-[9px] text-slate-500 font-medium leading-relaxed">
+                {isUnlocked 
+                  ? "Full candidate contact details are available." 
+                  : "Personal details unlock once the candidate applies or replies."}
+              </p>
+            </div>
+          </div>
+
+          {/* Right Area: Tabs + Inner Scrollable Body */}
+          <div className="flex-1 flex flex-col overflow-hidden min-h-0 bg-slate-50/30 p-4 sm:p-5">
+            
+            {/* View Switching Tab bar */}
+            <div className="flex items-center gap-1 mb-4 bg-slate-200/40 p-1 rounded-2xl self-start max-w-full overflow-x-auto shrink-0 select-none no-scrollbar">
+              {tabs.map((tab) => {
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all shrink-0 ${
+                      isActive
+                        ? "bg-white text-[#FF8A00] shadow-sm"
+                        : "text-slate-500 hover:bg-slate-200/60"
+                    }`}
+                  >
+                    <tab.icon
+                      className={`w-3.5 h-3.5 shrink-0 ${isActive ? "text-[#FF8A00]" : "text-slate-400"}`}
+                    />
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Display Panel (Content Area) */}
+            <div className="flex-1 bg-white rounded-2xl border border-orange-100/50 shadow-xs overflow-hidden flex flex-col min-h-0">
+              
               {activeTab === "resume" && (
-                <div className="candidate-modal-scroll flex-1 overflow-y-auto p-6 bg-slate-50">
-                  <div className="max-w-4xl mx-auto space-y-6">
-                    {/* Info Lock Status Banner */}
-                    {(!status || status === "rejected") && (
-                      <div className="bg-[#FFF6ED] border border-orange-100 rounded-xl p-4 flex items-start gap-3">
-                        <div className="text-lg flex-shrink-0 text-[#FF8A00]">◆</div>
-                        <div>
-                          <p className="text-sm font-bold text-slate-900">Personal info unlocks when candidate applies, is shortlisted, or replies to an invite</p>
+                <div className="candidate-modal-scroll flex-1 overflow-y-auto p-5 sm:p-6 bg-[#FFFDF9]/10">
+                  <div className="max-w-3xl mx-auto space-y-6">
+                    
+                    {/* Mobile Only: Top info block */}
+                    <div className="block md:hidden space-y-4">
+                      {/* Score, Exp, Location grid */}
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="bg-orange-50/20 rounded-2xl p-3 border border-orange-100/40 text-center">
+                          <p className="text-[7px] font-black text-[#FF8A00] uppercase tracking-widest mb-1">Score</p>
+                          <p className="text-base font-black text-slate-900 leading-none">{(score / 20).toFixed(1)}</p>
+                        </div>
+                        <div className="bg-orange-50/20 rounded-2xl p-3 border border-orange-100/40 text-center">
+                          <p className="text-[7px] font-black text-[#FF8A00] uppercase tracking-widest mb-1">Exp</p>
+                          <p className="text-base font-black text-slate-900 leading-none">{yearsOfExp} Yr</p>
+                        </div>
+                        <div className="bg-slate-50 rounded-2xl p-3 border border-slate-200/50 text-center">
+                          <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1">Location</p>
+                          <p className="text-[10px] font-black text-slate-900 leading-none truncate">{displayLocation.split(',')[0]}</p>
                         </div>
                       </div>
-                    )}
 
-                    {/* Key Metrics Grid - 2x2 */}
-                    {(() => {
-                      const yearsOfExp = (() => {
-                        if (timeline && timeline.length > 0) {
-                          const startDates = timeline
-                            .map(e => e.start ? parseInt(e.start.split('-')[0]) : null)
-                            .filter(Boolean) as number[];
-                          const endDates = timeline
-                            .map(e => e.end && e.end.toLowerCase() !== 'present' ? parseInt(e.end.split('-')[0]) : new Date().getFullYear())
-                            .filter(Boolean) as number[];
-                          
-                          if (startDates.length > 0) {
-                            const minStart = Math.min(...startDates);
-                            const maxEnd = Math.max(...endDates);
-                            return Math.max(0, maxEnd - minStart);
-                          }
-                        }
-                        return 0;
-                      })();
-
-                      const getExperienceLevel = (years: number) => {
-                        if (years < 2) return "Fresher";
-                        if (years < 5) return "Mid-Level";
-                        if (years < 10) return "Senior";
-                        return "Leadership";
-                      };
-
-                      return (
-                        <div className="grid grid-cols-2 gap-4">
-                          {/* Years of Experience */}
-                          <div className="bg-[#FFF6ED] rounded-xl p-5 border border-orange-100">
-                            <p className="text-xs font-black text-[#FF8A00] uppercase tracking-wide mb-2">Years of Experience</p>
-                            <p className="text-4xl font-black text-slate-900 mb-1">{yearsOfExp}</p>
-                            <p className="text-xs text-slate-500 font-semibold">years</p>
-                          </div>
-
-                          {/* Location */}
-                          <div className="bg-white rounded-xl p-5 border border-slate-200/70">
-                            <p className="text-xs font-black text-slate-400 uppercase tracking-wide mb-2">Location</p>
-                            <p className="text-lg font-black text-slate-900 mb-1">{displayLocation}</p>
-                          </div>
-
-                          {/* Expected Compensation */}
-                          <div className="bg-white rounded-xl p-5 border border-slate-200/70">
-                            <p className="text-xs font-black text-slate-400 uppercase tracking-wide mb-2">Expected Compensation</p>
-                            <p className="text-2xl font-black text-slate-900">Not Provided</p>
-                          </div>
-
-                          {/* Experience Level */}
-                          <div className="bg-white rounded-xl p-5 border border-slate-200/70">
-                            <p className="text-xs font-black text-slate-400 uppercase tracking-wide mb-2">Experience Level</p>
-                            <p className="text-lg font-black text-[#FF8A00]">{getExperienceLevel(yearsOfExp)}</p>
-                          </div>
+                      {/* Locked alert banner */}
+                      {!isUnlocked && (
+                        <div className="p-3 bg-[#FFF6ED] border border-orange-100 rounded-xl flex items-center gap-2">
+                          <Lock className="w-3.5 h-3.5 text-[#FF8A00] shrink-0" />
+                          <p className="text-[10px] text-orange-955/80 font-bold">Personal contact details are locked.</p>
                         </div>
-                      );
-                    })()}
+                      )}
+                    </div>
+
+                    {/* Bio/About Section */}
+                    <div className="space-y-2">
+                      <h3 className="text-[10px] font-black text-[#FF8A00] uppercase tracking-[0.18em]">
+                        Professional Bio
+                      </h3>
+                      <p className="text-xs text-slate-600 leading-relaxed font-medium bg-slate-50/50 rounded-2xl p-4 border border-slate-100">
+                        {displayBio}
+                      </p>
+                    </div>
 
                     {/* Expertise Areas - Skills */}
-                    <div className="bg-white rounded-xl border border-orange-100/70 p-6 shadow-sm">
-                      <h3 className="text-xs font-black text-[#FF8A00] uppercase tracking-[0.18em] mb-4">
+                    <div className="space-y-3">
+                      <h3 className="text-[10px] font-black text-[#FF8A00] uppercase tracking-[0.18em]">
                         Expertise Areas
                       </h3>
                       {(candidate.skills?.length > 0 || (parsedDetails?.skills?.length ?? 0) > 0) ? (
@@ -406,181 +479,220 @@ export default function CandidateProfileModal({
                           ).map((skill: string, i: number) => (
                             <span
                               key={i}
-                              className="px-3 py-2 bg-[#FFF6ED] text-[#FF8A00] text-xs font-bold rounded-full border border-orange-100"
+                              className="px-3 py-1.5 bg-orange-50/40 text-[#FF8A00] text-[10px] font-bold rounded-xl border border-orange-100/50"
                             >
                               {skill}
                             </span>
                           ))}
                         </div>
                       ) : (
-                        <p className="text-sm text-slate-500 italic">No expertise areas provided</p>
+                        <p className="text-xs text-slate-400 italic">No expertise areas specified.</p>
                       )}
                     </div>
 
-                    {/* Personal Information - with Privacy */}
-                    <div className={`rounded-xl p-6 shadow-sm border ${
-                      status && status !== "rejected"
-                        ? "bg-white border-orange-100/70"
-                        : "bg-slate-100 border-slate-200"
+                    {/* EXPERIENCE TIMELINE (Redesigned & Custom Rendered) */}
+                    <div className="space-y-4">
+                      <h3 className="text-[10px] font-black text-[#FF8A00] uppercase tracking-[0.18em]">
+                        Work Experience
+                      </h3>
+                      
+                      {timeline.length > 0 ? (
+                        <div className="relative border-l-2 border-orange-100/70 ml-2.5 pl-5 space-y-6">
+                          {timeline.map((entry, idx) => (
+                            <div key={idx} className="relative group">
+                              {/* Timeline indicator node */}
+                              <div className="absolute -left-[26px] top-1 w-2.5 h-2.5 rounded-full bg-[#FF8A00] ring-4 ring-orange-50/80 transition-transform duration-200 group-hover:scale-125" />
+                              
+                              <div className="bg-white rounded-2xl p-4 border border-slate-100/80 shadow-xs hover:border-orange-100/50 transition-all">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-2">
+                                  <div>
+                                    <h4 className="text-xs font-black text-slate-900 leading-tight">
+                                      {entry.role || entry.title || "Position Title"}
+                                    </h4>
+                                    <p className="text-[10px] text-[#FF8A00] font-bold mt-0.5">
+                                      {entry.company || "Company Name"}
+                                    </p>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 text-[9px] text-slate-400 font-bold uppercase tracking-wider">
+                                    <Calendar className="w-3 h-3 text-slate-300" />
+                                    <span>
+                                      {entry.start || "Start"} — {entry.end || "Present"}
+                                    </span>
+                                  </div>
+                                </div>
+                                {entry.description && (
+                                  <p className="text-[11px] text-slate-500 leading-relaxed mt-2 pt-2 border-t border-slate-50 font-medium">
+                                    {entry.description}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="bg-slate-50 rounded-2xl p-5 border border-slate-200/50 text-center text-xs text-slate-400 italic">
+                          No experience timeline entries details parsed from resume.
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Education Details */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs">
+                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-2">Academic Institution</p>
+                        <div className="flex items-start gap-2.5">
+                          <GraduationCap className="w-4 h-4 text-[#FF8A00] shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-xs font-bold text-slate-800 leading-tight">{eduInstitution}</p>
+                            <p className="text-[9px] text-slate-400 font-bold mt-0.5 uppercase tracking-wider">Year: {eduYear}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs">
+                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-2">Degree Attained</p>
+                        <div className="flex items-start gap-2.5">
+                          <Award className="w-4 h-4 text-[#FF8A00] shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-xs font-bold text-slate-800 leading-tight">{eduDegree}</p>
+                            <p className="text-[9px] text-slate-400 font-bold mt-0.5 uppercase tracking-wider">Academic Grade</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Contact Details (LOCKED/UNLOCKED styled banner) */}
+                    <div className={`rounded-2xl p-5 border shadow-xs transition-all ${
+                      isUnlocked
+                        ? "bg-white border-orange-100/50"
+                        : "bg-slate-50/70 border-slate-200"
                     }`}>
                       <div className="flex items-center gap-2 mb-4">
-                        <span className="text-lg text-slate-600 font-bold">●</span>
-                        <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">
-                          Personal Information {!status || status === "rejected" ? "(LOCKED)" : ""}
-                        </h3>
+                        <div className={`p-1.5 rounded-lg shrink-0 ${isUnlocked ? "bg-emerald-50" : "bg-slate-100"}`}>
+                          {isUnlocked ? (
+                            <Unlock className="w-4 h-4 text-emerald-600" />
+                          ) : (
+                            <Lock className="w-4 h-4 text-slate-400" />
+                          )}
+                        </div>
+                        <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                          Candidate Contact Information
+                        </h4>
                       </div>
 
-                      {status && status !== "rejected" ? (
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                            <p className="text-xs text-slate-500 font-bold uppercase mb-1">Email</p>
-                            <p className="text-sm font-bold text-slate-900 truncate">{candidate.email?.toLowerCase() || "Not Available"}</p>
+                      {isUnlocked ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="p-3 bg-slate-50/50 rounded-xl border border-slate-100/80">
+                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block mb-0.5">Email</span>
+                            <span className="text-xs font-bold text-slate-800 break-all">{candidate.email?.toLowerCase() || "Not Provided"}</span>
                           </div>
-                          <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                            <p className="text-xs text-slate-500 font-bold uppercase mb-1">Phone</p>
-                            <p className="text-sm font-bold text-slate-900">{displayPhone}</p>
+                          <div className="p-3 bg-slate-50/50 rounded-xl border border-slate-100/80">
+                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block mb-0.5">Phone</span>
+                            <span className="text-xs font-bold text-slate-800">{displayPhone}</span>
                           </div>
                         </div>
                       ) : (
-                        <div className="space-y-2 text-slate-400">
-                          <p className="text-sm flex items-center gap-2">- Email Address</p>
-                          <p className="text-sm flex items-center gap-2">- Phone Number</p>
-                          <p className="text-sm flex items-center gap-2">- Date of Birth</p>
-                          <p className="text-xs text-slate-500 mt-4 italic">Unlock by applying, shortlisting, or inviting this candidate</p>
+                        <div className="space-y-2 bg-slate-100/40 p-4 rounded-xl border border-dashed border-slate-200 text-slate-400">
+                          <p className="text-xs font-semibold flex items-center gap-2.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-slate-300 shrink-0" />
+                            Email Address (Encrypted)
+                          </p>
+                          <p className="text-xs font-semibold flex items-center gap-2.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-slate-300 shrink-0" />
+                            Phone Number (Protected)
+                          </p>
+                          <p className="text-[9px] text-slate-505 font-bold uppercase tracking-wider pt-2 italic">
+                            Unlocks automatically once the candidate accepts your outreach
+                          </p>
                         </div>
                       )}
                     </div>
+
                   </div>
                 </div>
               )}
-              {activeTab === "original_resume" &&
-                candidate.resume_path && (
-                  <div className="flex flex-col h-full bg-slate-900">
-                    <div className="bg-slate-800 p-3 flex justify-between items-center px-6">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                        Candidate Uploaded Document
-                      </span>
-                      <a
-                        href={candidate.resume_path || "#"}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="bg-[#FF8A00] hover:bg-[#E67A00] text-white px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest flex items-center gap-2 shadow-lg transition-all active:scale-95"
-                      >
-                        <Download className="w-3 h-3" />
-                        Download Original
-                      </a>
-                    </div>
-                    <div className="flex-1 overflow-hidden">
-                      <iframe
-                        src={candidate.resume_path || ""}
-                        className="w-full h-full border-none"
-                        title="Original Resume PDF"
-                      />
-                    </div>
+
+              {activeTab === "original_resume" && candidate.resume_path && (
+                <div className="flex flex-col h-full bg-slate-900">
+                  <div className="bg-slate-950/80 p-3.5 flex justify-between items-center px-6 border-b border-slate-800 shrink-0">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                      Candidate Original Document
+                    </span>
+                    <a
+                      href={candidate.resume_path || "#"}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="bg-[#FF8A00] hover:bg-[#E67A00] text-white px-3.5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5 shadow-lg active:scale-95 transition-all shadow-orange-600/10"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      Download Original
+                    </a>
                   </div>
-                )}
+                  <div className="flex-1 overflow-hidden relative">
+                    <iframe
+                      src={candidate.resume_path || ""}
+                      className="w-full h-full border-none"
+                      title="Original Resume PDF"
+                    />
+                  </div>
+                </div>
+              )}
+
               {activeTab === "application" && (
-                <div className="p-8">
-                  <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-6">
-                    Current Application Status
-                  </h3>
-                  <div className="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm">
-                    <div className="flex items-center justify-between mb-8">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-                          <ClipboardList className="w-6 h-6 text-blue-600" />
+                <div className="candidate-modal-scroll flex-1 overflow-y-auto p-5 sm:p-6 bg-slate-50/20">
+                  <div className="max-w-2xl mx-auto space-y-6">
+                    <h3 className="text-[10px] font-black text-[#FF8A00] uppercase tracking-[0.18em]">
+                      Pipeline Application Details
+                    </h3>
+                    
+                    <div className="bg-white rounded-2xl border border-orange-100/40 p-5 sm:p-6 shadow-xs space-y-5">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-100">
+                        <div className="flex items-center gap-3.5">
+                          <div className="w-11 h-11 bg-orange-50/50 rounded-xl flex items-center justify-center shrink-0 border border-orange-100/50">
+                            <ClipboardList className="w-5 h-5 text-[#FF8A00]" />
+                          </div>
+                          <div>
+                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">
+                              Current Hiring Stage
+                            </p>
+                            <h4 className="text-base font-black text-slate-900 uppercase tracking-tight">
+                              {status || "APPLIED"}
+                            </h4>
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">
-                            Current Stage
+                        <div className="sm:text-right">
+                          <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">
+                            Applied On
                           </p>
-                          <h4 className="text-lg font-black text-slate-900 uppercase tracking-tight">
-                            {status || "APPLIED"}
+                          <h4 className="text-xs font-bold text-slate-700">
+                            {format(new Date(appliedDate), "MMMM dd, yyyy")}
                           </h4>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">
-                          Applied On
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                          <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block mb-1">
+                            Standard Match Score
+                          </span>
+                          <span className="text-xs font-black text-[#FF8A00]">
+                            {(score / 20).toFixed(1)} / 5.0 Rating
+                          </span>
+                        </div>
+                        <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                          <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block mb-1">
+                            Target Position Title
+                          </span>
+                          <span className="text-xs font-black text-slate-700 truncate block">
+                            {jobTitle}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="p-4 bg-orange-50/20 rounded-xl border border-orange-100/50">
+                        <p className="text-[8px] font-black text-[#FF8A00] uppercase tracking-widest mb-1.5">Referral Source</p>
+                        <p className="text-xs font-bold text-slate-800">
+                          {candidate.referral || "Direct Platform Application"}
                         </p>
-                        <h4 className="text-sm font-bold text-slate-700">
-                          {format(new Date(appliedDate), "MMMM dd, yyyy")}
-                        </h4>
-                      </div>
-                    </div>
-
-                    <div className="space-y-4 pt-6 border-t border-slate-50">
-                      <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
-                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                          Match Score
-                        </span>
-                        <span className="text-sm font-black text-blue-600">
-                          {(score / 20).toFixed(1)} / 5.0
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
-                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                          Target Role
-                        </span>
-                        <span className="text-sm font-black text-slate-700 uppercase tracking-tight">
-                          {jobTitle}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {activeTab === "form" && (
-                <div className="p-8">
-                  <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-6">
-                    High-Fidelity Form Signals
-                  </h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3">
-                        Demographics
-                      </p>
-                      <div className="space-y-4">
-                        <div>
-                          <label className="text-[8px] font-black text-slate-300 uppercase tracking-widest">
-                            Primary Institution
-                          </label>
-                          <p className="text-xs font-bold text-slate-700">
-                            {eduInstitution}
-                          </p>
-                        </div>
-                        <div>
-                          <label className="text-[8px] font-black text-slate-300 uppercase tracking-widest">
-                            Degree Level
-                          </label>
-                          <p className="text-xs font-bold text-slate-700">
-                            {eduDegree}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3">
-                        Professional Metadata
-                      </p>
-                      <div className="space-y-4">
-                        <div>
-                          <label className="text-[8px] font-black text-slate-300 uppercase tracking-widest">
-                            Graduation/End Date
-                          </label>
-                          <p className="text-xs font-bold text-slate-700">
-                            {eduYear}
-                          </p>
-                        </div>
-                        <div>
-                          <label className="text-[8px] font-black text-slate-300 uppercase tracking-widest">
-                            Referral Source
-                          </label>
-                          <p className="text-xs font-bold text-slate-700">
-                            {candidate.referral || "Direct Application"}
-                          </p>
-                        </div>
                       </div>
                     </div>
                   </div>
@@ -588,184 +700,179 @@ export default function CandidateProfileModal({
               )}
 
               {activeTab === "interview" && (
-                <div className="p-12 text-center flex flex-col items-center">
-                  <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mb-6">
-                    <Video className="w-8 h-8 text-blue-600" />
-                  </div>
-                  <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight mb-2">
-                    Interview Intelligence
-                  </h3>
-                  
-                  {activeInterview ? (
-                    <div className="max-w-sm w-full bg-white border border-slate-100 rounded-3xl p-8 shadow-xl shadow-slate-200/50 space-y-6">
-                      <div className="text-center">
-                        <div className={`mx-auto w-fit px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest mb-3 ${
-                          activeInterview.status === "scheduled" 
-                            ? (confirmedSlot && new Date(confirmedSlot.start_time) < new Date() ? "bg-slate-100 text-slate-600 border border-slate-200" : "bg-emerald-50 text-emerald-600 border border-emerald-100")
-                            : "bg-amber-50 text-amber-600 border border-amber-100"
-                        }`}>
-                          {activeInterview.status === "scheduled" 
-                            ? (confirmedSlot && new Date(confirmedSlot.start_time) < new Date() ? "? Conducted" : "? Confirmed") 
-                            : "? Awaiting Candidate"}
-                        </div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">
-                          {activeInterview.round_name}
-                        </p>
+                <div className="candidate-modal-scroll flex-1 overflow-y-auto p-5 sm:p-6 bg-slate-50/20">
+                  <div className="max-w-2xl mx-auto space-y-6">
+                    
+                    <div className="text-center flex flex-col items-center py-4">
+                      <div className="w-12 h-12 bg-orange-50/60 rounded-2xl flex items-center justify-center mb-4 border border-orange-100/50">
+                        <Video className="w-5 h-5 text-[#FF8A00]" />
                       </div>
+                      <h3 className="text-base font-black text-slate-900 tracking-tight mb-1">
+                        Interview Assessment Details
+                      </h3>
+                      <p className="text-[10px] text-slate-400 font-bold max-w-sm leading-relaxed uppercase tracking-wider">
+                        Configure virtual links and monitor candidates' evaluation rounds.
+                      </p>
+                    </div>
 
-                      <div className={`p-4 rounded-2xl border ${
-                        activeInterview.recruiter_joined_at && activeInterview.candidate_joined_at
-                          ? "bg-emerald-50 border-emerald-100/50"
-                          : activeInterview.status === "scheduled" 
-                            ? "bg-blue-100 border-blue-100/50" 
-                            : "bg-slate-50 border-slate-100"
-                      }`}>
-                        <div className="flex items-center gap-3 mb-2">
-                          {activeInterview.recruiter_joined_at && activeInterview.candidate_joined_at ? (
-                            <div className="h-4 w-4 rounded-full bg-emerald-500 animate-pulse" />
-                          ) : (
-                            <Clock className={`h-4 w-4 ${activeInterview.status === "scheduled" ? "text-blue-600" : "text-slate-400"}`} />
-                          )}
-                          <p className={`text-[9px] font-black uppercase tracking-widest ${
-                            activeInterview.recruiter_joined_at && activeInterview.candidate_joined_at
-                              ? "text-emerald-700" 
-                              : activeInterview.status === "scheduled" 
-                                ? "text-blue-700" 
-                                : "text-slate-500"
-                          }`}>
-                            {activeInterview.recruiter_joined_at && activeInterview.candidate_joined_at ? "Live: Interview in Progress" : activeInterview.status === "scheduled" ? "Scheduled Transmission" : "Proposed Slots"}
+                    {activeInterview ? (
+                      <div className="bg-white border border-orange-100/50 rounded-2xl p-5 sm:p-6 shadow-xs space-y-5">
+                        <div className="flex items-center justify-between border-b border-slate-50 pb-4">
+                          <div>
+                            <span className="text-[8px] font-black text-[#FF8A00] bg-orange-50 border border-orange-100/50 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                              {activeInterview.status === "scheduled" ? "Confirmed Round" : "Pending Confirmation"}
+                            </span>
+                            <h4 className="text-xs font-black text-slate-900 uppercase tracking-tight mt-2">
+                              {activeInterview.round_name} (Round #{activeInterview.round_number})
+                            </h4>
+                          </div>
+                        </div>
+
+                        <div className={`p-4 rounded-xl border ${
+                          activeInterview.recruiter_joined_at && activeInterview.candidate_joined_at
+                            ? "bg-emerald-50/30 border-emerald-100/50 text-emerald-800"
+                            : "bg-slate-50 border-slate-100 text-slate-700"
+                        }`}>
+                          <div className="flex items-center gap-2 mb-2">
+                            {activeInterview.recruiter_joined_at && activeInterview.candidate_joined_at ? (
+                              <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                            ) : (
+                              <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                            )}
+                            <p className="text-[9px] font-black uppercase tracking-widest">
+                              {activeInterview.recruiter_joined_at && activeInterview.candidate_joined_at 
+                                ? "Session in progress (Active Link)" 
+                                : "Proposed Meeting Details"}
+                            </p>
+                          </div>
+                          <p className="text-xs font-bold">
+                            {confirmedSlot ? (
+                              new Date(confirmedSlot.start_time).toLocaleString('en-IN', {
+                                month: 'long',
+                                day: 'numeric',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                hour12: true,
+                                timeZone: 'Asia/Kolkata'
+                              }) + " IST"
+                            ) : (
+                              "Candidate is currently reviewing proposed schedule slots..."
+                            )}
                           </p>
                         </div>
-                        <p className="text-[11px] font-black text-slate-700 leading-tight">
-                          {confirmedSlot ? (
-                            new Date(confirmedSlot.start_time).toLocaleString('en-IN', {
-                              month: 'long',
-                              day: 'numeric',
-                              year: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                              hour12: true,
-                              timeZone: 'Asia/Kolkata'
-                            }) + " IST"
-                          ) : (
-                            "Candidate is reviewing available slots..."
-                          )}
-                        </p>
-                      </div>
 
-                      <div className="space-y-3">
-                        {activeInterview.status === "scheduled" && activeInterview.meeting_link && (() => {
-                          const nowInBrowser = currentTime;
-                          const start = new Date(confirmedSlot?.start_time || "");
-                          const end = new Date(confirmedSlot?.end_time || "");
-                          
-                          // NEW PROTOCOL: Join opens 15m before START 
-                          // Closed 5m AFTER start OR after the meeting END TIME
-                          const allowedStart = new Date(start.getTime() - 15 * 60000);
-                          const fiveAfterStart = new Date(start.getTime() + 5 * 60000);
-                          
-                          // Cannot join after end time
-                          const allowedEnd = fiveAfterStart < end ? fiveAfterStart : end;
-                          
-                          const isActive = nowInBrowser >= allowedStart && nowInBrowser <= allowedEnd;
+                        <div className="space-y-3 pt-2">
+                          {activeInterview.status === "scheduled" && activeInterview.meeting_link && (() => {
+                            const nowInBrowser = currentTime;
+                            const start = new Date(confirmedSlot?.start_time || "");
+                            const end = new Date(confirmedSlot?.end_time || "");
+                            
+                            const allowedStart = new Date(start.getTime() - 15 * 60000);
+                            const fiveAfterStart = new Date(start.getTime() + 5 * 60000);
+                            const allowedEnd = fiveAfterStart < end ? fiveAfterStart : end;
+                            
+                            const isActive = nowInBrowser >= allowedStart && nowInBrowser <= allowedEnd;
 
-                          return (
-                            <button
-                              disabled={!isActive}
-                              onClick={async () => {
-                                try {
-                                  const token = awsAuth.getToken();
-                                  if (token) {
-                                    apiClient.post(`/interviews/${activeInterview.id}/join-event`, { role: "recruiter" }, token);
+                            return (
+                              <button
+                                disabled={!isActive}
+                                onClick={async () => {
+                                  try {
+                                    const token = awsAuth.getToken();
+                                    if (token) {
+                                      apiClient.post(`/interviews/${activeInterview.id}/join-event`, { role: "recruiter" }, token);
+                                    }
+                                  } catch (err) {
+                                    console.error("Failed to signal join:", err);
                                   }
-                                } catch (err) {
-                                  console.error("Failed to signal join:", err);
-                                }
-                                window.open(activeInterview.meeting_link, "_blank");
-                              }}
-                              className={`w-full py-4 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] shadow-lg transition-all flex items-center justify-center gap-2 ${
-                                isActive 
-                                  ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20" 
-                                  : "bg-slate-100 text-slate-400 cursor-not-allowed"
-                              }`}
+                                  window.open(activeInterview.meeting_link, "_blank");
+                                }}
+                                className={`w-full py-3.5 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm transition-all flex items-center justify-center gap-1.5 border ${
+                                  isActive 
+                                    ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600 shadow-emerald-600/10" 
+                                    : "bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed"
+                                }`}
+                              >
+                                <Video className="w-3.5 h-3.5" />
+                                {isActive 
+                                  ? activeInterview.recruiter_joined_at ? "Return to Live Session" : "Join Video Call"
+                                  : nowInBrowser < allowedStart 
+                                    ? `Locked: Opens ${Math.round((allowedStart.getTime() - nowInBrowser.getTime()) / 60000)}m Early` 
+                                    : nowInBrowser > end
+                                      ? "Meeting Link Expired"
+                                      : "Late: Window Closed (5m Limit)"}
+                              </button>
+                            );
+                          })()}
+                          
+                          {activeInterview.recruiter_joined_at && (
+                            <button
+                              onClick={() => setShowFeedbackModal(true)}
+                              className="w-full bg-slate-900 hover:bg-slate-800 text-white py-3.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 shadow-sm"
                             >
-                              <Video className="w-4 h-4" />
-                              {isActive 
-                                ? activeInterview.recruiter_joined_at ? "Return to Live Session" : "Join Session"
-                                : nowInBrowser < allowedStart 
-                                  ? `Locked: Opens ${Math.round((allowedStart.getTime() - nowInBrowser.getTime()) / 60000)}m Early` 
-                                  : nowInBrowser > end
-                                    ? "Meeting Expired (End Time Passed)"
-                                    : "Late: Window Closed (5m Limit)"}
+                              Log Round Evaluation Feedback
                             </button>
-                          );
-                        })()}
-                        
-                        {activeInterview.recruiter_joined_at && (
-                          <button
-                            onClick={() => setShowFeedbackModal(true)}
-                            className="w-full bg-slate-900 hover:bg-slate-800 text-white py-4 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] shadow-2xl transition-all active:scale-95"
-                          >
-                            Log Evaluation
-                          </button>
-                        )}
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    <>
-                      <p className="text-[10px] text-slate-500 font-medium max-w-60 leading-relaxed mb-8">
-                        Invite this candidate to a live video assessment or
-                        behavioral interview session.
-                      </p>
-                      <button
-                        onClick={() => setShowScheduler(true)}
-                        className="bg-[#FF8A00] hover:bg-[#E67A00] text-white px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] shadow-lg shadow-orange-600/20 transition-all active:scale-95"
-                      >
-                        Schedule New Session
-                      </button>
-                    </>
-                  )}
+                    ) : (
+                      <div className="bg-white border border-slate-100 rounded-2xl p-6 text-center space-y-4 shadow-xs">
+                        <p className="text-xs font-semibold text-slate-500 leading-relaxed max-w-sm mx-auto">
+                          Invite this candidate to a scheduled live virtual video assessment or face-to-face round.
+                        </p>
+                        <button
+                          onClick={() => setShowScheduler(true)}
+                          className="bg-[#FF8A00] hover:bg-[#E67A00] text-white px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-md shadow-orange-600/15 transition-all active:scale-95 border border-[#FF8A00]"
+                        >
+                          Schedule New Round
+                        </button>
+                      </div>
+                    )}
 
-                  {/* Interview History */}
-                  {completedInterviews.length > 0 && (
-                    <div className="w-full max-w-sm mt-12 text-left">
-                      <div className="flex items-center gap-2 mb-6 border-b border-slate-100 pb-4">
-                        <ClipboardList className="w-3.5 h-3.5 text-slate-400" />
-                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                          Historical Archives
-                        </h4>
-                      </div>
-                      <div className="space-y-4">
-                        {completedInterviews.map((int) => (
-                          <div 
-                            key={int.id}
-                            className="p-5 bg-slate-50/50 border border-slate-100/50 rounded-2xl relative overflow-hidden group hover:bg-white hover:border-blue-100 transition-all"
-                          >
-                            <div className="flex items-center justify-between mb-3">
-                              <span className="text-[8px] font-black text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full uppercase tracking-widest">
-                                Round {int.round_number}
-                              </span>
-                              <span className="text-[8px] font-bold text-slate-400 uppercase">
-                                {format(new Date(int.updated_at), "MMM dd, yyyy")}
-                              </span>
-                            </div>
-                            <p className="text-[10px] font-black text-slate-900 uppercase tracking-tight mb-2">
-                              {int.round_name}
-                            </p>
-                            {int.feedback && (
-                              <div className="relative mt-3 pl-4 border-l-2 border-slate-200">
-                                <p className="text-[11px] text-slate-600 font-medium italic leading-relaxed">
-                                  &quot;{int.feedback}&quot;
-                                </p>
+                    {/* Historical Rounds Archive */}
+                    {completedInterviews.length > 0 && (
+                      <div className="space-y-4 pt-4">
+                        <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                          <ClipboardList className="w-4 h-4 text-slate-400 shrink-0" />
+                          <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                            Historical Rounds Archive
+                          </h4>
+                        </div>
+                        <div className="space-y-3">
+                          {completedInterviews.map((int) => (
+                            <div 
+                              key={int.id}
+                              className="p-4 bg-white border border-slate-200/60 rounded-xl relative overflow-hidden hover:border-orange-100/50 transition-all shadow-xs"
+                            >
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-[8px] font-black text-[#FF8A00] bg-orange-50 px-2 py-0.5 rounded-full uppercase tracking-wider border border-orange-100/30">
+                                  Round {int.round_number}
+                                </span>
+                                <span className="text-[8px] font-bold text-slate-400 uppercase">
+                                  {format(new Date(int.updated_at), "MMM dd, yyyy")}
+                                </span>
                               </div>
-                            )}
-                          </div>
-                        ))}
+                              <p className="text-[10px] font-black text-slate-900 uppercase tracking-tight mb-2">
+                                {int.round_name}
+                              </p>
+                              {int.feedback && (
+                                <div className="relative mt-2 pl-3.5 border-l-2 border-slate-200 bg-slate-50/40 p-2.5 rounded-r-lg">
+                                  <p className="text-[11px] text-slate-600 font-medium italic leading-relaxed">
+                                    &quot;{int.feedback}&quot;
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
+
+                  </div>
                 </div>
               )}
+
             </div>
           </div>
 
@@ -776,6 +883,7 @@ export default function CandidateProfileModal({
         <InterviewScheduler
           candidateName={candidate.full_name}
           applicationId={applicationId}
+          jobTitle={jobTitle}
           initialRoundNumber={interviews.length + 1}
           onClose={() => setShowScheduler(false)}
           onSuccess={() => {
@@ -804,4 +912,3 @@ export default function CandidateProfileModal({
     </div>
   );
 }
-

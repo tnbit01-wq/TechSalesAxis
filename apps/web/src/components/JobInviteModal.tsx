@@ -88,35 +88,38 @@ export default function JobInviteModal({
   }, [jobs.length]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-      <div className="bg-[#FFFDF9] rounded-[2.5rem] w-full max-w-lg shadow-2xl border border-orange-100/80 overflow-hidden animate-in fade-in zoom-in duration-300">
-        <div className="p-6 border-b border-orange-100/70 flex justify-between items-center bg-gradient-to-r from-[#FFF6ED] to-white">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-955/40 backdrop-blur-sm p-4">
+      <div className="bg-[#FFFDF9] rounded-3xl w-full max-w-lg shadow-2xl border border-orange-100/80 overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
+        {/* Sticky Header */}
+        <div className="p-6 border-b border-orange-100/50 flex justify-between items-center bg-gradient-to-r from-orange-50/20 to-transparent shrink-0">
           <div>
-            <h2 className="text-xl font-black text-slate-900 uppercase italic tracking-tight">
+            <h2 className="text-lg font-black text-slate-955 tracking-tight">
               Personalize Invite
             </h2>
-            <p className="text-[10px] font-bold text-[#FF8A00] uppercase tracking-widest mt-1">
+            <p className="text-[10px] font-bold text-[#FF8A00] uppercase tracking-widest mt-0.5">
               Building bridge for {candidateName}
             </p>
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-slate-50 rounded-xl transition-colors"
+            className="p-1.5 hover:bg-slate-100 rounded-lg transition-all border border-slate-200/60 bg-white"
           >
-            <X className="w-5 h-5 text-slate-400" />
+            <X className="w-4 h-4 text-slate-400" />
           </button>
         </div>
 
-        <div className="p-6 space-y-6">
-          <div className="space-y-3">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+        {/* Scrollable Content */}
+        <div className="p-6 overflow-y-auto candidate-modal-scroll flex-1 space-y-5">
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] block">
               Select Role
             </label>
-            <div className="relative">
+            <div className="relative flex items-center">
+              <Briefcase className="pointer-events-none absolute left-4 h-4 w-4 text-slate-400" />
               <select
                 value={isUnlisted ? "unlisted" : selectedJobId}
                 onChange={(e) => handleJobChange(e.target.value)}
-                className="w-full appearance-none cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF8A00]/20"
+                className="w-full appearance-none cursor-pointer rounded-2xl border border-slate-250 bg-white p-4 pl-11 pr-10 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#FF8A00]/20 focus:border-[#FF8A00] transition-all"
               >
                 {jobs
                   .filter((j) => j.status === "active")
@@ -129,68 +132,71 @@ export default function JobInviteModal({
                   + Other / Unlisted Role
                 </option>
               </select>
-              <Briefcase className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-300" />
+              <span className="pointer-events-none absolute right-4 text-slate-400 text-[10px]">▼</span>
             </div>
 
             {isUnlisted && (
-              <div className="animate-in slide-in-from-top-2 duration-300">
+              <div className="animate-in slide-in-from-top-2 duration-250">
                 <input
                   type="text"
                   placeholder="Enter Unlisted Role Title (e.g. Lead Developer)"
                   value={customTitle}
                   onChange={(e) => handleCustomTitleChange(e.target.value)}
-                  className="mt-2 w-full rounded-2xl border border-orange-100 bg-[#FFF6ED]/60 p-4 text-sm font-bold text-slate-900 placeholder:text-orange-300 focus:outline-none focus:ring-2 focus:ring-[#FF8A00]/20"
+                  className="mt-2 w-full rounded-2xl border border-orange-100 bg-[#FFF6ED]/50 p-4 text-xs font-semibold text-slate-800 placeholder:text-orange-350 focus:outline-none focus:ring-2 focus:ring-[#FF8A00]/20 focus:border-[#FF8A00] transition-all"
                 />
               </div>
             )}
           </div>
 
-          <div className="space-y-3">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] block">
               Invitation Note
             </label>
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              className="h-32 w-full resize-none rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm font-bold leading-relaxed text-slate-600 focus:outline-none focus:ring-2 focus:ring-[#FF8A00]/20"
+              className="h-32 w-full resize-none rounded-2xl border border-slate-200/60 bg-slate-50 p-4 text-xs font-semibold leading-relaxed text-slate-650 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#FF8A00]/20 focus:border-[#FF8A00] transition-all"
               placeholder="Write a personalized message..."
             />
           </div>
 
           {!isUnlisted && selectedJobId && (
-            <div className="flex items-center gap-4 rounded-2xl border border-orange-100 bg-[#FFF6ED] p-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-orange-100 bg-white shadow-sm">
-                <Briefcase className="h-5 w-5 text-[#FF8A00]" />
+            <div className="flex items-center gap-3.5 rounded-2xl border border-orange-100 bg-orange-50/20 p-4">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-orange-100/50 bg-white shadow-xs text-[#FF8A00] shrink-0">
+                <Briefcase className="h-4.5 w-4.5" />
               </div>
-              <div className="flex flex-col">
-                <span className="text-[10px] font-black uppercase tracking-widest text-[#FF8A00]">
+              <div className="flex flex-col min-w-0">
+                <span className="text-[10px] font-black uppercase tracking-wider text-[#FF8A00] truncate">
                   {jobs.find((j) => j.id === selectedJobId)?.title}
                 </span>
-                <span className="text-[8px] font-bold uppercase tracking-widest text-slate-400">
-                  Full description attached
+                <span className="text-[8px] font-bold uppercase tracking-widest text-slate-400 mt-0.5">
+                  Full job details will be attached
                 </span>
               </div>
             </div>
           )}
         </div>
 
-        <div className="p-6 pt-0 flex gap-3">
+        {/* Sticky Footer */}
+        <div className="p-6 border-t border-slate-100 flex gap-4 bg-slate-50/80 backdrop-blur-sm shrink-0">
           <button
+            type="button"
             onClick={onClose}
-            className="flex-1 rounded-2xl border border-slate-200 bg-white py-4 text-[11px] font-black uppercase tracking-widest text-slate-400 transition-all hover:bg-slate-50 active:scale-95"
+            className="flex-1 rounded-xl border border-slate-200 bg-white py-3 text-[10px] font-black uppercase tracking-widest text-slate-400 transition-all hover:bg-slate-100 hover:text-slate-600 active:scale-95 shadow-sm"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleSendInvite}
             disabled={loading || (isUnlisted && !customTitle)}
-            className="flex-2 flex items-center justify-center gap-3 rounded-2xl bg-[#FF8A00] py-4 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-xl shadow-orange-200 transition-all hover:bg-[#E67A00] disabled:bg-slate-200 disabled:shadow-none active:scale-95"
+            className="flex-[2] flex items-center justify-center gap-1.5 rounded-xl bg-[#FF8A00] py-3 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-orange-600/10 transition-all hover:bg-[#E67A00] disabled:opacity-50 disabled:shadow-none active:scale-95"
           >
             {loading ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <>
-                <Send className="w-4 h-4" /> Send Invitation
+                <Send className="w-3.5 h-3.5" /> Send Invitation
               </>
             )}
           </button>
@@ -199,4 +205,3 @@ export default function JobInviteModal({
     </div>
   );
 }
-

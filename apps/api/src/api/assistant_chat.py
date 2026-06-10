@@ -147,6 +147,51 @@ async def _call_ai_json(prompt: str, system: str) -> Dict[str, Any]:
         return {}
 
 
+async def _expand_search_skills(skills: Any) -> List[str]:
+    if not skills:
+        return []
+    
+    if isinstance(skills, str):
+        skills_list = [s.strip() for s in skills.split(",") if s.strip()]
+    elif isinstance(skills, list):
+        skills_list = [str(s).strip() for s in skills if s]
+    else:
+        skills_list = []
+
+    if not skills_list:
+        return []
+
+    prompt = f"""
+    You are an expert technical recruiting AI.
+    Expand the following list of candidate search skills/technologies into a comprehensive list of related technical synonyms, abbreviations, closely associated frameworks, and industry equivalent names (specifically within Tech Sales and general Software/IT fields).
+    
+    Input skills: {json.dumps(skills_list)}
+    
+    For example:
+    - "SaaS" -> ["SaaS", "Software as a Service", "Cloud Sales", "Subscription model"]
+    - "Negotiation" -> ["Negotiation", "Deal Closing", "Contract Negotiation", "Negotiating"]
+    - "CRM" -> ["CRM", "Salesforce", "HubSpot", "Customer Relationship Management"]
+    
+    Return a JSON object with a single key "skills" containing the list of original skills merged with their expanded synonyms/equivalents.
+    Ensure all output strings are clean and concise.
+    
+    {{
+      "skills": ["...", "..."]
+    }}
+    """
+    try:
+        res = await _call_ai_json(prompt, "AI Technical Skill Expansion Engine")
+        if res and isinstance(res, dict) and "skills" in res:
+            expanded = res["skills"]
+            if isinstance(expanded, list):
+                all_skills = list(set(skills_list + [str(s).strip() for s in expanded if s]))
+                return all_skills
+    except Exception as e:
+        log.error("Failed to expand skills: %s", e)
+    
+    return skills_list
+
+
 # ────────────────────────────────────────────────────────────────
 # Database — Sessions
 # ────────────────────────────────────────────────────────────────
@@ -306,7 +351,7 @@ def _get_user_context(db, user_id: str, role: str) -> Dict:
 # Market Data
 # ────────────────────────────────────────────────────────────────
 
-def _get_live_market_demand(limit: int = 6) -> List[Dict]:
+async def _get_live_market_insights(limit: int = 6) -> List[Dict]:
     db = SessionLocal()
     try:
         rows = (
@@ -317,10 +362,108 @@ def _get_live_market_demand(limit: int = 6) -> List[Dict]:
             .limit(limit)
             .all()
         )
-        return [
-            {"label": row.title or "Unknown Role", "value": int(row.demand_count or 0)}
+        platform_jobs = [
+            {"title": row.title or "Unknown Role", "count": int(row.demand_count or 0)}
             for row in rows
         ]
+        
+        total_candidates = db.query(CandidateProfile).count()
+        
+        prompt = f"""
+        You are an expert IT Tech Sales Market Analyst.
+        Provide a JSON object containing real-time 2026 IT Tech Sales industry benchmarks for the top roles on our platform.
+        Top roles: {[pj['title'] for pj in platform_jobs]}
+        Total platform candidates: {total_candidates}
+        
+        Generate realistic, detailed market insights including:
+        - "average_salary_range": average industry salaries for these roles in 2026
+        - "trending_skills": high-demand skills for these roles
+        - "hiring_difficulty": rating (Easy, Medium, Hard) and a brief reason
+        - "market_trend": a brief overview of the 2026 Tech Sales hiring market (focusing on SaaS, AI integrations, B2B sales)
+        
+        Return ONLY a JSON object:
+        {{
+          "benchmarks": [
+            {{
+              "role": "...",
+              "average_salary_range": "...",
+              "trending_skills": ["...", "..."],
+              "hiring_difficulty": "...",
+              "difficulty_reason": "..."
+            }}
+          ],
+          "market_trend_summary": "..."
+        }}
+        """
+        llm_insights = await _call_ai_json(prompt, "IT Tech Sales Market Insights Engine")
+        
+        results = []
+        benchmarks = llm_insights.get("benchmarks", [])
+        bench_map = {b.get("role", "").lower(): b for b in benchmarks}
+        
+        for pj in platform_jobs:
+            title_lower = pj["title"].lower()
+            matching_bench = bench_map.get(title_lower)
+            if not matching_bench:
+                for r_name, b_val in bench_map.items():
+                    if r_name in title_lower or title_lower in r_name:
+                        matching_bench = b_val
+                        break
+                        
+            results.append({
+                "label": pj["title"],
+                "value": pj["count"],
+                "average_salary_range": matching_bench.get("average_salary_range", "Not Available") if matching_bench else "Not Available",
+                "trending_skills": matching_bench.get("trending_skills", []) if matching_bench else [],
+                "hiring_difficulty": matching_bench.get("hiring_difficulty", "Medium") if matching_bench else "Medium",
+                "difficulty_reason": matching_bench.get("difficulty_reason", "") if matching_bench else "",
+                "total_candidates_pool": total_candidates
+            })
+            
+        if not results:
+            default_roles = ["Sales Manager", "Tech Sales Representative", "Account Executive", "Business Development Representative"]
+            for role in default_roles:
+                matching_bench = bench_map.get(role.lower())
+                results.append({
+                    "label": role,
+                    "value": 0,
+                    "average_salary_range": matching_bench.get("average_salary_range", "$80k - $120k") if matching_bench else "$80k - $120k",
+                    "trending_skills": matching_bench.get("trending_skills", ["B2B Sales", "SaaS", "Negotiation"]) if matching_bench else ["B2B Sales", "SaaS", "Negotiation"],
+                    "hiring_difficulty": matching_bench.get("hiring_difficulty", "Hard") if matching_bench else "Hard",
+                    "difficulty_reason": matching_bench.get("difficulty_reason", "High demand for specialized AI sales professionals") if matching_bench else "High demand for specialized AI sales professionals",
+                    "total_candidates_pool": total_candidates
+                })
+        
+        for r in results:
+            r["market_trend_summary"] = llm_insights.get("market_trend_summary", "Tech sales remains highly competitive in 2026, driven by AI SaaS expansion.")
+            
+        return results
+    except Exception as e:
+        log.error("Failed to generate market insights: %s", e)
+        try:
+            rows = (
+                db.query(Job.title, func.count(Job.id).label("demand_count"))
+                .filter(Job.status == "active")
+                .group_by(Job.title)
+                .order_by(desc("demand_count"))
+                .limit(limit)
+                .all()
+            )
+            return [
+                {
+                    "label": row.title or "Unknown Role", 
+                    "value": int(row.demand_count or 0),
+                    "average_salary_range": "Not Available",
+                    "trending_skills": [],
+                    "hiring_difficulty": "Medium",
+                    "difficulty_reason": "",
+                    "total_candidates_pool": 0,
+                    "market_trend_summary": "Standard tech sales roles."
+                }
+                for row in rows
+            ]
+        except Exception:
+            return []
     finally:
         db.close()
 
@@ -359,6 +502,8 @@ Based on the current query, the workflow state, and conversation history, classi
 If there is an active workflow and the user says "yes", "confirm", "publish", "go ahead", "sure", or matches a positive confirmation, classify intent as "confirm_action".
 If the user says "no", "cancel", "stop", "abort", or matches a negative confirmation, classify intent as "cancel_action".
 
+If the user wants to update, edit, modify, or change details of an existing job posting they have on the platform (e.g. "edit Sales Manager role", "update location of Account Executive job", "change the description of the Sales Rep vacancy", "modify the requirements for the Senior Manager job"), classify intent as "job_edit" and extract the job title or job ID in filters.
+
 CRITICAL: Determine if the user is switching context. If there is an active workflow but the user's query is completely unrelated (e.g. they want to search candidates/jobs, view organizations, ask a general question like "What is Python?", or start a different task), set "is_context_switch" to true. Otherwise, if they are answering slot questions, giving a JD, or confirming/canceling the workflow, set "is_context_switch" to false.
 
 For "career_readiness", extract and map any availability/mobility/relocation preferences to these exact enum tokens:
@@ -372,7 +517,7 @@ For "next_steps", suggest 2 to 3 logical, highly contextual next steps/suggested
 
 Classify and return ONLY valid JSON — no markdown, no prose:
 {{
-  "intent": "<one of: job_creation | job_application | candidate_invite | application_status_update | view_jobs | view_candidates | candidate_search | job_search | company_search | market_insights | profile_view | resume_view | post_job | application_status | schedule_interview | general | greeting | help | confirm_action | cancel_action | job_status_update | job_delete | job_stats>",
+  "intent": "<one of: job_creation | job_application | candidate_invite | application_status_update | view_jobs | view_candidates | candidate_search | job_search | company_search | market_insights | profile_view | resume_view | post_job | application_status | schedule_interview | general | greeting | help | confirm_action | cancel_action | job_status_update | job_delete | job_stats | job_edit>",
   "is_context_switch": <boolean>,
   "sub_intent": "<optional short description>",
   "filters": {{
@@ -484,6 +629,9 @@ def _search_candidates_by_name(candidate_name: str, limit: int = 5) -> List[Dict
 async def _execute_tool(intent: str, filters: Dict, user_id: str, role: str, prompt: str = "") -> Any:
     try:
         if intent == "candidate_search" and role == "recruiter":
+            if filters.get("skills"):
+                filters["skills"] = await _expand_search_skills(filters["skills"])
+            
             # If not a recommendation request, do pure search/filter
             if not is_recommendation_request(prompt, filters):
                 return await recruiter_service.search_talent_pool(filters)
@@ -574,7 +722,7 @@ async def _execute_tool(intent: str, filters: Dict, user_id: str, role: str, pro
             )
 
         elif intent == "market_insights":
-            return _get_live_market_demand(limit=6)
+            return await _get_live_market_insights(limit=6)
 
         elif intent in ("profile_view", "resume_view") and role == "recruiter":
             candidate_name = (filters.get("candidate_name") or "").strip()
@@ -790,27 +938,34 @@ def _get_dynamic_next_steps(role: str, intent: str, data_results: List[Dict], ne
     if role != "recruiter":
         return next_steps
 
-    dynamic_steps = []
-    if intent in ("candidate_search", "view_candidates") and data_results:
-        for cand in data_results[:2]:
-            c_name = cand.get("full_name") or cand.get("name")
-            if c_name:
-                dynamic_steps.append(f"View profile of {c_name}")
-                dynamic_steps.append(f"View resume of {c_name}")
-        dynamic_steps.append("Filter by 15+ years experience")
-    elif intent in ("profile_view", "resume_view") and data_results:
-        cand = data_results[0]
-        c_name = cand.get("full_name") or cand.get("name")
-        if c_name:
-            dynamic_steps.append(f"Invite {c_name}")
-            dynamic_steps.append(f"Why is {c_name}'s profile strong?")
-            dynamic_steps.append(f"Show candidates similar to {c_name}")
-    elif intent == "application_status" and data_results:
-        app = data_results[0]
-        c_name = app.get("candidate_name")
-        if c_name:
-            dynamic_steps.append(f"Schedule interview with {c_name}")
-            dynamic_steps.append(f"Shortlist {c_name}")
+    dynamic_steps = [
+        "Would you like to post a job?",
+        "Would you like to view matching candidates?",
+        "Would you like to see real-time market insights?",
+        "Would you like to view your posted jobs?"
+    ]
+    
+    if intent in ("candidate_search", "view_candidates"):
+        dynamic_steps = [
+            "Would you like to post a job?",
+            "Would you like to see real-time market insights?",
+            "Would you like to view matching candidates for your active jobs?",
+            "Would you like to search for candidates with other experience levels?"
+        ]
+    elif intent in ("job_creation", "post_job", "job_edit"):
+        dynamic_steps = [
+            "Would you like to view matching candidates?",
+            "Would you like to see real-time market insights?",
+            "Would you like to view your posted jobs?",
+            "Would you like to post another job?"
+        ]
+    elif intent == "market_insights":
+        dynamic_steps = [
+            "Would you like to post a job?",
+            "Would you like to view matching candidates?",
+            "Would you like to view your posted jobs?",
+            "Would you like to refine search by location?"
+        ]
 
     combined_steps = []
     seen = set()
@@ -1047,7 +1202,7 @@ async def assistant_chat(
         restricted_for_candidate = {
             "candidate_search", "post_job", "job_creation", 
             "candidate_invite", "application_status_update", "view_candidates",
-            "job_status_update", "job_delete", "job_stats"
+            "job_status_update", "job_delete", "job_stats", "job_edit"
         }
         if role == "candidate" and intent in restricted_for_candidate:
             intent = "general"
@@ -1078,7 +1233,7 @@ async def assistant_chat(
                     requires_data = False
 
         # Switch to a new workflow if a workflow-triggering intent is detected
-        workflow_intents = {"job_creation", "post_job", "job_application", "candidate_invite", "application_status_update", "job_delete"}
+        workflow_intents = {"job_creation", "post_job", "job_application", "candidate_invite", "application_status_update", "job_delete", "job_edit"}
         
         is_context_switch = intent_data.get("is_context_switch", False)
         
@@ -1103,10 +1258,12 @@ async def assistant_chat(
             session_context.pop("search_filters", None)
 
         if intent in workflow_intents:
-            active_workflow = "job_creation" if intent in ("job_creation", "post_job") else intent
-            current_slots = {}
-            session_context["active_workflow"] = active_workflow
-            session_context["slots"] = current_slots
+            new_wf = "job_creation" if intent in ("job_creation", "post_job") else intent
+            if active_workflow != new_wf:
+                active_workflow = new_wf
+                current_slots = {}
+                session_context["active_workflow"] = active_workflow
+                session_context["slots"] = current_slots
 
         # Ensure active workflow is safe from role mismatch (run AFTER setting/updating it)
         if role == "recruiter" and active_workflow in ("job_application", "job_search"):
@@ -1219,6 +1376,165 @@ async def assistant_chat(
                     data_results = [current_slots]
                 else:
                     workflow_text = "Sure, I can help you post a job. Please share the job description or details (such as title, location, salary, experience, and requirements) at once, and I will create a draft for you."
+
+        elif active_workflow == "job_edit":
+            is_cancel = intent == "cancel_action" or prompt.lower() in ("cancel", "cancel edit", "stop", "abort", "no")
+            is_confirm = (
+                intent == "confirm_action" 
+                or prompt.lower() in ("confirm", "save", "save changes", "yes", "yes, save", "confirm changes")
+                or prompt.startswith("confirm publish_job_draft ")
+            )
+
+            if is_cancel:
+                workflow_text = "Job editing workflow has been canceled."
+                active_workflow = None
+                current_slots = {}
+            elif is_confirm:
+                # Intercept edited draft payload from the inline card's publish action
+                if prompt.startswith("confirm publish_job_draft "):
+                    try:
+                        payload_str = prompt[len("confirm publish_job_draft "):].strip()
+                        updated_slots = json.loads(payload_str)
+                        current_slots.update(updated_slots)
+                    except Exception as e:
+                        log.error("Failed to parse edited draft JSON: %s", e)
+
+                job_id = current_slots.get("job_id")
+                if job_id:
+                    # Update job in database!
+                    try:
+                        from src.core.models import Job, RecruiterProfile
+                        profile = db.query(RecruiterProfile).filter(RecruiterProfile.user_id == user_id).first()
+                        job = db.query(Job).filter(Job.id == job_id).first()
+                        if profile and job and job.company_id == profile.company_id:
+                            # Update fields
+                            for k in ["title", "description", "requirements", "skills_required", "experience_band", "job_type", "location", "salary_range"]:
+                                if k in current_slots:
+                                    setattr(job, k, current_slots[k])
+                            db.commit()
+                            workflow_text = f"Awesome! The job '{job.title}' has been successfully updated."
+                        else:
+                            workflow_text = "Sorry, I couldn't find the job to update, or you don't have permission to edit it."
+                    except Exception as e:
+                        log.error("Failed to update job: %s", e)
+                        workflow_text = f"An error occurred while updating the job: {str(e)}"
+                else:
+                    workflow_text = "I couldn't identify which job to update."
+
+                # Reset workflow state
+                active_workflow = None
+                current_slots = {}
+                data_type = "none"
+                data_results = []
+            else:
+                # If they provided edit details in conversational way (e.g. "change location to London")
+                # and we already have a job loaded:
+                job_id = current_slots.get("job_id")
+
+                # If we don't have a job ID yet, let's find the job to edit!
+                if not job_id:
+                    # Look for job title in filters or prompt
+                    search_title = filters.get("job_title") or current_slots.get("job_title") or prompt
+                    # If search_title is just a generic word, clean it
+                    try:
+                        from src.core.models import Job, RecruiterProfile
+                        profile = db.query(RecruiterProfile).filter(RecruiterProfile.user_id == user_id).first()
+                        if profile:
+                            # Try to match the title
+                            if search_title and search_title.lower() not in ("edit", "edit job", "update", "update job", "change"):
+                                # Clean search_title to remove starting "edit job ", "edit ", "update job ", "update "
+                                clean_title = search_title
+                                for prefix in ["edit job ", "edit ", "update job ", "update ", "change job ", "change details of "]:
+                                    if clean_title.lower().startswith(prefix):
+                                        clean_title = clean_title[len(prefix):].strip()
+                                
+                                matched_jobs = db.query(Job).filter(
+                                    Job.company_id == profile.company_id,
+                                    Job.title.ilike(f"%{clean_title}%")
+                                ).all()
+                            else:
+                                matched_jobs = db.query(Job).filter(Job.company_id == profile.company_id).all()
+
+                            if len(matched_jobs) == 1:
+                                j = matched_jobs[0]
+                                current_slots = {
+                                    "job_id": str(j.id),
+                                    "title": j.title,
+                                    "location": j.location,
+                                    "experience_band": j.experience_band,
+                                    "job_type": j.job_type,
+                                    "salary_range": j.salary_range,
+                                    "skills_required": j.skills_required or [],
+                                    "requirements": j.requirements or [],
+                                    "description": j.description
+                                }
+                                workflow_text = f"Found job: **{j.title}**. Here are its current details. What changes would you like to make? You can tell me what to update conversationally or edit them in the card below."
+                                data_type = "job_draft"
+                                data_results = [current_slots]
+                            elif len(matched_jobs) > 1:
+                                workflow_text = "I found multiple jobs. Which one would you like to edit?\n" + "\n".join(f"- **{j.title}**" for j in matched_jobs)
+                                data_type = "job_list"
+                                data_results = [{
+                                    "id": str(j.id),
+                                    "title": j.title,
+                                    "location": j.location,
+                                    "salary_range": j.salary_range,
+                                    "experience_band": j.experience_band,
+                                    "job_type": j.job_type,
+                                    "status": j.status
+                                } for j in matched_jobs]
+                            else:
+                                workflow_text = "I couldn't find any jobs matching your request. Which job would you like to edit? Please specify the title."
+                        else:
+                            workflow_text = "I couldn't find your recruiter profile to retrieve jobs."
+                    except Exception as e:
+                        log.error("Error finding job to edit: %s", e)
+                        workflow_text = f"An error occurred: {str(e)}"
+                else:
+                    # We already have a job loaded, and the user typed conversational changes (e.g. "change location to Bengaluru")
+                    # Let's call the AI to extract updates and merge them!
+                    parser_prompt = f"""
+                    You are editing an existing job posting.
+                    CURRENT JOB DETAILS:
+                    {json.dumps(current_slots, indent=2)}
+
+                    USER EDIT REQUEST: "{prompt}"
+
+                    Extract the changes from the USER EDIT REQUEST and merge them with the CURRENT JOB DETAILS.
+                    - If the user specifies a new value for title, location, salary range, experience band, or job type, update that field.
+                    - If they want to add a requirement, append it to the requirements list.
+                    - If they want to remove a requirement, remove it.
+                    - If they want to add a skill, append it to skills_required.
+                    - If they want to remove a skill, remove it from skills_required.
+                    - If they want to update the description, update it.
+                    - Otherwise, retain the current value.
+
+                    Return ONLY a valid JSON object matching the CURRENT JOB DETAILS structure:
+                    {{
+                      "job_id": "{job_id}",
+                      "title": "<updated or current title>",
+                      "location": "<updated or current location>",
+                      "experience_band": "<updated or current experience band: fresher | mid | senior | leadership>",
+                      "job_type": "<updated or current job type: onsite | remote | hybrid>",
+                      "salary_range": "<updated or current salary range>",
+                      "skills_required": [...],
+                      "requirements": [...],
+                      "description": "<updated or current description>"
+                    }}
+                    """
+                    try:
+                        updated = await _call_ai_json(parser_prompt, "You are a job editor assistant.")
+                        # Retain the job_id
+                        updated["job_id"] = job_id
+                        current_slots.update(updated)
+                        workflow_text = "I've updated the details. Review the changes below and say 'save' to confirm, or continue making edits."
+                        data_type = "job_draft"
+                        data_results = [current_slots]
+                    except Exception as e:
+                        log.error("Failed to parse edit JSON: %s", e)
+                        workflow_text = "Sorry, I couldn't parse the changes. Please try stating the updates clearly (e.g., 'Change location to remote')."
+                        data_type = "job_draft"
+                        data_results = [current_slots]
 
         elif active_workflow == "job_application":
             job_id = current_slots.get("job_id") or filters.get("job_id")

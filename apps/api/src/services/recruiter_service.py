@@ -1174,7 +1174,16 @@ Respond with ONLY the domain in format: domain.com (no https://, no www., just t
                     recruiter_icp = " | ".join([f"{r.question_text}: {r.answer_text}" for r in recruiter_assessments])
 
             if filter_type == "culture_fit" and not recruiter_assessments:
-                return []
+                filter_type = "skill_match"
+                if not target_job:
+                    target_job = db.query(Job).filter(
+                        Job.recruiter_id == user_id,
+                        Job.status == "active"
+                    ).order_by(Job.created_at.desc()).first()
+                    if not target_job:
+                        target_job = db.query(Job).filter(
+                            Job.recruiter_id == user_id
+                        ).order_by(Job.created_at.desc()).first()
 
             if filter_type != "skill_match":
                 target_job = None

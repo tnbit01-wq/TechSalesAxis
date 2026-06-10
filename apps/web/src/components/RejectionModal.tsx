@@ -29,63 +29,80 @@ export default function RejectionModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
-        <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-955/40 backdrop-blur-sm">
+      <div className="bg-[#FFFDF9] rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200 border border-orange-100/80 max-h-[90vh] flex flex-col">
+        {/* Sticky Header */}
+        <div className="px-6 py-5 border-b border-orange-100/50 flex items-center justify-between bg-gradient-to-r from-orange-50/30 to-transparent">
           <div>
-            <h3 className="text-xl font-bold text-slate-900">Send Decision</h3>
-            <p className="text-sm text-slate-500 font-medium">
-              Updating {count} candidate{count > 1 ? "s" : ""}
+            <h3 className="text-lg font-black text-slate-950 tracking-tight">
+              Reject Candidate
+            </h3>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+              Updating {count} Candidate{count > 1 ? "s" : ""}
             </p>
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-white rounded-xl transition-colors shadow-sm"
+            className="p-1.5 hover:bg-slate-100 rounded-lg transition-all border border-slate-200/60 bg-white"
           >
-            <X className="h-5 w-5 text-slate-400" />
+            <X className="h-4 w-4 text-slate-400" />
           </button>
         </div>
 
-        <div className="p-6 max-h-[60vh] overflow-y-auto">
-          <div className="mb-6 p-4 bg-amber-50 rounded-xl border border-amber-100 flex gap-3">
-            <AlertCircle className="h-5 w-5 text-amber-600 shrink-0" />
-            <p className="text-xs text-amber-800 leading-relaxed font-medium">
-              Providing clear, objective reasons helps maintain a positive brand
-              reputation and ensures a fair experience for all candidates.
+        {/* Scrollable Content */}
+        <div className="p-6 overflow-y-auto candidate-modal-scroll flex-1 space-y-5">
+          <div className="p-4 bg-orange-50/40 rounded-2xl border border-orange-100/70 flex gap-3">
+            <AlertCircle className="h-5 w-5 text-[#FF8A00] shrink-0 mt-0.5" />
+            <p className="text-xs text-orange-955/80 leading-relaxed font-medium">
+              Providing clear, objective reasons helps maintain a positive employer
+              reputation and ensures transparency for all applicants.
             </p>
           </div>
 
-          <label className="block text-sm font-bold text-slate-700 mb-3 uppercase tracking-wider">
-            Select Ethical Reason
-          </label>
-          <div className="space-y-2">
-            {ETHICAL_REASONS.map((reason) => (
-              <button
-                key={reason}
-                onClick={() => setSelectedReason(reason)}
-                className={`w-full text-left p-4 rounded-xl border-2 transition-all duration-200 text-sm font-medium ${
-                  selectedReason === reason
-                    ? "border-blue-600 bg-blue-50 text-blue-700 shadow-md shadow-blue-100"
-                    : "border-slate-100 hover:border-slate-200 text-slate-600"
-                }`}
-              >
-                {reason}
-              </button>
-            ))}
+          <div>
+            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] mb-3">
+              Select Ethical Reason
+            </label>
+            <div className="space-y-2">
+              {ETHICAL_REASONS.map((reason) => {
+                const isSelected = selectedReason === reason;
+                return (
+                  <button
+                    key={reason}
+                    onClick={() => setSelectedReason(reason)}
+                    className={`w-full text-left p-4 rounded-2xl border transition-all duration-200 text-xs font-semibold relative ${
+                      isSelected
+                        ? "border-[#FF8A00] bg-orange-50/40 text-slate-900 shadow-sm ring-1 ring-[#FF8A00]/20"
+                        : "border-slate-100 hover:border-slate-200 hover:bg-slate-50/50 text-slate-600"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0 transition-colors ${
+                        isSelected ? "border-[#FF8A00] bg-[#FF8A00]" : "border-slate-300"
+                      }`}>
+                        {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                      </div>
+                      <span className="leading-snug">{reason}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 
-        <div className="p-6 bg-slate-50 border-t border-slate-100 flex gap-3">
+        {/* Sticky Footer */}
+        <div className="p-6 bg-slate-50/80 backdrop-blur-sm border-t border-slate-100 flex gap-3">
           <button
             onClick={onClose}
-            className="flex-1 py-3 px-4 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition-colors shadow-sm"
+            className="flex-1 py-3 px-4 bg-white border border-slate-200 text-slate-600 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-slate-50 transition-all active:scale-95 shadow-sm"
           >
             Cancel
           </button>
           <button
             disabled={!selectedReason}
             onClick={() => onConfirm(selectedReason)}
-            className="flex-1 py-3 px-4 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-all shadow-lg shadow-red-200 disabled:opacity-50 disabled:shadow-none"
+            className="flex-1 py-3 px-4 bg-red-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-red-700 transition-all active:scale-95 shadow-lg shadow-red-600/10 disabled:opacity-50 disabled:shadow-none disabled:pointer-events-none"
           >
             Confirm Rejection
           </button>

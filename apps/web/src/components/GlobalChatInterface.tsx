@@ -2746,6 +2746,11 @@ export default function GlobalChatInterface() {
               .find((app) => app.id === activeApplicationId)?.candidate_name || "Candidate"
           }
           applicationId={activeApplicationId}
+          jobTitle={
+            messages
+              .flatMap((m) => m.data_results || [])
+              .find((app) => app.id === activeApplicationId)?.job_title
+          }
           initialRoundNumber={
             (messages
               .flatMap((m) => m.data_results || [])
