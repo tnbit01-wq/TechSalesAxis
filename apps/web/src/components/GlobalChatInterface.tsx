@@ -18,6 +18,8 @@ import { apiClient } from '@/lib/apiClient';
 import RejectionModal from '@/components/RejectionModal';
 import InterviewScheduler from '@/components/InterviewScheduler';
 import CandidateProfileModal from '@/components/CandidateProfileModal';
+import JobInviteModal from '@/components/JobInviteModal';
+import { toast } from 'sonner';
 
 // ─────────────────────────────────────────────
 // Types
@@ -151,6 +153,7 @@ function CandidateCards({
   getDisplayName,
   onOpenPdfPreview,
   onOpenProfileModal,
+  onOpenInviteModal,
 }: {
   items: any[];
   role: string;
@@ -159,6 +162,7 @@ function CandidateCards({
   getDisplayName?: (name: string, id: string) => string;
   onOpenPdfPreview?: (url: string, name: string) => void;
   onOpenProfileModal?: (c: any) => void;
+  onOpenInviteModal?: (id: string, name: string) => void;
 }) {
   const hasScores = items.some(c => typeof c.culture_match_score === 'number' || typeof c.match_score === 'number');
 
@@ -329,7 +333,13 @@ function CandidateCards({
               </button>
             )}
             <button
-              onClick={() => onAction(`Invite candidate ${c.full_name || c.name || ''}`)}
+              onClick={() => {
+                if (onOpenInviteModal) {
+                  onOpenInviteModal(candId, c.full_name || c.name || 'Candidate');
+                } else {
+                  onAction(`Invite candidate ${c.full_name || c.name || ''}`);
+                }
+              }}
               className="px-2.5 py-1 rounded bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 text-[10px] font-semibold transition-all border border-blue-500/15"
             >
               Invite
@@ -385,6 +395,7 @@ function CandidateProfileCard({
   onOpenProfileModal,
   onOpenPdfPreview,
   onAction,
+  onOpenInviteModal,
 }: {
   item: any;
   hasAccessToPersonalInfo?: (id: string) => boolean;
@@ -392,6 +403,7 @@ function CandidateProfileCard({
   onOpenProfileModal?: (c: any) => void;
   onOpenPdfPreview?: (url: string, name: string) => void;
   onAction?: (text: string) => void;
+  onOpenInviteModal?: (id: string, name: string) => void;
 }) {
   const candId = item.user_id || item.id;
   const isUnlocked = hasAccessToPersonalInfo ? hasAccessToPersonalInfo(candId) : true;
@@ -506,7 +518,13 @@ function CandidateProfileCard({
           </button>
         )}
         <button
-          onClick={() => onAction && onAction(`Invite candidate ${item.full_name || item.name || ''}`)}
+          onClick={() => {
+            if (onOpenInviteModal) {
+              onOpenInviteModal(candId, item.full_name || item.name || 'Candidate');
+            } else if (onAction) {
+              onAction(`Invite candidate ${item.full_name || item.name || ''}`);
+            }
+          }}
           className="px-2.5 py-1 rounded bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 text-[10px] font-semibold transition-all border border-blue-500/15"
         >
           Invite
@@ -1623,6 +1641,7 @@ function MessageBubble({
   hasAccessToPersonalInfo,
   getDisplayName,
   onOpenPdfPreview,
+  onOpenInviteModal,
 }: {
   msg: ChatMessage;
   onNavigate: (url: string) => void;
@@ -1638,6 +1657,7 @@ function MessageBubble({
   hasAccessToPersonalInfo?: (id: string) => boolean;
   getDisplayName?: (name: string, id: string) => string;
   onOpenPdfPreview?: (url: string, name: string) => void;
+  onOpenInviteModal?: (id: string, name: string) => void;
 }) {
   const isUser = msg.role === 'user';
   const isEditing = index === editingIndex;
@@ -1667,6 +1687,7 @@ function MessageBubble({
             getDisplayName={getDisplayName}
             onOpenPdfPreview={onOpenPdfPreview}
             onOpenProfileModal={onOpenProfileModal}
+            onOpenInviteModal={onOpenInviteModal}
           />
         )}
         {hasData && msg.data_type === 'candidate_profile' && (
@@ -1677,6 +1698,7 @@ function MessageBubble({
             onOpenProfileModal={onOpenProfileModal}
             onOpenPdfPreview={onOpenPdfPreview}
             onAction={onSendPrompt}
+            onOpenInviteModal={onOpenInviteModal}
           />
         )}
         {hasData && msg.data_type === 'resume_info'       && <ResumeInfoCard item={msg.data_results![0]} onOpenPdfPreview={onOpenPdfPreview} />}
@@ -1887,6 +1909,12 @@ export default function GlobalChatInterface() {
   const [pipelineData, setPipelineData] = useState<any[]>([]);
   const [chatThreads, setChatThreads] = useState<any[]>([]);
   const [threadMessages, setThreadMessages] = useState<Record<string, any[]>>({});
+  const [jobs, setJobs] = useState<any[]>([]);
+  const [inviteModal, setInviteModal] = useState<{
+    isOpen: boolean;
+    candidateId: string;
+    candidateName: string;
+  }>({ isOpen: false, candidateId: '', candidateName: '' });
 
   const fetchAccessControlData = useCallback(async () => {
     if (userRole !== 'recruiter') return;
@@ -1894,13 +1922,15 @@ export default function GlobalChatInterface() {
       const token = awsAuth.getToken();
       if (!token) return;
 
-      const [pipelineResponse, threadsResponse] = await Promise.all([
+      const [pipelineResponse, threadsResponse, jobsResponse] = await Promise.all([
         apiClient.get("/recruiter/applications/pipeline", token).catch(() => []),
         apiClient.get("/chat/threads", token).catch(() => []),
+        apiClient.get("/recruiter/jobs", token).catch(() => []),
       ]);
 
       setPipelineData(pipelineResponse || []);
       setChatThreads(threadsResponse || []);
+      setJobs(jobsResponse || []);
 
       const messagesMap: Record<string, any[]> = {};
       if (threadsResponse && threadsResponse.length > 0) {
@@ -2063,6 +2093,38 @@ export default function GlobalChatInterface() {
       sendMessage("Show applications");
     } catch (err) {
       console.error("Failed to reject candidate:", err);
+    }
+  };
+
+  const handleOpenInviteModal = (candidateId: string, candidateName: string) => {
+    setInviteModal({
+      isOpen: true,
+      candidateId,
+      candidateName,
+    });
+  };
+
+  const handleInviteFromModal = async (jobId: string, message: string, customTitle?: string) => {
+    if (!inviteModal.candidateId) return;
+    try {
+      const token = awsAuth.getToken();
+      if (!token) return;
+      await apiClient.post(
+        `/recruiter/candidate/${inviteModal.candidateId}/invite`,
+        {
+          job_id: jobId,
+          message: message,
+          custom_role_title: customTitle,
+        },
+        token,
+      );
+      
+      toast.success("Invitation sent successfully!");
+      setInviteModal({ isOpen: false, candidateId: '', candidateName: '' });
+      fetchAccessControlData();
+    } catch (error: any) {
+      console.error("Failed to send invite:", error);
+      toast.error(error.message || "Failed to send invitation. Please try again.");
     }
   };
 
@@ -2664,6 +2726,7 @@ export default function GlobalChatInterface() {
               hasAccessToPersonalInfo={hasAccessToPersonalInfo}
               getDisplayName={getDisplayName}
               onOpenPdfPreview={handleOpenPdfPreview}
+              onOpenInviteModal={handleOpenInviteModal}
             />
           ))}
           <div ref={messagesEndRef} />
@@ -2831,6 +2894,16 @@ export default function GlobalChatInterface() {
             </div>
           </div>
         </div>
+      )}
+
+      {inviteModal.isOpen && (
+        <JobInviteModal
+          candidateId={inviteModal.candidateId}
+          candidateName={inviteModal.candidateName}
+          jobs={jobs}
+          onClose={() => setInviteModal({ isOpen: false, candidateId: '', candidateName: '' })}
+          onInvite={handleInviteFromModal}
+        />
       )}
     </div>
   );

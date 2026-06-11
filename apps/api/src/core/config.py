@@ -104,7 +104,7 @@ ZEPTO_INTERVIEW_CONFIRMED_TEMPLATE_ID = os.getenv("ZEPTO_INTERVIEW_CONFIRMED_TEM
 ZEPTO_OFFER_TEMPLATE_ID = os.getenv("ZEPTO_OFFER_TEMPLATE_ID", "").strip()
 
 # Frontend URLs for email links
-FRONTEND_URL = os.getenv("FRONTEND_URL", "https://techsalesaxis.com").strip()
+FRONTEND_URL = os.getenv("FRONTEND_URL", "https://www.techsalesaxis.com").strip()
 RESET_PASSWORD_URL = os.getenv("RESET_PASSWORD_URL", f"{FRONTEND_URL}/reset-password").strip()
 
 if not DATABASE_URL:

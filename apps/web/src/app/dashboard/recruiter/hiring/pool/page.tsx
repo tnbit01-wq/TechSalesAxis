@@ -493,9 +493,10 @@ export default function CandidatePoolPage() {
 
         {inviteModal.isOpen && inviteModal.candidate && (
           <JobInviteModal
-            onClose={() => setInviteModal({ isOpen: false, candidate: null })}
+            candidateId={inviteModal.candidate.user_id}
             candidateName={inviteModal.candidate.full_name}
             jobs={jobs}
+            onClose={() => setInviteModal({ isOpen: false, candidate: null })}
             onInvite={handleInviteCandidate}
           />
         )}

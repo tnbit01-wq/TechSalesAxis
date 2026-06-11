@@ -722,6 +722,38 @@ async def applications_pipeline(user: dict = Depends(get_current_user), db: Sess
         })
     return results
 
+@router.get("/applications/{application_id}")
+async def get_recruiter_application_detail(application_id: str, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    from src.core.models import JobApplication, Job
+    import uuid
+    try:
+        uuid.UUID(str(application_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid application UUID.")
+        
+    recruiter_profile = db.query(RecruiterProfile).filter(RecruiterProfile.user_id == user["sub"]).first()
+    if not recruiter_profile or not recruiter_profile.company_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+        
+    app = db.query(JobApplication).filter(JobApplication.id == application_id).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+        
+    # Verify job belongs to recruiter's company
+    job = db.query(Job).filter(Job.id == app.job_id).first()
+    if not job or job.company_id != recruiter_profile.company_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+        
+    return {
+        "id": str(app.id),
+        "job_id": str(app.job_id),
+        "candidate_id": str(app.candidate_id),
+        "status": app.status,
+        "created_at": app.created_at,
+        "feedback": app.feedback,
+        "invitation_message": app.invitation_message
+    }
+
 @router.post("/applications/bulk-status")
 async def bulk_application_status(data: BulkApplicationStatusUpdate, db: Session = Depends(get_db)):
     from src.core.models import JobApplication, Job, ChatThread, User, CandidateProfile
@@ -1058,8 +1090,125 @@ async def get_candidate(candidate_id: str, db: Session = Depends(get_db)):
         },
     }
 
+@router.get("/candidate/{candidate_id}/match-scores")
+async def get_candidate_match_scores(candidate_id: str, db: Session = Depends(get_db), user: dict = Depends(get_current_user)):
+    from src.core.models import CandidateProfile, Job, RecruiterProfile
+    from src.services.recommendation_service import RecommendationService
+    import uuid
+    
+    # Verify candidate_id
+    try:
+        uuid.UUID(str(candidate_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid candidate UUID.")
+        
+    recruiter_profile = db.query(RecruiterProfile).filter(RecruiterProfile.user_id == user["sub"]).first()
+    if not recruiter_profile or not recruiter_profile.company_id:
+        return []
+        
+    candidate = db.query(CandidateProfile).filter(CandidateProfile.user_id == candidate_id).first()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+        
+    # Get active jobs for recruiter's company
+    jobs = db.query(Job).filter(Job.company_id == recruiter_profile.company_id, Job.status == "active").all()
+    
+    results = []
+    for job in jobs:
+        match_result = RecommendationService.calculate_match_score(candidate, job)
+        results.append({
+            "job_id": str(job.id),
+            "match_score": float(match_result["overall_match_score"]),
+            "explanation": match_result["explanation"],
+            "missing_skills": match_result["missing_critical_skills"]
+        })
+        
+    # Sort results: highest match score first
+    results.sort(key=lambda x: x["match_score"], reverse=True)
+    return results
+
+@router.post("/candidate/{candidate_id}/personalize-invite")
+async def personalize_invite(
+    candidate_id: str,
+    data: JobInviteRequest,
+    user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    from src.core.models import CandidateProfile, Job, RecruiterProfile, Company
+    from src.services.recruiter_service import recruiter_service
+    import uuid
+    
+    try:
+        uuid.UUID(str(candidate_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid candidate UUID.")
+        
+    candidate = db.query(CandidateProfile).filter(CandidateProfile.user_id == candidate_id).first()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+        
+    recruiter_profile = db.query(RecruiterProfile).filter(RecruiterProfile.user_id == user["sub"]).first()
+    company_name = "TechSales Axis"
+    if recruiter_profile and recruiter_profile.company_id:
+        company = db.query(Company).filter(Company.id == recruiter_profile.company_id).first()
+        if company:
+            company_name = company.name or "TechSales Axis"
+            
+    is_valid_job_uuid = False
+    if data.job_id:
+        try:
+            uuid.UUID(str(data.job_id))
+            is_valid_job_uuid = True
+        except ValueError:
+            pass
+            
+    job = db.query(Job).filter(Job.id == data.job_id).first() if is_valid_job_uuid else None
+    
+    job_title = job.title if job else (data.custom_role_title or "Specialized Role")
+    job_desc = job.description if job else "Specialized opportunity in our team."
+    job_requirements = ", ".join(job.requirements or []) if job else "Proven track record in tech sales."
+    
+    candidate_name = candidate.full_name or "Candidate"
+    candidate_role = candidate.current_role or "Professional"
+    candidate_skills = ", ".join(candidate.skills or []) if candidate.skills else "Tech sales skills"
+    candidate_experience = f"{candidate.years_of_experience or 0} years"
+    
+    prompt = f"""
+    Draft a personalized recruiter outreach message inviting a candidate to chat for a job.
+    
+    Recruiter Name: {recruiter_profile.full_name if recruiter_profile else 'Recruiter'}
+    Company Name: {company_name}
+    Job Title: {job_title}
+    Job Description: {job_desc}
+    Job Requirements: {job_requirements}
+    
+    Candidate Name: {candidate_name}
+    Candidate Current Role: {candidate_role}
+    Candidate Experience: {candidate_experience}
+    Candidate Skills: {candidate_skills}
+    
+    Write a warm, professional, and highly targeted invite message (1-2 short paragraphs, max 120 words). Include details showing why their specific skills and experience (e.g. {candidate_skills}) match the role (e.g. {job_title}). Use a friendly and professional tone.
+    Output only the message text itself. Do not include subject lines, greeting placeholders like '[Candidate Name]' (use {candidate_name} directly), or sign-offs with placeholders (use the recruiter's name {recruiter_profile.full_name if recruiter_profile else 'Recruiter'} and {company_name}).
+    """
+    
+    try:
+        custom_message = await recruiter_service._call_ai(prompt, "You are a professional tech sales recruitment assistant specialized in drafting personalized outreach.")
+        if custom_message:
+            return {"personalized_message": custom_message.strip()}
+    except Exception as e:
+        print(f"Error customizing invite: {e}")
+        
+    # Fallback to standard template if AI fails
+    fallback_message = f"Hi {candidate_name},\n\nI saw your profile and was impressed by your experience. I think you'd be a great fit for our {job_title} role at {company_name}. We are looking for someone with your background to join our team.\n\nLet me know if you'd be interested in discussing this further!"
+    return {"personalized_message": fallback_message}
+
 @router.post("/candidate/{candidate_id}/invite")
 async def invite_candidate(candidate_id: str, data: JobInviteRequest, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    from datetime import datetime, timedelta
+    from src.core.models import JobApplication
+    import uuid
+    import json
+    
     user_id = user["sub"]
     
     # Check if recruiter has a rejected/inactive thread with this candidate within last 30 days
@@ -1068,7 +1217,6 @@ async def invite_candidate(candidate_id: str, data: JobInviteRequest, user: dict
         ChatThread.candidate_id == candidate_id
     ).first()
     if thread and not thread.is_active:
-        from datetime import datetime, timedelta
         if thread.last_message_at and (datetime.utcnow() - thread.last_message_at < timedelta(days=30)):
             raise HTTPException(
                 status_code=400,
@@ -1077,24 +1225,100 @@ async def invite_candidate(candidate_id: str, data: JobInviteRequest, user: dict
             
     invite_msg = data.message or "A recruiter invited you to explore a role."
     
+    # Safely validate job_id UUID syntax to avoid PostgreSQL casting failures
+    is_valid_job_uuid = False
+    if data.job_id:
+        try:
+            uuid.UUID(str(data.job_id))
+            is_valid_job_uuid = True
+        except ValueError:
+            pass
+            
+    # Check if candidate already has an invitation/application for this job
+    app_id = None
+    if is_valid_job_uuid:
+        existing_app = db.query(JobApplication).filter(
+            JobApplication.candidate_id == candidate_id,
+            JobApplication.job_id == data.job_id
+        ).first()
+        
+        if existing_app:
+            app_id = str(existing_app.id)
+            if existing_app.status in ["applied", "shortlisted", "interview_scheduled", "offered", "hired"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Candidate already applied or invited to this job"
+                )
+        else:
+            # Create a new JobApplication entry with status "invited"
+            new_app = JobApplication(
+                job_id=data.job_id,
+                candidate_id=candidate_id,
+                status="invited",
+                invitation_message=invite_msg
+            )
+            db.add(new_app)
+            db.commit()
+            db.refresh(new_app)
+            app_id = str(new_app.id)
+
     # 1. Create thread so they can talk immediately
     thread_data = ChatService.get_or_create_thread(db, user_id, candidate_id)
     thread_id = thread_data["id"]
 
     # 2. Post the invitation message as the first chat message bypasses the lock check because it's system-initiated
     try:
+        from src.core.models import RecruiterProfile, Job, Company
+        recruiter_profile = db.query(RecruiterProfile).filter(RecruiterProfile.user_id == user_id).first()
+        job = db.query(Job).filter(Job.id == data.job_id).first() if is_valid_job_uuid else None
+        
+        j_title = job.title if job else (data.custom_role_title or "Specialized Role")
+        company_id = job.company_id if job else (recruiter_profile.company_id if recruiter_profile else None)
+        
+        is_valid_company_uuid = False
+        if company_id:
+            try:
+                uuid.UUID(str(company_id))
+                is_valid_company_uuid = True
+            except ValueError:
+                pass
+        
+        company = db.query(Company).filter(Company.id == company_id).first() if is_valid_company_uuid else None
+        company_name = company.name if (company and company.name) else "TechSales Axis"
+        
+        # Build structured JSON payload for rich card rendering in chat
+        invite_payload = {
+            "job_id": str(data.job_id) if is_valid_job_uuid else None,
+            "job_title": j_title,
+            "company_name": company_name,
+            "message": invite_msg,
+            "application_id": app_id
+        }
+        json_text = f"[Job Invite:JSON]{json.dumps(invite_payload)}"
+
         # Check if this exact invite message was already sent to avoid duplicates on double-click
-        existing = db.query(ChatMessage).filter(
+        existing_messages = db.query(ChatMessage).filter(
             ChatMessage.thread_id == thread_id,
             ChatMessage.sender_id == user_id,
-            ChatMessage.text == f"[Job Invite] {invite_msg}"
-        ).first()
+            ChatMessage.text.like("[Job Invite:JSON]%")
+        ).all()
 
-        if not existing:
+        is_duplicate = False
+        for msg in existing_messages:
+            try:
+                payload_str = msg.text.replace("[Job Invite:JSON]", "")
+                payload = json.loads(payload_str)
+                if payload.get("job_id") == (str(data.job_id) if is_valid_job_uuid else None) and payload.get("message") == invite_msg:
+                    is_duplicate = True
+                    break
+            except Exception:
+                pass
+
+        if not is_duplicate:
             new_msg = ChatMessage(
                 thread_id=thread_id,
                 sender_id=user_id,
-                text=f"[Job Invite] {invite_msg}"
+                text=json_text
             )
             db.add(new_msg)
             
@@ -1124,18 +1348,13 @@ async def invite_candidate(candidate_id: str, data: JobInviteRequest, user: dict
     # 4. Send Email Notification
     try:
         from src.services.email_service import send_job_invite_email
-        from src.core.models import User, CandidateProfile, RecruiterProfile, Job, Company
+        from src.core.models import User, CandidateProfile
         candidate_user = db.query(User).filter(User.id == candidate_id).first()
         candidate_profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == candidate_id).first()
-        recruiter_profile = db.query(RecruiterProfile).filter(RecruiterProfile.user_id == user_id).first()
-        job = db.query(Job).filter(Job.id == data.job_id).first()
+        r_name = recruiter_profile.full_name if (recruiter_profile and recruiter_profile.full_name) else "A Recruiter"
         
-        if candidate_user and job:
+        if candidate_user:
             c_name = candidate_profile.full_name if (candidate_profile and candidate_profile.full_name) else (candidate_user.full_name or "Candidate")
-            r_name = recruiter_profile.full_name if (recruiter_profile and recruiter_profile.full_name) else "A Recruiter"
-            j_title = job.title
-            company = db.query(Company).filter(Company.id == job.company_id).first()
-            company_name = company.name if (company and company.name) else "TechSales Axis"
             send_job_invite_email(candidate_user.email, c_name, r_name, j_title, invite_msg, company_name=company_name)
     except Exception as e:
         print(f"Failed to send invite email: {e}")

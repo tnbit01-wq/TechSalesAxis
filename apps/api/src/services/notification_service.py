@@ -20,6 +20,7 @@ class NotificationService:
             db.add(new_notif)
             db.commit()
         except Exception as e:
+            db.rollback()
             print(f"Failed to create notification: {e}")
         finally:
             if own_db: db.close()

@@ -68,7 +68,27 @@ def send_smtp_fallback(recipient, subject, html_content):
         logger.error(f"SMTP Failed for {recipient}: {e}")
         return None
 
+def ensure_www_in_urls(text_or_dict):
+    if isinstance(text_or_dict, str):
+        s = text_or_dict
+        s = s.replace("https://www.techsalesaxis.com", "https://techsalesaxis.com")
+        s = s.replace("https://techsalesaxis.com", "https://www.techsalesaxis.com")
+        s = s.replace("http://www.techsalesaxis.com", "http://techsalesaxis.com")
+        s = s.replace("http://techsalesaxis.com", "http://www.techsalesaxis.com")
+        return s
+    elif isinstance(text_or_dict, dict):
+        return {k: ensure_www_in_urls(v) for k, v in text_or_dict.items()}
+    elif isinstance(text_or_dict, list):
+        return [ensure_www_in_urls(item) for item in text_or_dict]
+    else:
+        return text_or_dict
+
 def send_templated_email(recipient, template_id, merge_info, fallback_subject="", fallback_html=""):
+    # Enforce www.techsalesaxis.com for all links
+    merge_info = ensure_www_in_urls(merge_info)
+    fallback_subject = ensure_www_in_urls(fallback_subject)
+    fallback_html = ensure_www_in_urls(fallback_html)
+
     print(f"[TEMPLATED_EMAIL] Attempting to send to {recipient} with template_id={template_id}")
     print(f"[TEMPLATED_EMAIL] ZEPTO_API_KEY is set: {bool(ZEPTO_API_KEY)}")
     
@@ -177,20 +197,99 @@ def send_job_invite_email(recipient, candidate_name, recruiter_name, job_title, 
     print(f"[JOB_INVITE_EMAIL] Called for {recipient} regarding {job_title} at {company_name}")
     subject = f"New Career Opportunity: {job_title} at {company_name}"
     html = f"""
-    <html>
-    <body style="font-family: Arial, sans-serif; padding: 20px; background-color: #f7fafc; color: #2d3748;">
-        <div style="max-width: 600px; margin: 0 auto; background: white; padding: 40px; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-            <h2 style="color: #dd6b20; margin-top: 0;">New Opportunity Awaiting!</h2>
-            <p>Hi {candidate_name},</p>
-            <p><strong>{recruiter_name}</strong> has invited you to explore the <strong>{job_title}</strong> role at <strong>{company_name}</strong>.</p>
-            <div style="background: #fffaf0; padding: 20px; border-left: 4px solid #dd6b20; border-radius: 6px; font-style: italic; margin: 20px 0;">
-                "{message}"
-            </div>
-            <div style="text-align: center; margin: 30px 0;">
-                <a href="{FRONTEND_URL}/login" style="background-color: #dd6b20; color: white; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">View Opportunity</a>
-            </div>
-            <p style="color: #718096; font-size: 12px; border-top: 1px solid #edf2f7; padding-top: 20px;">This email was sent on behalf of {company_name}.</p>
-        </div>
+    <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+    <html xmlns="http://www.w3.org/1999/xhtml">
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+        <title>New Opportunity Awaiting</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    </head>
+    <body style="margin: 0; padding: 0; background-color: #F6F9FC; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;">
+        <table border="0" cellpadding="0" cellspacing="0" width="100%" bgcolor="#F6F9FC" style="table-layout: fixed;">
+            <tr>
+                <td align="center" style="padding: 40px 0;">
+                    <table border="0" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 12px; border: 1px solid #E2E8F0; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+                        <!-- Brand Header -->
+                        <tr>
+                            <td bgcolor="#FF8A00" align="left" style="padding: 30px 40px;">
+                                <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                                    <tr>
+                                        <td style="color: #ffffff; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">
+                                            TechSales<span style="color: #FFE6CC;">Axis</span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="color: #FFE6CC; font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 1.5px; padding-top: 4px;">
+                                            Elite Talent Matching
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                        
+                        <!-- Content Body -->
+                        <tr>
+                            <td style="padding: 40px 40px 30px 40px; color: #334155; font-size: 16px; line-height: 24px;">
+                                <h2 style="color: #0F172A; font-size: 20px; font-weight: 800; margin-top: 0; margin-bottom: 16px;">
+                                    Exclusive Career Invitation
+                                </h2>
+                                <p style="margin-top: 0; margin-bottom: 16px;">
+                                    Hi {candidate_name},
+                                </p>
+                                <p style="margin-top: 0; margin-bottom: 20px;">
+                                    <strong>{recruiter_name}</strong> from <strong>{company_name}</strong> has invited you to explore the <strong>{job_title}</strong> role in their team. They reviewed your profile on TechSales Axis and believe your background is a strong match.
+                                </p>
+                                
+                                <!-- Personalized Message Block -->
+                                <table border="0" cellpadding="0" cellspacing="0" width="100%" bgcolor="#FFF8F1" style="border-left: 4px solid #FF8A00; border-radius: 6px; margin-bottom: 24px;">
+                                    <tr>
+                                        <td style="padding: 18px 20px; font-size: 14px; line-height: 22px; color: #1E293B; font-style: italic;">
+                                            <strong style="color: #C96B00; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; display: block; font-style: normal; margin-bottom: 6px;">
+                                                Personal Note from {recruiter_name}
+                                            </strong>
+                                            "{message}"
+                                        </td>
+                                    </tr>
+                                </table>
+
+                                <!-- Platform Benefits -->
+                                <p style="margin-top: 0; margin-bottom: 8px; font-weight: bold; font-size: 14px; text-transform: uppercase; color: #0F172A; letter-spacing: 0.5px;">
+                                    Explore the Role on TechSales Axis
+                                </p>
+                                <ul style="margin-top: 0; margin-bottom: 30px; padding-left: 20px; font-size: 14px; line-height: 22px; color: #475569;">
+                                    <li style="margin-bottom: 6px;">
+                                        <strong>Direct Interaction:</strong> Chat directly with the hiring manager without filters.
+                                    </li>
+                                    <li style="margin-bottom: 6px;">
+                                        <strong>Full Transparency:</strong> See full specifications, requirements, and compatibility scores.
+                                    </li>
+                                </ul>
+
+                                <!-- Bulletproof CTA Button -->
+                                <table border="0" cellspacing="0" cellpadding="0" align="center" style="margin-top: 10px; margin-bottom: 10px;">
+                                    <tr>
+                                        <td align="center" style="border-radius: 8px;" bgcolor="#FF8A00">
+                                            <a href="{FRONTEND_URL}/login" target="_blank" style="font-size: 14px; font-family: Helvetica, Arial, sans-serif; color: #ffffff; text-decoration: none; border-radius: 8px; padding: 14px 28px; border: 1px solid #FF8A00; display: inline-block; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">
+                                                View Opportunity
+                                            </a>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+
+                        <!-- Footer -->
+                        <tr>
+                            <td bgcolor="#F8FAFC" style="padding: 30px 40px; border-top: 1px solid #E2E8F0; text-align: center; color: #94A3B8; font-size: 12px; line-height: 18px;">
+                                This email was sent by TechSales Axis on behalf of {company_name}. If you wish to manage your notification preferences, please log in and update your account settings.
+                                <br/><br/>
+                                © 2026 TechSales Axis. All Rights Reserved.
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
     </body>
     </html>
     """
@@ -389,5 +488,305 @@ def send_offer_email(recipient, candidate_name, job_title, custom_message=None, 
         "company_name": company_name
     }
     return send_templated_email(recipient, ZEPTO_OFFER_TEMPLATE_ID, merge_info, subject, html)
+
+
+def send_job_application_candidate_email(recipient, candidate_name, candidate_email, job_title, company_name, recruiter_name, recruiter_email):
+    from datetime import datetime
+    print(f"[CANDIDATE_APPLICATION_EMAIL] Called for {recipient} regarding {job_title} at {company_name}")
+    subject = f"Application Received: {job_title} at {company_name}"
+    date_str = datetime.now().strftime("%B %d, %Y")
+    
+    html = f"""
+    <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+    <html xmlns="http://www.w3.org/1999/xhtml">
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+        <title>Application Received</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    </head>
+    <body style="margin: 0; padding: 0; background-color: #F6F9FC; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;">
+        <table border="0" cellpadding="0" cellspacing="0" width="100%" bgcolor="#F6F9FC" style="table-layout: fixed;">
+            <tr>
+                <td align="center" style="padding: 40px 0;">
+                    <table border="0" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 12px; border: 1px solid #E2E8F0; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+                        <!-- Brand Header -->
+                        <tr>
+                            <td bgcolor="#FF8A00" align="left" style="padding: 30px 40px;">
+                                <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                                    <tr>
+                                        <td style="color: #ffffff; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">
+                                            TechSales<span style="color: #FFE6CC;">Axis</span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="color: #FFE6CC; font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 1.5px; padding-top: 4px;">
+                                            Elite Talent Matching
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                        
+                        <!-- Content Body -->
+                        <tr>
+                            <td style="padding: 40px 40px 30px 40px; color: #334155; font-size: 16px; line-height: 24px;">
+                                <h2 style="color: #0F172A; font-size: 20px; font-weight: 800; margin-top: 0; margin-bottom: 16px;">
+                                    Application Received!
+                                </h2>
+                                <p style="margin-top: 0; margin-bottom: 16px;">
+                                    Hi {candidate_name},
+                                </p>
+                                <p style="margin-top: 0; margin-bottom: 20px;">
+                                    Thank you for applying for the <strong>{job_title}</strong> position at <strong>{company_name}</strong> via TechSales Axis. We have successfully transmitted your profile to the hiring team.
+                                </p>
+                                
+                                <!-- Details Table -->
+                                <table border="0" cellpadding="0" cellspacing="0" width="100%" bgcolor="#F8FAFC" style="border-radius: 8px; margin-bottom: 24px;">
+                                    <tr>
+                                        <td style="padding: 20px; font-size: 14px; line-height: 22px; color: #1E293B;">
+                                            <strong style="color: #FF8A00; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 8px;">
+                                                Application Details
+                                            </strong>
+                                            <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                                                <tr>
+                                                    <td width="40%" style="color: #64748B; padding: 6px 0;">Candidate Name:</td>
+                                                    <td style="font-weight: bold; color: #0F172A; padding: 6px 0;">{candidate_name}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td style="color: #64748B; padding: 6px 0;">Candidate Email:</td>
+                                                    <td style="color: #0F172A; padding: 6px 0;">{candidate_email}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td style="color: #64748B; padding: 6px 0;">Applied Role:</td>
+                                                    <td style="font-weight: bold; color: #0F172A; padding: 6px 0;">{job_title}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td style="color: #64748B; padding: 6px 0;">Company Name:</td>
+                                                    <td style="font-weight: bold; color: #0F172A; padding: 6px 0;">{company_name}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td style="color: #64748B; padding: 6px 0;">Recruiter Name:</td>
+                                                    <td style="color: #0F172A; padding: 6px 0;">{recruiter_name}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td style="color: #64748B; padding: 6px 0;">Recruiter Email:</td>
+                                                    <td style="color: #0F172A; padding: 6px 0;">{recruiter_email}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td style="color: #64748B; padding: 6px 0;">Application Date:</td>
+                                                    <td style="color: #0F172A; padding: 6px 0;">{date_str}</td>
+                                                </tr>
+                                            </table>
+                                        </td>
+                                    </tr>
+                                </table>
+
+                                <p style="margin-top: 0; margin-bottom: 24px;">
+                                    You can track the status of your application, receive updates, and interact directly with the recruiter from your candidate dashboard.
+                                </p>
+
+                                <!-- Bulletproof CTA Button -->
+                                <table border="0" cellspacing="0" cellpadding="0" align="center" style="margin-top: 10px; margin-bottom: 10px;">
+                                    <tr>
+                                        <td align="center" style="border-radius: 8px;" bgcolor="#FF8A00">
+                                            <a href="{FRONTEND_URL}/dashboard/candidate/applications" target="_blank" style="font-size: 14px; font-family: Helvetica, Arial, sans-serif; color: #ffffff; text-decoration: none; border-radius: 8px; padding: 14px 28px; border: 1px solid #FF8A00; display: inline-block; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">
+                                                Track Application
+                                            </a>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+
+                        <!-- Footer -->
+                        <tr>
+                            <td bgcolor="#F8FAFC" style="padding: 30px 40px; border-top: 1px solid #E2E8F0; text-align: center; color: #94A3B8; font-size: 12px; line-height: 18px;">
+                                This email was sent by TechSales Axis. If you wish to manage your notification preferences, please log in and update your account settings.
+                                <br/><br/>
+                                © 2026 TechSales Axis. All Rights Reserved.
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </body>
+    </html>
+    """
+    
+    merge_info = {
+        "candidate_name": candidate_name,
+        "candidate_email": candidate_email,
+        "job_title": job_title,
+        "company_name": company_name,
+        "recruiter_name": recruiter_name,
+        "recruiter_email": recruiter_email,
+        "date_str": date_str
+    }
+    return send_templated_email(recipient, "", merge_info, subject, html)
+
+
+def send_job_application_recruiter_email(recipient, recruiter_name, recruiter_email, candidate_name, candidate_email, job_title, company_name, experience_str, resume_link=None, skills=None):
+    from datetime import datetime
+    print(f"[RECRUITER_APPLICATION_EMAIL] Called for {recipient} regarding {candidate_name} applying for {job_title}")
+    subject = f"New Job Application: {candidate_name} - {job_title}"
+    date_str = datetime.now().strftime("%B %d, %Y")
+    
+    skills_section = ""
+    if skills:
+        skills_section = f"""
+        <tr>
+            <td style="color: #64748B; padding: 6px 0; vertical-align: top;">Key Skills:</td>
+            <td style="color: #0F172A; padding: 6px 0;">{skills}</td>
+        </tr>
+        """
+        
+    resume_section = ""
+    if resume_link:
+        resume_section = f"""
+        <tr>
+            <td style="color: #64748B; padding: 6px 0; vertical-align: top;">Resume:</td>
+            <td style="padding: 6px 0;"><a href="{resume_link}" style="color: #FF8A00; font-weight: bold; text-decoration: none;">View Resume Document</a></td>
+        </tr>
+        """
+
+    html = f"""
+    <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+    <html xmlns="http://www.w3.org/1999/xhtml">
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+        <title>New Job Application</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    </head>
+    <body style="margin: 0; padding: 0; background-color: #F6F9FC; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;">
+        <table border="0" cellpadding="0" cellspacing="0" width="100%" bgcolor="#F6F9FC" style="table-layout: fixed;">
+            <tr>
+                <td align="center" style="padding: 40px 0;">
+                    <table border="0" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 12px; border: 1px solid #E2E8F0; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+                        <!-- Brand Header -->
+                        <tr>
+                            <td bgcolor="#FF8A00" align="left" style="padding: 30px 40px;">
+                                <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                                    <tr>
+                                        <td style="color: #ffffff; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">
+                                            TechSales<span style="color: #FFE6CC;">Axis</span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="color: #FFE6CC; font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 1.5px; padding-top: 4px;">
+                                            Elite Talent Matching
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                        
+                        <!-- Content Body -->
+                        <tr>
+                            <td style="padding: 40px 40px 30px 40px; color: #334155; font-size: 16px; line-height: 24px;">
+                                <h2 style="color: #0F172A; font-size: 20px; font-weight: 800; margin-top: 0; margin-bottom: 16px;">
+                                    New Job Application Received
+                                </h2>
+                                <p style="margin-top: 0; margin-bottom: 16px;">
+                                    Hi {recruiter_name},
+                                </p>
+                                <p style="margin-top: 0; margin-bottom: 20px;">
+                                    A new candidate has applied for the <strong>{job_title}</strong> position at <strong>{company_name}</strong>. Below is a summary of their application details.
+                                </p>
+                                
+                                <!-- Details Table -->
+                                <table border="0" cellpadding="0" cellspacing="0" width="100%" bgcolor="#F8FAFC" style="border-radius: 8px; margin-bottom: 24px;">
+                                    <tr>
+                                        <td style="padding: 20px; font-size: 14px; line-height: 22px; color: #1E293B;">
+                                            <strong style="color: #FF8A00; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 8px;">
+                                                Candidate Profile Summary
+                                            </strong>
+                                            <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                                                <tr>
+                                                    <td width="40%" style="color: #64748B; padding: 6px 0;">Recruiter Name:</td>
+                                                    <td style="font-weight: bold; color: #0F172A; padding: 6px 0;">{recruiter_name}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td style="color: #64748B; padding: 6px 0;">Recruiter Email:</td>
+                                                    <td style="color: #0F172A; padding: 6px 0;">{recruiter_email}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td style="color: #64748B; padding: 6px 0;">Candidate Name:</td>
+                                                    <td style="font-weight: bold; color: #0F172A; padding: 6px 0;">{candidate_name}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td style="color: #64748B; padding: 6px 0;">Candidate Email:</td>
+                                                    <td style="color: #0F172A; padding: 6px 0;">{candidate_email}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td style="color: #64748B; padding: 6px 0;">Candidate Experience:</td>
+                                                    <td style="font-weight: bold; color: #0F172A; padding: 6px 0;">{experience_str}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td style="color: #64748B; padding: 6px 0;">Applied Role:</td>
+                                                    <td style="font-weight: bold; color: #0F172A; padding: 6px 0;">{job_title}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td style="color: #64748B; padding: 6px 0;">Company Name:</td>
+                                                    <td style="font-weight: bold; color: #0F172A; padding: 6px 0;">{company_name}</td>
+                                                </tr>
+                                                {skills_section}
+                                                {resume_section}
+                                                <tr>
+                                                    <td style="color: #64748B; padding: 6px 0;">Application Date:</td>
+                                                    <td style="color: #0F172A; padding: 6px 0;">{date_str}</td>
+                                                </tr>
+                                            </table>
+                                        </td>
+                                    </tr>
+                                </table>
+
+                                <p style="margin-top: 0; margin-bottom: 24px;">
+                                    You can review their full candidate profile, manage application status, and schedule interviews directly from the recruiter dashboard.
+                                </p>
+
+                                <!-- Bulletproof CTA Button -->
+                                <table border="0" cellspacing="0" cellpadding="0" align="center" style="margin-top: 10px; margin-bottom: 10px;">
+                                    <tr>
+                                        <td align="center" style="border-radius: 8px;" bgcolor="#FF8A00">
+                                            <a href="{FRONTEND_URL}/dashboard/recruiter/applications" target="_blank" style="font-size: 14px; font-family: Helvetica, Arial, sans-serif; color: #ffffff; text-decoration: none; border-radius: 8px; padding: 14px 28px; border: 1px solid #FF8A00; display: inline-block; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">
+                                                Review Application
+                                            </a>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+
+                        <!-- Footer -->
+                        <tr>
+                            <td bgcolor="#F8FAFC" style="padding: 30px 40px; border-top: 1px solid #E2E8F0; text-align: center; color: #94A3B8; font-size: 12px; line-height: 18px;">
+                                This email was sent by TechSales Axis on behalf of {company_name}. If you wish to manage your notification preferences, please log in and update your settings.
+                                <br/><br/>
+                                © 2026 TechSales Axis. All Rights Reserved.
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </body>
+    </html>
+    """
+    
+    merge_info = {
+        "recruiter_name": recruiter_name,
+        "recruiter_email": recruiter_email,
+        "candidate_name": candidate_name,
+        "candidate_email": candidate_email,
+        "job_title": job_title,
+        "company_name": company_name,
+        "experience_str": experience_str,
+        "skills": skills or "",
+        "resume_link": resume_link or "",
+        "date_str": date_str
+    }
+    return send_templated_email(recipient, "", merge_info, subject, html)
+
 
 

@@ -325,6 +325,82 @@ class CandidateService:
                     metadata={"job_id": job_id, "application_id": str(new_app.id)}
                 )
 
+            # Send professional emails to both candidate and recruiter
+            try:
+                from src.core.models import User, RecruiterProfile
+                from src.services.email_service import (
+                    send_job_application_candidate_email,
+                    send_job_application_recruiter_email
+                )
+                from src.services.s3_service import S3Service
+                
+                # Fetch detailed candidate info
+                candidate_user = db.query(User).filter(User.id == user_id).first()
+                candidate_profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == user_id).first()
+                candidate_name = candidate_profile.full_name if (candidate_profile and candidate_profile.full_name) else (candidate_user.full_name if candidate_user else "Candidate")
+                candidate_email_address = candidate_user.email if candidate_user else "candidate@example.com"
+                
+                # Fetch detailed recruiter/company info
+                company_obj = db.query(Company).filter(Company.id == job_obj.company_id).first() if (job_obj and job_obj.company_id) else None
+                company_name = company_obj.name if company_obj else "TechSales Axis Partner"
+                
+                recruiter_user = db.query(User).filter(User.id == recruiter_id).first() if recruiter_id else None
+                recruiter_profile = db.query(RecruiterProfile).filter(RecruiterProfile.user_id == recruiter_id).first() if recruiter_id else None
+                recruiter_name = recruiter_profile.full_name if (recruiter_profile and recruiter_profile.full_name) else (recruiter_user.full_name if recruiter_user else "Hiring Manager")
+                recruiter_email_address = recruiter_user.email if recruiter_user else "recruiter@example.com"
+                
+                # Resolve recipient emails (using test emails as requested by user)
+                candidate_email_to_send = "mithunkaveriappa.mk@gmail.com"
+                recruiter_email_to_send = "mithun.mk@aitsp.in"
+                
+                # Get signed resume URL if candidate has a resume
+                resume_url = None
+                if candidate_profile and candidate_profile.resume_path:
+                    resume_url = S3Service.get_signed_url(candidate_profile.resume_path)
+                
+                # Get candidate skills list
+                skills_list = candidate_profile.skills if candidate_profile else []
+                skills_str = ", ".join(skills_list) if skills_list else None
+                
+                # Calculate candidate experience string
+                years_exp = candidate_profile.years_of_experience if candidate_profile else None
+                exp_band = candidate_profile.experience if candidate_profile else None
+                if years_exp is not None and exp_band:
+                    experience_str = f"{years_exp} years ({exp_band.capitalize()})"
+                elif years_exp is not None:
+                    experience_str = f"{years_exp} years"
+                elif exp_band:
+                    experience_str = f"{exp_band.capitalize()} level"
+                else:
+                    experience_str = "Not specified"
+                
+                print(f"[JOB_APPLICATION] Sending confirmation email to Candidate ({candidate_email_to_send})")
+                send_job_application_candidate_email(
+                    recipient=candidate_email_to_send,
+                    candidate_name=candidate_name,
+                    candidate_email=candidate_email_address,
+                    job_title=job_title,
+                    company_name=company_name,
+                    recruiter_name=recruiter_name,
+                    recruiter_email=recruiter_email_address
+                )
+                
+                print(f"[JOB_APPLICATION] Sending notification email to Recruiter ({recruiter_email_to_send})")
+                send_job_application_recruiter_email(
+                    recipient=recruiter_email_to_send,
+                    recruiter_name=recruiter_name,
+                    recruiter_email=recruiter_email_address,
+                    candidate_name=candidate_name,
+                    candidate_email=candidate_email_address,
+                    job_title=job_title,
+                    company_name=company_name,
+                    experience_str=experience_str,
+                    resume_link=resume_url,
+                    skills=skills_str
+                )
+            except Exception as email_err:
+                print(f"[JOB_APPLICATION] Error sending job application emails: {email_err}")
+
             db.commit()
             return {"status": "success", "data": {"id": str(new_app.id)}}
         except Exception as e:

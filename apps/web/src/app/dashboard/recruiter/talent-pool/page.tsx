@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
+import JobInviteModal from "@/components/JobInviteModal";
 import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import TalentBubbleChart from "@/components/TalentBubbleChart";
@@ -654,6 +655,8 @@ export default function TalentPoolPage() {
   const [selectedThreadMessages, setSelectedThreadMessages] = useState<any[]>([]);
   const [isEditingInvite, setIsEditingInvite] = useState(false);
   const [inviteMessage, setInviteMessage] = useState("");
+  const [jobs, setJobs] = useState<any[]>([]);
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
 
   const isInvited = useMemo(() => {
     if (!selectedCandidate) return false;
@@ -788,47 +791,37 @@ export default function TalentPoolPage() {
     }
   };
 
-  const handleInvite = async () => {
+  const handleInviteFromModal = async (jobId: string, message: string, customTitle?: string) => {
     if (!selectedCandidate) return;
-
-    // Check if shadow profile
-    if (selectedCandidate.is_shadow_profile) {
-      toast.error("Cannot invite shadow profile");
-      return;
-    }
-
     setInviteLoading(true);
     try {
       const token = awsAuth.getToken();
-      const response = await apiClient.post(
+      if (!token) return;
+      await apiClient.post(
         `/recruiter/candidate/${selectedCandidate.user_id}/invite`,
         {
-          job_id: "",
-          message: inviteMessage
+          job_id: jobId,
+          message: message,
+          custom_role_title: customTitle,
         },
         token,
       );
       
-      console.log("Invite sent successfully", response);
       toast.success("Invitation sent successfully!");
-      setIsEditingInvite(false);
+      setInviteModalOpen(false);
       
-      // Refresh chat threads to update the button status to "Invited"
-      if (token) {
-        const threadsResponse = await apiClient.get("/chat/threads", token);
-        setChatThreads(threadsResponse || []);
-      }
-    } catch (error) {
+      const [threadsResponse, pipelineResponse] = await Promise.all([
+        apiClient.get("/chat/threads", token),
+        apiClient.get("/recruiter/applications/pipeline", token)
+      ]);
+      setChatThreads(threadsResponse || []);
+      setPipelineData(pipelineResponse || []);
+    } catch (error: any) {
       console.error("Failed to send invite:", error);
-      toast.error("Failed to send invitation. Please try again.");
+      toast.error(error.message || "Failed to send invitation. Please try again.");
     } finally {
       setInviteLoading(false);
     }
-  };
-
-  const handleInviteButtonClick = () => {
-    if (isInvited) return;
-    setIsEditingInvite(true);
   };
 
   const handleEmailClick = () => {
@@ -845,9 +838,13 @@ export default function TalentPoolPage() {
           return;
         }
         console.log("Fetching talent-pool with token...");
-        const data = await apiClient.get("/recruiter/talent-pool", token);
+        const [data, jobsData] = await Promise.all([
+          apiClient.get("/recruiter/talent-pool", token),
+          apiClient.get("/recruiter/jobs", token)
+        ]);
         console.log("Talent-pool data received:", data);
         setCandidates(data || []);
+        setJobs(jobsData || []);
 
         // Also fetch pipeline data to check candidate application status
         try {
@@ -1633,71 +1630,49 @@ export default function TalentPoolPage() {
 
                 {/* Action Footer */}
                 <div className="p-4 border-t border-slate-100 flex flex-col gap-2 flex-shrink-0 bg-slate-50/20">
-                  {isEditingInvite ? (
-                    <div className="space-y-2.5">
-                      <div className="space-y-1">
-                        <label className="text-[9px] font-black text-[#C96B00] uppercase tracking-wider">Customize Invite Message</label>
-                        <textarea
-                          value={inviteMessage}
-                          onChange={(e) => setInviteMessage(e.target.value)}
-                          rows={3}
-                          className="w-full p-2 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[#FF8A00]/10 focus:border-[#FF8A00]/40 transition-all resize-none leading-relaxed text-slate-700"
-                        />
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setIsEditingInvite(false)}
-                          className="flex-1 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-[0.98]"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          onClick={handleInvite}
-                          disabled={inviteLoading}
-                          className="flex-1 py-2 bg-[#FF8A00] hover:bg-[#E67A00] disabled:bg-slate-100 disabled:text-slate-400 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-[0.98] shadow-sm flex items-center justify-center gap-1.5"
-                        >
-                          <Send className="h-3 w-3" />
-                          {inviteLoading ? "Sending..." : "Send Invite"}
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <button
-                        onClick={handleInviteButtonClick}
-                        disabled={selectedCandidate?.is_shadow_profile || inviteLoading || isInvited || isInviteBlocked}
-                        className="w-full py-2 bg-[#FF8A00] hover:bg-[#E67A00] disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-[0.98] shadow-sm flex items-center justify-center gap-1.5"
-                      >
-                        <Send className="h-3.5 w-3.5" />
-                        {inviteLoading 
-                          ? "Sending Invite..." 
-                          : isInviteBlocked 
-                            ? "Invite Blocked (30d cooldown)" 
-                            : isInvited 
-                              ? "Invited" 
-                              : "Invite Candidate"}
-                      </button>
+                  <button
+                    onClick={() => setInviteModalOpen(true)}
+                    disabled={selectedCandidate?.is_shadow_profile || inviteLoading || isInvited || isInviteBlocked}
+                    className="w-full py-2 bg-[#FF8A00] hover:bg-[#E67A00] disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-[0.98] shadow-sm flex items-center justify-center gap-1.5"
+                  >
+                    <Send className="h-3.5 w-3.5" />
+                    {inviteLoading 
+                      ? "Sending Invite..." 
+                      : isInviteBlocked 
+                        ? "Invite Blocked (30d cooldown)" 
+                        : isInvited 
+                          ? "Invited" 
+                          : "Invite Candidate"}
+                  </button>
 
-                      {hasAccessToPersonalInfo(selectedCandidate.user_id) && (
-                        <button
-                          onClick={handleEmailClick}
-                          className="w-full py-1.5 bg-white hover:bg-slate-50 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border border-slate-200 relative active:scale-[0.98]"
-                        >
-                          Email
-                          {showComingSoon && (
-                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-[#0F172A] text-white text-[9px] rounded-lg whitespace-nowrap shadow-lg uppercase tracking-wider font-bold">
-                              Coming Soon
-                            </div>
-                          )}
-                        </button>
+                  {hasAccessToPersonalInfo(selectedCandidate.user_id) && (
+                    <button
+                      onClick={handleEmailClick}
+                      className="w-full py-1.5 bg-white hover:bg-slate-50 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border border-slate-200 relative active:scale-[0.98]"
+                    >
+                      Email
+                      {showComingSoon && (
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-[#0F172A] text-white text-[9px] rounded-lg whitespace-nowrap shadow-lg uppercase tracking-wider font-bold">
+                          Coming Soon
+                        </div>
                       )}
-                    </>
+                    </button>
                   )}
                 </div>
               </div>
             </>
           )}
         </div>
+        
+        {inviteModalOpen && selectedCandidate && (
+          <JobInviteModal
+            candidateId={selectedCandidate.user_id}
+            candidateName={selectedCandidate.full_name}
+            jobs={jobs}
+            onClose={() => setInviteModalOpen(false)}
+            onInvite={handleInviteFromModal}
+          />
+        )}
       </main>
     </div>
   );

@@ -682,6 +682,52 @@ async def get_application_detail(
         raise HTTPException(status_code=404, detail="Application not found")
     return detail
 
+class ApplicationResponse(BaseModel):
+    response: str  # "accept" or "decline"
+    message: Optional[str] = None
+
+@router.post("/applications/{application_id}/respond")
+async def respond_to_invite(
+    application_id: str,
+    data: ApplicationResponse,
+    user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    from src.core.models import JobApplication
+    import uuid
+    
+    try:
+        uuid.UUID(str(application_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid application UUID.")
+        
+    user_id = user["sub"]
+    app = db.query(JobApplication).filter(
+        JobApplication.id == application_id,
+        JobApplication.candidate_id == user_id
+    ).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="Invitation not found")
+        
+    if app.status != "invited":
+        raise HTTPException(status_code=400, detail="Application is not in invited state")
+        
+    if data.response == "accept":
+        app.status = "applied"
+    elif data.response == "decline":
+        app.status = "rejected"
+        app.feedback = data.message or "Declined by candidate."
+    else:
+        raise HTTPException(status_code=400, detail="Invalid response type. Must be 'accept' or 'decline'.")
+        
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to update invitation status.")
+        
+    return {"status": "success", "new_status": app.status}
+
 @router.get("/recommended-jobs")
 async def get_recommended_jobs(
     filter_type: str = "role_match",

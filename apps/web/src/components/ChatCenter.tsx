@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { apiClient } from "@/lib/apiClient";
 import CandidateProfileModal from "./CandidateProfileModal";
-import { Archive, MessageCircle, Trash2, User, Paperclip, ClipboardList, RotateCcw, Flag, Send, Search, Hash, MoreVertical } from "lucide-react";
+import { Archive, MessageCircle, Trash2, User, Paperclip, ClipboardList, RotateCcw, Flag, Send, Search, Hash, MoreVertical, Briefcase, Check } from "lucide-react";
 import ReportMessageModal from "./ReportMessageModal";
 
 interface Message {
@@ -60,6 +60,71 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
+  const [inviteStatus, setInviteStatus] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const fetchInviteStatuses = async () => {
+      const appIds = messages
+        .filter(m => m.text.startsWith("[Job Invite:JSON]"))
+        .map(m => {
+          try {
+            const payload = JSON.parse(m.text.replace("[Job Invite:JSON]", ""));
+            return payload.application_id;
+          } catch {
+            return null;
+          }
+        })
+        .filter((id): id is string => !!id);
+
+      const token = awsAuth.getToken();
+      if (!token || appIds.length === 0) return;
+
+      for (const appId of appIds) {
+        if (inviteStatus[appId] !== undefined) continue;
+
+        try {
+          const endpoint = role === "candidate"
+            ? `/candidate/applications/${appId}`
+            : `/recruiter/applications/${appId}`;
+          
+          const appDetail = await apiClient.get(endpoint, token);
+          if (appDetail && appDetail.status) {
+            setInviteStatus(prev => ({ ...prev, [appId]: appDetail.status }));
+          }
+        } catch (err) {
+          console.error(`Failed to fetch application status for ${appId}:`, err);
+          setInviteStatus(prev => ({ ...prev, [appId]: "invited" }));
+        }
+      }
+    };
+
+    fetchInviteStatuses();
+  }, [messages, role, inviteStatus]);
+
+  const handleRespondInvite = async (applicationId: string | null, response: "accept" | "decline") => {
+    if (!applicationId) return;
+    try {
+      const token = awsAuth.getToken();
+      if (!token) return;
+      
+      const result = await apiClient.post(`/candidate/applications/${applicationId}/respond`, {
+        response,
+        message: response === "decline" ? "Declined by candidate via chat." : undefined
+      }, token);
+      
+      if (result && result.new_status) {
+        setInviteStatus(prev => ({ ...prev, [applicationId]: result.new_status }));
+        toast.success(response === "accept" ? "Interest accepted!" : "Invitation declined.");
+        
+        const data = await apiClient.get(`/chat/messages/${activeThreadId}`, token);
+        if (data) setMessages(data as Message[]);
+      }
+    } catch (err) {
+      console.error("Failed to respond to invite:", err);
+      toast.error("Failed to respond to invitation.");
+    }
+  };
+
   const [loading, setLoading] = useState(true);
   const [showArchived, setShowArchived] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -377,22 +442,124 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
             <div className="flex-1 overflow-y-auto px-5 py-6 space-y-4 dashboard-scroll">
               {messages.map((msg) => {
                 const isMine = msg.sender_id === userId;
+                
+                let isInviteCard = false;
+                let inviteData: { job_id: string | null; job_title: string; company_name: string; message: string; application_id: string | null } | null = null;
+                if (msg.text.startsWith("[Job Invite:JSON]")) {
+                  try {
+                    const payloadStr = msg.text.replace("[Job Invite:JSON]", "");
+                    inviteData = JSON.parse(payloadStr);
+                    isInviteCard = true;
+                  } catch (err) {
+                    console.error("Failed to parse invite JSON:", err);
+                  }
+                }
+
                 return (
                   <div key={msg.id} className={`flex ${isMine ? "justify-end" : "justify-start"} group`}>
                     <div className={`flex flex-col ${isMine ? "items-end" : "items-start"} max-w-[70%]`}>
-                      <div className={`rounded-2xl px-4 py-3 relative ${
-                        isMine
-                          ? "bg-[#FF8A00] text-white rounded-br-md"
-                          : "bg-white text-[#0F172A] border border-slate-200/60 rounded-bl-md shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
-                      }`}>
-                        <p className="text-[13px] leading-relaxed">{msg.text}</p>
-                        {!isMine && (
-                          <button onClick={() => setReportModal({ isOpen: true, messageId: msg.id, senderName: activeName })}
-                            className="absolute -right-9 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 hover:bg-red-50 rounded-lg">
-                            <Flag className="w-3 h-3 text-red-400" />
-                          </button>
-                        )}
-                      </div>
+                      {isInviteCard && inviteData ? (
+                        <div className={`rounded-2xl p-4.5 space-y-3.5 text-xs text-slate-800 border ${
+                          isMine 
+                            ? "bg-white border-orange-100/60 shadow-[0_4px_16px_rgba(255,138,0,0.05)] rounded-br-md" 
+                            : "bg-[#FFFDF9] border-orange-100 rounded-bl-md shadow-md"
+                        } max-w-sm`}>
+                          <div className="flex items-start gap-3 border-b border-orange-50 pb-3">
+                            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#FFF6ED] border border-orange-100 text-[#FF8A00] shrink-0">
+                              <Briefcase className="h-4.5 w-4.5" />
+                            </div>
+                            <div className="flex flex-col min-w-0">
+                              <span className="text-[10px] font-black uppercase tracking-wider text-[#FF8A00]">
+                                Job Invitation
+                              </span>
+                              <h4 className="font-black text-[#0F172A] truncate text-[13px] mt-0.5">
+                                {inviteData.job_title}
+                              </h4>
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+                                {inviteData.company_name}
+                              </span>
+                            </div>
+                          </div>
+                          
+                          <p className="text-slate-650 leading-relaxed font-semibold whitespace-pre-line text-[12px] bg-slate-50/50 p-3 rounded-xl border border-slate-100/50">
+                            {inviteData.message}
+                          </p>
+
+                          {(() => {
+                            const appId = inviteData?.application_id || "";
+                            const appStatus = inviteStatus[appId] || "invited";
+                            
+                            if (role === "candidate") {
+                              if (appStatus === "invited") {
+                                return (
+                                  <div className="flex gap-2 pt-1.5">
+                                    <button 
+                                      type="button"
+                                      onClick={() => handleRespondInvite(appId, "decline")}
+                                      className="flex-1 py-2 rounded-lg border border-slate-200 bg-white text-[10px] font-black uppercase tracking-widest text-slate-400 hover:bg-slate-50 transition-all active:scale-95"
+                                    >
+                                      Decline
+                                    </button>
+                                    <button 
+                                      type="button"
+                                      onClick={() => handleRespondInvite(appId, "accept")}
+                                      className="flex-[2] py-2 rounded-lg bg-[#FF8A00] text-white text-[10px] font-black uppercase tracking-widest shadow-lg shadow-orange-600/10 hover:bg-[#E67A00] transition-all active:scale-95 text-center flex items-center justify-center gap-1"
+                                    >
+                                      Accept Interest
+                                    </button>
+                                  </div>
+                                );
+                              } else if (appStatus === "applied") {
+                                return (
+                                  <div className="flex items-center gap-1.5 text-emerald-600 bg-emerald-50 border border-emerald-100 rounded-xl p-2.5 font-bold text-[10px] uppercase tracking-wider justify-center">
+                                    <Check className="w-3.5 h-3.5" /> Interest Accepted — Applied
+                                  </div>
+                                );
+                              } else {
+                                return (
+                                  <div className="flex items-center gap-1.5 text-slate-400 bg-slate-50 border border-slate-200/60 rounded-xl p-2.5 font-bold text-[10px] uppercase tracking-wider justify-center">
+                                    Invitation Declined
+                                  </div>
+                                );
+                              }
+                            } else {
+                              if (appStatus === "invited") {
+                                return (
+                                  <div className="text-center py-2 text-[9px] font-bold uppercase tracking-widest text-slate-400 border border-slate-100 rounded-xl bg-slate-50/50">
+                                    Pending Candidate Response
+                                  </div>
+                                );
+                              } else if (appStatus === "applied") {
+                                return (
+                                  <div className="flex items-center gap-1.5 text-emerald-600 bg-emerald-50 border border-emerald-100 rounded-xl p-2.5 font-bold text-[10px] uppercase tracking-wider justify-center">
+                                    <Check className="w-3.5 h-3.5" /> Candidate Accepted — Applied
+                                  </div>
+                                );
+                              } else {
+                                return (
+                                  <div className="flex items-center gap-1.5 text-slate-400 bg-slate-50 border border-slate-200/60 rounded-xl p-2.5 font-bold text-[10px] uppercase tracking-wider justify-center">
+                                    Candidate Declined
+                                  </div>
+                                );
+                              }
+                            }
+                          })()}
+                        </div>
+                      ) : (
+                        <div className={`rounded-2xl px-4 py-3 relative ${
+                          isMine
+                            ? "bg-[#FF8A00] text-white rounded-br-md"
+                            : "bg-white text-[#0F172A] border border-slate-200/60 rounded-bl-md shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
+                        }`}>
+                          <p className="text-[13px] leading-relaxed">{msg.text}</p>
+                          {!isMine && (
+                            <button onClick={() => setReportModal({ isOpen: true, messageId: msg.id, senderName: activeName })}
+                              className="absolute -right-9 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 hover:bg-red-50 rounded-lg">
+                              <Flag className="w-3 h-3 text-red-400" />
+                            </button>
+                          )}
+                        </div>
+                      )}
                       <p className={`text-[10px] mt-1.5 px-1 ${isMine ? "text-slate-300" : "text-slate-400"}`}>
                         {format(new Date(msg.created_at), "h:mm a")}
                       </p>
