@@ -349,9 +349,9 @@ class CandidateService:
                 recruiter_name = recruiter_profile.full_name if (recruiter_profile and recruiter_profile.full_name) else (recruiter_user.full_name if recruiter_user else "Hiring Manager")
                 recruiter_email_address = recruiter_user.email if recruiter_user else "recruiter@example.com"
                 
-                # Resolve recipient emails (using test emails as requested by user)
-                candidate_email_to_send = "mithunkaveriappa.mk@gmail.com"
-                recruiter_email_to_send = "mithun.mk@aitsp.in"
+                # Resolve recipient emails dynamically from database records
+                candidate_email_to_send = candidate_email_address
+                recruiter_email_to_send = recruiter_email_address
                 
                 # Get signed resume URL if candidate has a resume
                 resume_url = None
