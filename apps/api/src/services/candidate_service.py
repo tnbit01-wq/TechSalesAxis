@@ -275,6 +275,37 @@ class CandidateService:
             ).scalar() or 0
 
             if daily_count >= 5:
+                try:
+                    from src.core.models import Notification, User
+                    # Check if already notified today
+                    today_start = datetime.combine(today, datetime.min.time())
+                    existing_notif = db.query(Notification).filter(
+                        Notification.user_id == user_id,
+                        Notification.notification_type == "DAILY_LIMIT_REACHED",
+                        Notification.created_at >= today_start
+                    ).first()
+                    
+                    if not existing_notif:
+                        # Log notification in DB
+                        NotificationService.create_notification(
+                            user_id=user_id,
+                            type="DAILY_LIMIT_REACHED",
+                            title="Daily Transmission Limit Reached",
+                            message="You have reached your daily limit of 5 applications. Your transmission buffer will reset tomorrow.",
+                            db=db
+                        )
+                        
+                        # Send email alert
+                        from src.services.email_service import send_daily_limit_reached_email
+                        c_user = db.query(User).filter(User.id == user_id).first()
+                        c_profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == user_id).first()
+                        if c_user:
+                            c_email = c_user.email
+                            c_name = c_profile.full_name if (c_profile and c_profile.full_name) else (c_user.full_name or "Candidate")
+                            send_daily_limit_reached_email(c_email, c_name)
+                except Exception as limit_err:
+                    print(f"Error handling daily limit reached notification: {limit_err}")
+
                 return {
                     "status": "limit_reached", 
                     "message": "Daily transmission limit reached (5/5). Your signal buffer will reset tomorrow."
@@ -402,6 +433,24 @@ class CandidateService:
                 print(f"[JOB_APPLICATION] Error sending job application emails: {email_err}")
 
             db.commit()
+
+            # If this was the candidate's 5th application of the day (daily_count was 4)
+            if daily_count == 4:
+                try:
+                    # Log notification in DB
+                    NotificationService.create_notification(
+                        user_id=user_id,
+                        type="DAILY_LIMIT_REACHED",
+                        title="Daily Transmission Limit Reached",
+                        message="You have reached your daily limit of 5 applications. Your transmission buffer will reset tomorrow.",
+                        db=db
+                    )
+                    # Send email alert
+                    from src.services.email_service import send_daily_limit_reached_email
+                    send_daily_limit_reached_email(candidate_email_address, candidate_name)
+                except Exception as limit_err:
+                    print(f"Error handling proactive daily limit notification: {limit_err}")
+
             return {"status": "success", "data": {"id": str(new_app.id)}}
         except Exception as e:
             db.rollback()

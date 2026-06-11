@@ -789,4 +789,311 @@ def send_job_application_recruiter_email(recipient, recruiter_name, recruiter_em
     return send_templated_email(recipient, "", merge_info, subject, html)
 
 
+def send_job_posted_recruiter_email(recipient, recruiter_name, job_title, company_name, location, salary_range):
+    print(f"[JOB_POSTED_EMAIL] Called for {recipient} regarding {job_title} at {company_name}")
+    subject = f"Job Posted Successfully: {job_title} - {company_name}"
+    html = f"""
+    <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+    <html xmlns="http://www.w3.org/1999/xhtml">
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+        <title>Job Posted Successfully</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    </head>
+    <body style="margin: 0; padding: 0; background-color: #F6F9FC; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;">
+        <table border="0" cellpadding="0" cellspacing="0" width="100%" bgcolor="#F6F9FC" style="table-layout: fixed;">
+            <tr>
+                <td align="center" style="padding: 40px 0;">
+                    <table border="0" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 12px; border: 1px solid #E2E8F0; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+                        <!-- Brand Header -->
+                        <tr>
+                            <td bgcolor="#FF8A00" align="left" style="padding: 30px 40px;">
+                                <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                                    <tr>
+                                        <td style="color: #ffffff; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">
+                                            TechSales<span style="color: #FFE6CC;">Axis</span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="color: #FFE6CC; font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 1.5px; padding-top: 4px;">
+                                            Elite Talent Matching
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                        
+                        <!-- Content Body -->
+                        <tr>
+                            <td style="padding: 40px 40px 30px 40px; color: #334155; font-size: 16px; line-height: 24px;">
+                                <h2 style="color: #0F172A; font-size: 20px; font-weight: 800; margin-top: 0; margin-bottom: 16px;">
+                                    Job Listing Active!
+                                </h2>
+                                <p style="margin-top: 0; margin-bottom: 16px;">
+                                    Hi {recruiter_name},
+                                </p>
+                                <p style="margin-top: 0; margin-bottom: 20px;">
+                                    Your job post for <strong>{job_title}</strong> is now live on the TechSales Axis marketplace. Candidate applications will begin transmitting to your dashboard immediately.
+                                </p>
+                                
+                                <!-- Details Table -->
+                                <table border="0" cellpadding="0" cellspacing="0" width="100%" bgcolor="#F8FAFC" style="border-radius: 8px; margin-bottom: 24px;">
+                                    <tr>
+                                        <td style="padding: 20px; font-size: 14px; line-height: 22px; color: #1E293B;">
+                                            <strong style="color: #FF8A00; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 8px;">
+                                                Job Details
+                                            </strong>
+                                            <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                                                <tr>
+                                                    <td width="40%" style="color: #64748B; padding: 6px 0;">Title:</td>
+                                                    <td style="font-weight: bold; color: #0F172A; padding: 6px 0;">{job_title}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td style="color: #64748B; padding: 6px 0;">Company:</td>
+                                                    <td style="font-weight: bold; color: #0F172A; padding: 6px 0;">{company_name}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td style="color: #64748B; padding: 6px 0;">Location:</td>
+                                                    <td style="color: #0F172A; padding: 6px 0;">{location or 'Remote'}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td style="color: #64748B; padding: 6px 0;">Salary Range:</td>
+                                                    <td style="color: #0F172A; padding: 6px 0;">{salary_range or 'Not specified'}</td>
+                                                </tr>
+                                            </table>
+                                        </td>
+                                    </tr>
+                                </table>
+
+                                <!-- Bulletproof CTA Button -->
+                                <table border="0" cellspacing="0" cellpadding="0" align="center" style="margin-top: 10px; margin-bottom: 10px;">
+                                    <tr>
+                                        <td align="center" style="border-radius: 8px;" bgcolor="#FF8A00">
+                                            <a href="{FRONTEND_URL}/dashboard/recruiter/applications" target="_blank" style="font-size: 14px; font-family: Helvetica, Arial, sans-serif; color: #ffffff; text-decoration: none; border-radius: 8px; padding: 14px 28px; border: 1px solid #FF8A00; display: inline-block; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">
+                                                View Recruiter Dashboard
+                                            </a>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+
+                        <!-- Footer -->
+                        <tr>
+                            <td bgcolor="#F8FAFC" style="padding: 30px 40px; border-top: 1px solid #E2E8F0; text-align: center; color: #94A3B8; font-size: 12px; line-height: 18px;">
+                                This email was sent by TechSales Axis. If you wish to manage your notification preferences, please log in and update your account settings.
+                                <br/><br/>
+                                © 2026 TechSales Axis. All Rights Reserved.
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </body>
+    </html>
+    """
+    merge_info = {
+        "recruiter_name": recruiter_name,
+        "job_title": job_title,
+        "company_name": company_name,
+        "location": location,
+        "salary_range": salary_range
+    }
+    return send_templated_email(recipient, "", merge_info, subject, html)
+
+
+def send_daily_limit_reached_email(recipient, candidate_name):
+    print(f"[LIMIT_REACHED_EMAIL] Called for {recipient}")
+    subject = f"Daily Application Limit Reached - {SMTP_SENDER_NAME}"
+    html = f"""
+    <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+    <html xmlns="http://www.w3.org/1999/xhtml">
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+        <title>Daily Application Limit Reached</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    </head>
+    <body style="margin: 0; padding: 0; background-color: #F6F9FC; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;">
+        <table border="0" cellpadding="0" cellspacing="0" width="100%" bgcolor="#F6F9FC" style="table-layout: fixed;">
+            <tr>
+                <td align="center" style="padding: 40px 0;">
+                    <table border="0" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 12px; border: 1px solid #E2E8F0; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+                        <!-- Brand Header -->
+                        <tr>
+                            <td bgcolor="#FF8A00" align="left" style="padding: 30px 40px;">
+                                <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                                    <tr>
+                                        <td style="color: #ffffff; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">
+                                            TechSales<span style="color: #FFE6CC;">Axis</span>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                        
+                        <!-- Content Body -->
+                        <tr>
+                            <td style="padding: 40px 40px 30px 40px; color: #334155; font-size: 16px; line-height: 24px;">
+                                <h2 style="color: #0F172A; font-size: 20px; font-weight: 800; margin-top: 0; margin-bottom: 16px;">
+                                    Transmission Buffer Full!
+                                </h2>
+                                <p style="margin-top: 0; margin-bottom: 16px;">
+                                    Hi {candidate_name},
+                                </p>
+                                <p style="margin-top: 0; margin-bottom: 20px;">
+                                    You have reached your daily transmission limit of **5 applications** for today. To maintain elite candidate-matching quality, your application slot resets daily.
+                                </p>
+                                <p style="margin-top: 0; margin-bottom: 20px;">
+                                    In the meantime, you can review your active applications, practice role pitches, or complete pending assessment components to elevate your compatibility profile.
+                                </p>
+
+                                <!-- Bulletproof CTA Button -->
+                                <table border="0" cellspacing="0" cellpadding="0" align="center" style="margin-top: 10px; margin-bottom: 10px;">
+                                    <tr>
+                                        <td align="center" style="border-radius: 8px;" bgcolor="#FF8A00">
+                                            <a href="{FRONTEND_URL}/dashboard/candidate/applications" target="_blank" style="font-size: 14px; font-family: Helvetica, Arial, sans-serif; color: #ffffff; text-decoration: none; border-radius: 8px; padding: 14px 28px; border: 1px solid #FF8A00; display: inline-block; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">
+                                                Go to Candidate Dashboard
+                                            </a>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+
+                        <!-- Footer -->
+                        <tr>
+                            <td bgcolor="#F8FAFC" style="padding: 30px 40px; border-top: 1px solid #E2E8F0; text-align: center; color: #94A3B8; font-size: 12px; line-height: 18px;">
+                                This email was sent by TechSales Axis. If you wish to manage your notification preferences, please log in and update your account settings.
+                                <br/><br/>
+                                © 2026 TechSales Axis. All Rights Reserved.
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </body>
+    </html>
+    """
+    merge_info = {
+        "candidate_name": candidate_name
+    }
+    return send_templated_email(recipient, "", merge_info, subject, html)
+
+
+def send_profile_completion_reminder_email(recipient, user_name, role, completion_score, missing_fields=None, has_pending_assessment=False):
+    print(f"[PROFILE_REMINDER_EMAIL] Called for {recipient} (Role: {role})")
+    subject = f"Elevate Your Profile: Complete Your Account Setup"
+    
+    missing_fields_section = ""
+    if missing_fields:
+        fields_list_items = "".join([f"<li style='margin-bottom: 6px;'><strong>{field}</strong></li>" for field in missing_fields])
+        missing_fields_section = f"""
+        <p style="margin-top: 0; margin-bottom: 8px; font-weight: bold; font-size: 14px; text-transform: uppercase; color: #0F172A; letter-spacing: 0.5px;">
+            Missing Crucial Information:
+        </p>
+        <ul style="margin-top: 0; margin-bottom: 30px; padding-left: 20px; font-size: 14px; line-height: 22px; color: #475569;">
+            {fields_list_items}
+        </ul>
+        """
+        
+    assessment_section = ""
+    if has_pending_assessment and role.lower() == "candidate":
+        assessment_section = f"""
+        <table border="0" cellpadding="0" cellspacing="0" width="100%" bgcolor="#FFF8F1" style="border-left: 4px solid #FF8A00; border-radius: 6px; margin-bottom: 24px;">
+            <tr>
+                <td style="padding: 18px 20px; font-size: 14px; line-height: 22px; color: #1E293B;">
+                    <strong style="color: #C96B00; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 6px;">
+                        Pending Assessment
+                    </strong>
+                    You have not completed your psychometric/behavioral assessment yet. High-trust recruiters prioritize candidates with completed assessment scores!
+                </td>
+            </tr>
+        </table>
+        """
+        
+    dashboard_path = "dashboard/candidate" if role.lower() == "candidate" else "dashboard/recruiter"
+    button_text = "Complete Profile & Assessment" if (has_pending_assessment and role.lower() == "candidate") else "Complete Profile"
+
+    html = f"""
+    <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+    <html xmlns="http://www.w3.org/1999/xhtml">
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+        <title>Action Required: Complete Your Profile</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    </head>
+    <body style="margin: 0; padding: 0; background-color: #F6F9FC; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;">
+        <table border="0" cellpadding="0" cellspacing="0" width="100%" bgcolor="#F6F9FC" style="table-layout: fixed;">
+            <tr>
+                <td align="center" style="padding: 40px 0;">
+                    <table border="0" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 12px; border: 1px solid #E2E8F0; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+                        <!-- Brand Header -->
+                        <tr>
+                            <td bgcolor="#FF8A00" align="left" style="padding: 30px 40px;">
+                                <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                                    <tr>
+                                        <td style="color: #ffffff; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">
+                                            TechSales<span style="color: #FFE6CC;">Axis</span>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                        
+                        <!-- Content Body -->
+                        <tr>
+                            <td style="padding: 40px 40px 30px 40px; color: #334155; font-size: 16px; line-height: 24px;">
+                                <h2 style="color: #0F172A; font-size: 20px; font-weight: 800; margin-top: 0; margin-bottom: 16px;">
+                                    Complete Your Account Setup
+                                </h2>
+                                <p style="margin-top: 0; margin-bottom: 16px;">
+                                    Hi {user_name},
+                                </p>
+                                <p style="margin-top: 0; margin-bottom: 20px;">
+                                    We noticed your profile setup is currently at **{completion_score}%**. To unlock the full power of TechSales Axis elite talent-matching and get noticed by recruiters/candidates, complete your profile today.
+                                </p>
+                                
+                                {assessment_section}
+                                {missing_fields_section}
+
+                                <!-- Bulletproof CTA Button -->
+                                <table border="0" cellspacing="0" cellpadding="0" align="center" style="margin-top: 10px; margin-bottom: 10px;">
+                                    <tr>
+                                        <td align="center" style="border-radius: 8px;" bgcolor="#FF8A00">
+                                            <a href="{FRONTEND_URL}/{dashboard_path}" target="_blank" style="font-size: 14px; font-family: Helvetica, Arial, sans-serif; color: #ffffff; text-decoration: none; border-radius: 8px; padding: 14px 28px; border: 1px solid #FF8A00; display: inline-block; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">
+                                                {button_text}
+                                            </a>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+
+                        <!-- Footer -->
+                        <tr>
+                            <td bgcolor="#F8FAFC" style="padding: 30px 40px; border-top: 1px solid #E2E8F0; text-align: center; color: #94A3B8; font-size: 12px; line-height: 18px;">
+                                This email was sent by TechSales Axis. If you wish to manage your notification preferences, please log in and update your account settings.
+                                <br/><br/>
+                                © 2026 TechSales Axis. All Rights Reserved.
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </body>
+    </html>
+    """
+    merge_info = {
+        "user_name": user_name,
+        "completion_score": completion_score,
+        "role": role,
+        "missing_fields": missing_fields,
+        "has_pending_assessment": has_pending_assessment
+    }
+    return send_templated_email(recipient, "", merge_info, subject, html)
+
+
 

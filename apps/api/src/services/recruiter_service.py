@@ -1801,6 +1801,29 @@ Rate ICP alignment on 0-100. Output format: SCORE: [number] | REASON: [one sente
             db.add(new_job)
             db.commit()
             db.refresh(new_job)
+
+            # Send job posted confirmation email to recruiter
+            try:
+                from src.services.email_service import send_job_posted_recruiter_email
+                recruiter_user = db.query(User).filter(User.id == user_id).first()
+                company_obj = db.query(Company).filter(Company.id == profile.company_id).first()
+                
+                if recruiter_user:
+                    rec_email = recruiter_user.email
+                    rec_name = profile.full_name or recruiter_user.full_name or "Recruiter"
+                    comp_name = company_obj.name if company_obj else "TechSales Axis Partner"
+                    
+                    send_job_posted_recruiter_email(
+                        recipient=rec_email,
+                        recruiter_name=rec_name,
+                        job_title=new_job.title,
+                        company_name=comp_name,
+                        location=new_job.location,
+                        salary_range=new_job.salary_range
+                    )
+            except Exception as email_err:
+                print(f"ERROR sending job posted confirmation email: {email_err}")
+
             return {"id": str(new_job.id), "status": "success"}
         except Exception as e:
             db.rollback()

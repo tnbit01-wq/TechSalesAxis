@@ -97,6 +97,11 @@ celery_app.conf.beat_schedule = {
         'schedule': crontab(minute=0),  # Every hour
         'options': {'queue': 'default'}
     },
+    'send-profile-completion-reminders-daily': {
+        'task': 'src.tasks.profile_alerts.send_profile_completion_reminders',
+        'schedule': crontab(hour=10, minute=0),  # Every day at 10 AM
+        'options': {'queue': 'default'}
+    },
 }
 
 # ============================================================================

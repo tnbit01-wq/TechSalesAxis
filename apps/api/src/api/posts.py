@@ -13,6 +13,26 @@ from uuid import UUID
 import uuid
 import json
 from datetime import datetime
+from urllib.parse import unquote
+
+def clean_media_url(url: str, bucket_name: str = S3_BUCKET_NAME) -> str:
+    """Extract stable S3 path/key from signed S3 URLs or return as is."""
+    if not url:
+        return url
+    if url.startswith("http"):
+        if bucket_name in url:
+            try:
+                parts = url.split(".com/")
+                if len(parts) > 1:
+                    key = parts[1].split('?')[0]
+                    return unquote(key)
+                parts = url.split(f"{bucket_name}/")
+                if len(parts) > 1:
+                    key = parts[1].split('?')[0]
+                    return unquote(key)
+            except Exception:
+                pass
+    return url
 
 def get_s3_url_with_fallback(file_path: Optional[str]) -> Optional[str]:
     """Get S3 URL with fallback to public URL if signed URL fails."""
@@ -41,10 +61,12 @@ def create_post(
 ):
     user_id = UUID(user["sub"])
     
+    cleaned_media_urls = [clean_media_url(url) for url in (request.media_urls or []) if url]
+    
     new_post = Post(
         user_id=user_id,
         content=request.content,
-        media_urls=request.media_urls,
+        media_urls=cleaned_media_urls,
         type=request.type
     )
     
@@ -221,8 +243,10 @@ def update_post(
         if not post or post.user_id != user_id:
             raise HTTPException(status_code=403, detail="Not authorized to edit this post")
             
+        cleaned_media_urls = [clean_media_url(url) for url in (request.media_urls or []) if url]
+        
         post.content = request.content
-        post.media_urls = request.media_urls
+        post.media_urls = cleaned_media_urls
         db.commit()
         db.refresh(post)
         return post
