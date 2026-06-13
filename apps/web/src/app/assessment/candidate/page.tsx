@@ -60,6 +60,7 @@ export default function AssessmentExam() {
   const [isUploading, setIsUploading] = useState(false);
   const [showResumeUpload, setShowResumeUpload] = useState(false);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [showGuidelines, setShowGuidelines] = useState(true);
 
   // Tab switch detection
   useEffect(() => {
@@ -78,8 +79,11 @@ export default function AssessmentExam() {
             setIsBlocked(true);
           } else if (res.status === "warning") {
             setWarning(
-              "FINAL WARNING: Tab switching is strictly prohibited. The next switch will permanently block your account.",
+              "Warning: Leaving this window or switching tabs is not allowed. Subsequent violations will lock your assessment.",
             );
+            setTimeout(() => {
+              setWarning(null);
+            }, 5000);
           }
         } catch (err) {
           console.error("Tab switch detection error:", err);
@@ -135,6 +139,9 @@ export default function AssessmentExam() {
 
         if (startRes) {
           setSession(startRes);
+          if (startRes.current_step && startRes.current_step > 1) {
+            setShowGuidelines(false);
+          }
         }
 
         const qRes = await apiClient.get(
@@ -313,7 +320,7 @@ export default function AssessmentExam() {
 
   // Timer logic
   useEffect(() => {
-    if (showAadhaar || isBlocked || !currentQuestion || isFinishing || isLoading) return;
+    if (showGuidelines || showAadhaar || isBlocked || !currentQuestion || isFinishing || isLoading) return;
 
     if (timeLeft <= 0) {
       handleNext(true); // Auto-jump on timeout
@@ -325,7 +332,7 @@ export default function AssessmentExam() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [timeLeft, currentQuestion, showAadhaar, isBlocked, isFinishing, isLoading, handleNext]);
+  }, [timeLeft, currentQuestion, showAadhaar, isBlocked, isFinishing, isLoading, handleNext, showGuidelines]);
 
   const handleResumeUpload = async () => {
     if (!resumeFile) return;
@@ -617,7 +624,7 @@ export default function AssessmentExam() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0D0D0D] text-white selection:bg-blue-500 selection:text-white flex flex-col">
+    <div className="min-h-screen bg-[#0D0D0D] text-white selection:bg-orange-500 selection:text-white flex flex-col">
       {/* Dynamic Header (Modern Chat Look) */}
       <header className="sticky top-0 z-50 bg-[#0D0D0D]/90 backdrop-blur-xl border-b border-white/5 py-5 px-8 flex items-center justify-between">
         <div className="flex items-center gap-6">
@@ -629,7 +636,7 @@ export default function AssessmentExam() {
           </button>
           
           <div className="flex items-center gap-3.5">
-            <div className="h-11 w-11 bg-[#1a56db] rounded-[14px] flex items-center justify-center shadow-2xl shadow-[#1a56db]/40">
+            <div className="h-11 w-11 bg-[#FF8A00] rounded-[14px] flex items-center justify-center shadow-2xl shadow-[#FF8A00]/40">
               <div className="h-5 w-5 bg-black rounded-md transform rotate-45" />
             </div>
             <span className="text-xl font-black tracking-[0.1em] text-white">TECHSALES AXIS</span>
@@ -638,7 +645,7 @@ export default function AssessmentExam() {
 
         <div className="flex items-center gap-6">
           {/* Action Cluster (Timer & Skip) moved to Header for constant visibility */}
-          {!isLoading && currentQuestion && (
+          {!isLoading && currentQuestion && !showGuidelines && (
             <div className="flex items-center gap-3">
                <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 flex items-center gap-2.5">
                   <Timer size={14} className={timeLeft <= 10 ? "text-red-500 animate-pulse" : "text-gray-500"} />
@@ -649,7 +656,7 @@ export default function AssessmentExam() {
                
                <button 
                 onClick={() => handleNext(true)}
-                className="bg-[#1a56db] hover:bg-[#1e40af] text-white px-6 py-2 rounded-xl font-black text-[10px] tracking-[0.2em] uppercase transition-all shadow-lg shadow-[#1a56db]/20 active:scale-95"
+                className="bg-[#FF8A00] hover:bg-[#E67A00] text-white px-6 py-2 rounded-xl font-black text-[10px] tracking-[0.2em] uppercase transition-all shadow-lg shadow-[#FF8A00]/20 active:scale-95"
               >
                 skip
               </button>
@@ -659,14 +666,14 @@ export default function AssessmentExam() {
           <div className="h-8 w-[1px] bg-white/10 hidden md:block" />
 
           {/* Subtle Progress HUD */}
-          {session && !showAadhaar && (
+          {session && !showAadhaar && !showGuidelines && (
             <div className="hidden lg:flex flex-col items-end gap-1.5 pt-1">
               <div className="flex items-center gap-3 text-[10px] font-black text-gray-400 tracking-[0.15em] uppercase">
-                <span>Progress: {session?.current_step || 1} / {session?.total_budget || "--"}</span>
+                <span>Question {session?.current_step || 1} of {session?.total_budget || "--"}</span>
               </div>
               <div className="h-1 w-32 bg-white/5 rounded-full overflow-hidden">
                 <div 
-                  className="h-full bg-[#1a56db] transition-all duration-500 ease-out shadow-[0_0_8px_rgba(26,86,219,0.8)]"
+                  className="h-full bg-[#FF8A00] transition-all duration-500 ease-out shadow-[0_0_8px_rgba(255,138,0,0.8)]"
                   style={{ width: `${((session?.current_step || 0) / (session?.total_budget || 1)) * 100}%` }}
                 />
               </div>
@@ -706,117 +713,196 @@ export default function AssessmentExam() {
           </div>
         )}
 
-        {/* Dynamic Chat Content Area */}
-        <div className="relative flex-1 flex flex-col gap-8">
-          
-          {/* Action Cluster removed from here as it is now in the sticky header */}
+        {showGuidelines ? (
+          /* Guidelines View */
+          <div className="flex-1 flex flex-col items-center justify-center max-w-3xl mx-auto py-8 animate-in fade-in duration-500">
+            <div className="w-full bg-[#111] border border-white/5 rounded-3xl p-8 md:p-10 shadow-2xl relative overflow-hidden">
+              <div className="absolute top-0 left-0 right-0 h-[4px] bg-gradient-to-r from-[#FF8A00] to-[#E67A00]" />
+              <h2 className="text-2xl md:text-3xl font-black text-white mb-2 tracking-tight flex items-center gap-3">
+                Assessment Instructions
+              </h2>
+              <p className="text-gray-400 text-sm md:text-base mb-8">
+                Please read these guidelines carefully before starting your assessment.
+              </p>
 
-          {/* Question Hub */}
-          <div className="w-full space-y-4 animate-in fade-in duration-700">
-            <div className="flex flex-col gap-2">
-               <div className="flex items-center gap-3">
-                 <div className="h-[2px] w-6 bg-[#1a56db]" />
-                 <span className="text-[10px] font-bold text-gray-500 tracking-[0.3em] uppercase">
-                    SYSTEM_ORIGIN: ASSESSMENT_DRIVERS
-                 </span>
-               </div>
-               
-               <h1 className="text-lg md:text-xl lg:text-2xl font-bold text-white leading-snug tracking-tight max-w-4xl">
-                {currentQuestion?.text || "Awaiting neural synchronization..."}
-               </h1>
+              <div className="space-y-6 mb-10">
+                <div className="flex gap-4">
+                  <div className="h-10 w-10 shrink-0 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-[#FF8A00] text-lg font-bold">⏰</div>
+                  <div>
+                    <h3 className="text-white font-bold text-sm tracking-wide">60 Seconds per Question</h3>
+                    <p className="text-gray-400 text-xs mt-1 leading-relaxed">
+                      You have exactly 60 seconds to answer each question. If the timer runs out, your current response is auto-submitted, and the system proceeds to the next question.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-4">
+                  <div className="h-10 w-10 shrink-0 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-[#FF8A00] text-lg font-bold">🚫</div>
+                  <div>
+                    <h3 className="text-white font-bold text-sm tracking-wide">Tab Switching Strictly Prohibited</h3>
+                    <p className="text-gray-400 text-xs mt-1 leading-relaxed">
+                      Do not navigate away from this tab or minimize the browser window. Doing so will trigger security warnings, and subsequent violations will lock your assessment.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-4">
+                  <div className="h-10 w-10 shrink-0 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-[#FF8A00] text-lg font-bold">🔒</div>
+                  <div>
+                    <h3 className="text-white font-bold text-sm tracking-wide">Copy-Paste Protection</h3>
+                    <p className="text-gray-400 text-xs mt-1 leading-relaxed">
+                      Copying and pasting is disabled. Please draft your answers directly in the input field.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-4">
+                  <div className="h-10 w-10 shrink-0 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-[#FF8A00] text-lg font-bold">🎙️</div>
+                  <div>
+                    <h3 className="text-white font-bold text-sm tracking-wide">Voice Input Support</h3>
+                    <p className="text-gray-400 text-xs mt-1 leading-relaxed">
+                      You can optionally record your response! Click the microphone button to start recording, and click it again to stop and submit.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-4">
+                  <div className="h-10 w-10 shrink-0 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-[#FF8A00] text-lg font-bold">⌨️</div>
+                  <div>
+                    <h3 className="text-white font-bold text-sm tracking-wide">Keyboard Submission</h3>
+                    <p className="text-gray-400 text-xs mt-1 leading-relaxed">
+                      Press <kbd className="bg-white/10 px-1.5 py-0.5 rounded text-[10px] text-white">Enter</kbd> to submit your answer. Use <kbd className="bg-white/10 px-1.5 py-0.5 rounded text-[10px] text-white">Shift + Enter</kbd> for a new line.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowGuidelines(false)}
+                className="w-full py-4 bg-[#FF8A00] hover:bg-[#E67A00] text-white font-black text-sm tracking-[0.2em] rounded-2xl transition-all shadow-xl shadow-orange-500/20 hover:shadow-orange-500/30 active:scale-[0.98] uppercase"
+              >
+                Start Assessment
+              </button>
             </div>
           </div>
-        </div>
+        ) : (
+          /* Dynamic Chat Content Area */
+          <div className="relative flex-1 flex flex-col gap-8 animate-in fade-in duration-500">
+            
+            {/* Question Hub */}
+            <div className="w-full space-y-4">
+              <div className="flex flex-col gap-2">
+                 <div className="flex items-center gap-3">
+                   <div className="h-[2px] w-6 bg-[#FF8A00]" />
+                   <span className="text-[10px] font-bold text-gray-500 tracking-[0.3em] uppercase">
+                      Topic Focus: {currentQuestion?.category || "General"}
+                   </span>
+                 </div>
+                 
+                 <h1 className="text-lg md:text-xl lg:text-2xl font-bold text-white leading-snug tracking-tight max-w-4xl">
+                  {currentQuestion?.text || "Preparing assessment questions..."}
+                 </h1>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Styled Sticky Footer with Chat Bar */}
-      <footer className="fixed bottom-0 left-0 right-0 p-6 pb-8 bg-gradient-to-t from-black via-black to-transparent pointer-events-none z-50">
-        <div className="max-w-5xl mx-auto pointer-events-auto relative group">
-          <div className="absolute -inset-1 bg-gradient-to-r from-[#1a56db]/20 to-[#0ea5e9]/10 rounded-[28px] blur-xl opacity-0 group-focus-within:opacity-100 transition duration-700" />
-          
-          <div className="relative bg-[#0F0F0F] border border-white/10 group-focus-within:border-[#1a56db]/40 rounded-3xl overflow-hidden transition-all duration-300">
-            <textarea
-              autoFocus
-              disabled={isLoading || !currentQuestion}
-              value={answer}
-              onChange={(e) => setAnswer(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  if (answer.trim() && !isLoading && currentQuestion) {
-                    handleNext(false);
-                  }
-                }
-              }}
-              placeholder="Type your strategic response..."
-              className="w-full h-32 bg-transparent p-6 pr-44 text-base md:text-lg font-medium text-white placeholder:text-gray-700 focus:outline-none resize-none transition-all"
-            />
+      {!showGuidelines && (
+        <footer className="fixed bottom-0 left-0 right-0 p-6 pb-8 bg-gradient-to-t from-black via-black to-transparent pointer-events-none z-50">
+          <div className="max-w-5xl mx-auto pointer-events-auto relative group">
+            <div className="absolute -inset-1 bg-gradient-to-r from-[#FF8A00]/20 to-[#FF8A00]/10 rounded-[28px] blur-xl opacity-0 group-focus-within:opacity-100 transition duration-700" />
             
-            {/* Unified Control Bar on Right (Matching Image) */}
-            <div className="absolute right-6 bottom-6 flex items-center gap-4">
-              {isRecording ? (
-                <div className="flex items-center gap-2 px-3 py-2 bg-red-500/20 rounded-xl boundary border-red-500/50">
-                  <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-                  <span className="text-xs font-bold text-red-400">{recordingTime}s</span>
-                </div>
-              ) : null}
-              
-              <button
-                onClick={isRecording ? stopRecording : startRecording}
+            <div className="relative bg-[#0F0F0F] border border-white/10 group-focus-within:border-[#FF8A00]/40 rounded-3xl overflow-hidden transition-all duration-300">
+              <textarea
+                autoFocus
                 disabled={isLoading || !currentQuestion}
-                className={`p-2.5 rounded-xl transition-all ${
-                  isRecording
-                    ? "bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-600/20"
-                    : "text-gray-700 hover:text-white hover:bg-white/5"
-                }`}
-                title={isRecording ? "Stop recording" : "Start recording"}
-              >
-                {isRecording ? (
-                  <Square size={20} fill="currentColor" />
-                ) : (
-                  <Mic size={20} />
-                )}
-              </button>
+                value={answer}
+                onChange={(e) => setAnswer(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    if (answer.trim() && !isLoading && currentQuestion) {
+                      handleNext(false);
+                    }
+                  }
+                }}
+                placeholder="Type your response here..."
+                className="w-full h-32 bg-transparent p-6 pr-44 text-base md:text-lg font-medium text-white placeholder:text-gray-700 focus:outline-none resize-none transition-all"
+              />
               
-              <button
-                onClick={() => handleNext(false)}
-                disabled={!answer.trim() || isLoading}
-                className={`flex items-center gap-3 px-6 py-3 rounded-2xl font-bold text-xs tracking-widest uppercase transition-all shadow-2xl ${
-                  !answer.trim() || isLoading 
-                    ? "bg-gray-800/10 text-gray-700" 
-                    : "bg-[#1a56db] text-white hover:bg-[#1e40af] hover:shadow-[#1a56db]/20 shadow-[#1a56db]/40"
-                }`}
-              >
-                {isLoading ? (
-                  <Loader2 className="animate-spin" size={16} />
-                ) : (
-                  <>
-                    <span className="hidden sm:inline">Submit</span>
-                    <Send size={16} />
-                  </>
-                )}
-              </button>
+              {/* Keyboard helper text */}
+              <div className="absolute left-6 bottom-4 text-[10px] text-gray-500 font-medium hidden sm:block">
+                Press <kbd className="bg-white/10 px-1 py-0.5 rounded text-[10px] text-white">Enter</kbd> to submit, <kbd className="bg-white/10 px-1 py-0.5 rounded text-[10px] text-white">Shift + Enter</kbd> for a new line
+              </div>
+
+              {/* Unified Control Bar on Right (Matching Image) */}
+              <div className="absolute right-6 bottom-6 flex items-center gap-4">
+                {isRecording ? (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-red-500/20 rounded-xl boundary border-red-500/50">
+                    <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                    <span className="text-xs font-bold text-red-400">{recordingTime}s</span>
+                  </div>
+                ) : null}
+                
+                <button
+                  onClick={isRecording ? stopRecording : startRecording}
+                  disabled={isLoading || !currentQuestion}
+                  className={`p-2.5 rounded-xl transition-all ${
+                    isRecording
+                      ? "bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-600/20"
+                      : "text-gray-700 hover:text-white hover:bg-white/5"
+                  }`}
+                  title={isRecording ? "Stop recording" : "Start recording"}
+                >
+                  {isRecording ? (
+                    <Square size={20} fill="currentColor" />
+                  ) : (
+                    <Mic size={20} />
+                  )}
+                </button>
+                
+                <button
+                  onClick={() => handleNext(false)}
+                  disabled={!answer.trim() || isLoading}
+                  className={`flex items-center gap-3 px-6 py-3 rounded-2xl font-bold text-xs tracking-widest uppercase transition-all shadow-2xl ${
+                    !answer.trim() || isLoading 
+                      ? "bg-gray-800/10 text-gray-700" 
+                      : "bg-[#FF8A00] text-white hover:bg-[#E67A00] hover:shadow-[#FF8A00]/20 shadow-[#FF8A00]/40"
+                  }`}
+                >
+                  {isLoading ? (
+                    <Loader2 className="animate-spin" size={16} />
+                  ) : (
+                    <>
+                      <span className="hidden sm:inline">Submit</span>
+                      <Send size={16} />
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Minimal metadata footer */}
+            <div className="mt-4 flex justify-between items-center px-4 pb-2 opacity-60">
+               <div className="flex gap-4 text-[10px] font-bold text-gray-600 tracking-widest uppercase">
+                  <span className="flex items-center gap-2">
+                     <div className="h-1.5 w-1.5 bg-[#FF8A00] rounded-full animate-pulse" />
+                     Assessment Status: Active
+                  </span>
+                  <span className="flex items-center gap-2">
+                     <div className="h-1.5 w-1.5 bg-gray-500 rounded-full" />
+                     Connection: Secured
+                  </span>
+               </div>
+               <span className="text-[10px] font-bold text-gray-700 tracking-widest uppercase">
+                  &copy; 2026, TechSalesAxis.com The Next Big Idea Technologies Pvt. Ltd . All rights reserved.
+               </span>
             </div>
           </div>
-
-          {/* Minimal metadata footer */}
-          <div className="mt-4 flex justify-between items-center px-4 pb-2 opacity-60">
-             <div className="flex gap-4 text-[10px] font-bold text-gray-600 tracking-widest uppercase">
-                <span className="flex items-center gap-2">
-                   <div className="h-1 w-1 bg-[#1a56db] rounded-full animate-pulse" />
-                   EVALUATION_MODE: ACTIVE
-                </span>
-                <span className="flex items-center gap-2">
-                   <div className="h-1 w-1 bg-gray-500 rounded-full" />
-                   ENCRYPTION: SHIELD-v3.0-AES-256
-                </span>
-             </div>
-             <span className="text-[10px] font-bold text-gray-700 tracking-widest uppercase">
-                &copy; 2026, TechSalesAxis.com The Next Big Idea Technologies Pvt. Ltd . All rights reserved.
-             </span>
-          </div>
-        </div>
-      </footer>
+        </footer>
+      )}
     </div>
   );
 }

@@ -325,7 +325,7 @@ export default function RecommendationsPage() {
           <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
             <Target className="h-4 w-4 text-[#FF8A00]" />
             {activeTab === "jobs"
-              ? "Skills Match uses 75% skill overlap."
+              ? "Skills Match uses skill overlap."
               : selectedCompany
                 ? `${selectedCompany.company_name} has ${selectedCompanyOpenRoles} open role${selectedCompanyOpenRoles === 1 ? "" : "s"}.`
                 : "Company matches use your assessment profile."}

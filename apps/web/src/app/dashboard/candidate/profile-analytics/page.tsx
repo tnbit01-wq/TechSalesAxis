@@ -113,7 +113,7 @@ export default function ProfileAnalyticsPage() {
         <p className="text-slate-500 text-sm mt-1">See who has viewed your profile and track your visibility with recruiters.</p>
       </header>
 
-      {/* Shadow Profile Warning */}
+      {/* Passive Profile Warning */}
       {isShadowProfile && (
         <div className="bg-amber-50 border border-amber-200 p-6 rounded-3xl">
           <div className="flex items-start gap-4">
@@ -123,7 +123,7 @@ export default function ProfileAnalyticsPage() {
               </svg>
             </div>
             <div className="flex-1">
-              <h3 className="font-bold text-amber-900">Shadow Profile</h3>
+              <h3 className="font-bold text-amber-900">Passive Profile</h3>
               <p className="text-sm text-amber-800 mt-1">
                 Your profile was created through bulk upload and is pending activation. Complete your profile registration to start receiving recruiter notifications and profile analytics.
               </p>

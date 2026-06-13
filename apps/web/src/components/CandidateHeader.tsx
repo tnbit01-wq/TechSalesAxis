@@ -113,7 +113,7 @@ export default function CandidateHeader({ profile: initialProfile }: { profile?:
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <button onClick={toggleChatMode} className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#FF8A00] to-[#FF6B00] text-white rounded-xl text-[13px] font-semibold hover:shadow-lg hover:shadow-orange-500/20 active:scale-[0.97] transition-all">
-            <Sparkles className="h-4 w-4" strokeWidth={2} /><span className="hidden sm:inline">AI Assistant</span>
+            <Sparkles className="h-4 w-4" strokeWidth={2} /><span className="hidden sm:inline">TechSalesAxis AI</span>
           </button>
           <div className="h-6 w-px bg-slate-200 mx-1" />
           <div className="relative" ref={bellRef}>

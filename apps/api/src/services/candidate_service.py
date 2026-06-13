@@ -12,9 +12,42 @@ from src.services.recommendation_matcher import benchmark_for_mode, score_candid
 
 class CandidateService:
     @staticmethod
+    def _normalize_skill_token(skill: str) -> str:
+        if not skill:
+            return ""
+        import re
+        normalized = str(skill).lower().strip()
+        normalized = normalized.replace("c sharp", "csharp")
+        normalized = normalized.replace("c plus plus", "cpp")
+        normalized = normalized.replace("c#", "csharp")
+        normalized = normalized.replace("c++", "cpp")
+        normalized = normalized.replace("node.js", "nodejs")
+        normalized = normalized.replace("react.js", "reactjs")
+        normalized = normalized.replace(".net", "dotnet")
+        normalized = normalized.replace("asp.net", "aspnet")
+        normalized = re.sub(r"[^a-z0-9+#]+", "", normalized)
+
+        alias_map = {
+            "js": "javascript",
+            "ts": "typescript",
+            "py": "python",
+            "postgres": "postgresql",
+            "mongo": "mongodb",
+            "nodejs": "nodejs",
+            "reactjs": "reactjs",
+            "csharp": "csharp",
+            "cpp": "cpp",
+            "dotnet": "dotnet",
+            "aspnet": "aspnet",
+            "html5": "html",
+            "css3": "css",
+        }
+        return alias_map.get(normalized, normalized)
+
+    @staticmethod
     def _normalize_skills(skills: Optional[List[str]]) -> set:
         return {
-            str(skill).lower().strip()
+            CandidateService._normalize_skill_token(skill)
             for skill in (skills or [])
             if str(skill).strip()
         }
@@ -1060,7 +1093,7 @@ class CandidateService:
                         list(candidate_skills), list(job_skills)
                     )
 
-                    if score < 75:
+                    if score < 1:
                         continue
 
                     # Check if already applied/saved

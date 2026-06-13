@@ -7,6 +7,7 @@ import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import { useVoice } from "@/hooks/useVoice";
 import { extractNameFromEmail } from "@/utils/emailValidation";
+import { Loader2 } from "lucide-react";
 
 type Message = {
   id: string;
@@ -89,6 +90,8 @@ export default function RecruiterOnboarding() {
   const [isAssessmentActive, setIsAssessmentActive] = useState(false);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [showGuidelines, setShowGuidelines] = useState(true);
+  const [warning, setWarning] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -168,7 +171,7 @@ export default function RecruiterOnboarding() {
         setState("ASSESSMENT_CHAT");
         setCurrentQuestionIndex(0);
         setTimeLeft(60);
-        addMessage(questions[0].question_text || questions[0].text, "bot");
+        setShowGuidelines(true);
       } else {
         // Fallback to static if API fails or returns empty
         setDynamicQuestions(ASSESSMENT_QUESTIONS);
@@ -176,7 +179,7 @@ export default function RecruiterOnboarding() {
         setState("ASSESSMENT_CHAT");
         setCurrentQuestionIndex(0);
         setTimeLeft(60);
-        addMessage(ASSESSMENT_QUESTIONS[0].text, "bot");
+        setShowGuidelines(true);
       }
     } catch (err) {
       console.error("Failed to load questions:", err);
@@ -186,11 +189,18 @@ export default function RecruiterOnboarding() {
       setState("ASSESSMENT_CHAT");
       setCurrentQuestionIndex(0);
       setTimeLeft(60);
-      addMessage(ASSESSMENT_QUESTIONS[0].text, "bot");
+      setShowGuidelines(true);
     } finally {
       setIsLoading(false);
     }
-  }, [addMessage]);
+  }, []);
+
+  const dismissGuidelines = useCallback(() => {
+    setShowGuidelines(false);
+    setTimeLeft(60);
+    const q = dynamicQuestions[0] || ASSESSMENT_QUESTIONS[0];
+    addMessage(q.question_text || q.text, "bot");
+  }, [addMessage, dynamicQuestions]);
 
   const handleSend = useCallback(
     async (textOverride?: string) => {
@@ -1045,10 +1055,13 @@ export default function RecruiterOnboarding() {
             awsAuth.logout();
             window.location.href = "/login?error=blocked";
           } else {
-            // Immediate alert for the warning strike
-            alert(res.message);
+            // Set warning banner and auto clear after 5s
+            setWarning(res.message || "Warning: Tab switching is strictly prohibited.");
             // Also log in chat for persistence
             addMessage(res.message, "bot");
+            setTimeout(() => {
+              setWarning(null);
+            }, 5000);
           }
         } catch (err) {
           console.error("Failed to report tab switch:", err);
@@ -1063,11 +1076,11 @@ export default function RecruiterOnboarding() {
 
   // Timer logic for assessment
   useEffect(() => {
-    if (isAssessmentActive && timeLeft > 0) {
+    if (isAssessmentActive && !showGuidelines && timeLeft > 0) {
       timerRef.current = setInterval(() => {
         setTimeLeft((prev) => prev - 1);
       }, 1000);
-    } else if (timeLeft === 0 && isAssessmentActive) {
+    } else if (timeLeft === 0 && isAssessmentActive && !showGuidelines) {
       // Auto-timeout handling
       handleSend("No response provided (timeout)");
     }
@@ -1075,7 +1088,7 @@ export default function RecruiterOnboarding() {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [isAssessmentActive, timeLeft, handleSend]);
+  }, [isAssessmentActive, showGuidelines, timeLeft, handleSend]);
 
   return (
     <div className={`flex flex-col h-screen ${isAssessmentActive ? "bg-black text-white" : "bg-gradient-to-br from-[#fff9f5] via-[#fff8f0] to-[#ffe8d6] text-slate-900"} font-sans transition-colors duration-700`}>
@@ -1094,7 +1107,7 @@ export default function RecruiterOnboarding() {
             </Link>
           )}
           <div className="flex items-center gap-2.5">
-            <div className={`h-9 w-9 rounded-xl ${isAssessmentActive ? "bg-blue-600 shadow-blue-900/20" : "bg-gradient-to-br from-[#ff9800] to-[#ff6f00] shadow-lg shadow-orange-500/20"} flex items-center justify-center shadow-lg`}>
+            <div className={`h-9 w-9 rounded-xl ${isAssessmentActive ? "bg-[#FF8A00] shadow-orange-950/20" : "bg-gradient-to-br from-[#ff9800] to-[#ff6f00] shadow-lg shadow-orange-500/20"} flex items-center justify-center shadow-lg`}>
               <span className={`font-bold ${isAssessmentActive ? "text-black text-sm" : "text-white text-sm"}`}>T</span>
             </div>
             <h1 className={`text-xl font-bold tracking-tight ${isAssessmentActive ? "text-white uppercase italic" : "text-slate-900"}`}>
@@ -1104,30 +1117,32 @@ export default function RecruiterOnboarding() {
         </div>
         <div className="flex items-center gap-6">
           {isAssessmentActive ? (
-            <div className="flex items-center gap-6">
-              <div className="flex items-center gap-3 bg-zinc-900 px-4 py-2 rounded-xl border border-zinc-800">
-                <div className="flex items-center gap-2 text-zinc-500">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span className="text-[10px] font-bold uppercase tracking-widest">Countdown</span>
+            !showGuidelines && (
+              <div className="flex items-center gap-6">
+                <div className="flex items-center gap-3 bg-zinc-900 px-4 py-2 rounded-xl border border-zinc-800">
+                  <div className="flex items-center gap-2 text-zinc-500">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="text-[10px] font-bold uppercase tracking-widest">Time Remaining</span>
+                  </div>
+                  <span className={`font-mono text-sm font-bold ${timeLeft < 15 ? "text-red-500 animate-pulse" : "text-[#FF8A00]"}`}>
+                    00:{timeLeft.toString().padStart(2, "0")}
+                  </span>
                 </div>
-                <span className={`font-mono text-sm font-bold ${timeLeft < 15 ? "text-red-500 animate-pulse" : "text-blue-400"}`}>
-                  00:{timeLeft.toString().padStart(2, "0")}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="h-1.5 w-24 bg-zinc-800 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-blue-600 transition-all duration-500" 
-                    style={{ width: `${((currentQuestionIndex + 1) / dynamicQuestions.length) * 100}%` }}
-                  />
+                <div className="flex items-center gap-2">
+                  <div className="h-1.5 w-24 bg-zinc-800 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-[#FF8A00] transition-all duration-500" 
+                      style={{ width: `${((currentQuestionIndex + 1) / dynamicQuestions.length) * 100}%` }}
+                    />
+                  </div>
+                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
+                    Question {currentQuestionIndex + 1} of {dynamicQuestions.length}
+                  </span>
                 </div>
-                <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-                  Signal: {currentQuestionIndex + 1} / {dynamicQuestions.length}
-                </span>
               </div>
-            </div>
+            )
           ) : (
             <div className="flex items-center gap-6">
               <button
@@ -1159,67 +1174,186 @@ export default function RecruiterOnboarding() {
         {isAssessmentActive ? (
           /* Assessment View (Second Image Style) */
           <div className="flex-1 flex flex-col px-6 py-12 space-y-12">
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 text-blue-500">
-                <div className="h-px w-8 bg-blue-500" />
-                <span className="text-[10px] font-bold uppercase tracking-[0.3em]">System_Origin: Audit_Module</span>
+            
+            {/* Security Warning Banner */}
+            {warning && (
+              <div className="w-full bg-red-950/30 border border-red-500/30 rounded-2xl p-4 flex items-center gap-4 animate-in fade-in slide-in-from-top-4 duration-500 shrink-0">
+                <div className="h-10 w-10 flex items-center justify-center bg-red-500/20 rounded-xl text-red-500 shrink-0">
+                  <svg className="w-5 h-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs font-black text-red-400 tracking-widest uppercase mb-0.5">Assessment Alert</p>
+                  <p className="text-sm font-bold text-red-200/70 leading-tight">{warning}</p>
+                </div>
+                <button 
+                  onClick={() => setWarning(null)} 
+                  className="p-2 text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
+                >
+                  &times;
+                </button>
               </div>
-              <h2 className="text-3xl font-bold leading-tight tracking-tight text-zinc-100 max-w-3xl">
-                {dynamicQuestions[currentQuestionIndex]?.question_text || dynamicQuestions[currentQuestionIndex]?.text}
-              </h2>
-            </div>
+            )}
 
-            <div className="flex-1 flex flex-col justify-end pb-12">
-              <div className="relative group">
-                <div className="absolute -inset-1 bg-gradient-to-r from-blue-600/20 to-purple-600/20 rounded-2xl blur opacity-25 group-focus-within:opacity-100 transition duration-1000"></div>
-                <div className="relative flex flex-col bg-zinc-900/50 border border-zinc-800 focus-within:border-blue-500/50 transition-all rounded-2xl p-4">
-                  <textarea
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    placeholder="Type your strategic response..."
-                    className="w-full bg-transparent border-none focus:ring-0 text-zinc-200 placeholder:text-zinc-600 text-lg min-h-[160px] resize-none font-medium"
-                    onCopy={(e) => e.preventDefault()}
-                    onPaste={(e) => e.preventDefault()}
-                  />
-                  <div className="flex justify-between items-center mt-4 border-t border-zinc-800/50 pt-4">
-                    <button
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        if (!isListening) startListening();
-                      }}
-                      onMouseUp={(e) => {
-                        e.preventDefault();
-                        if (isListening) stopListening();
-                      }}
-                      className={`p-3 rounded-xl transition-all ${isListening ? "bg-red-500 text-white" : "text-zinc-500 hover:text-white"}`}
-                    >
-                      <MicIcon />
-                    </button>
-                    <button
-                      onClick={() => handleSend()}
-                      disabled={isLoading || !input.trim()}
-                      className="flex items-center gap-3 bg-zinc-800 hover:bg-blue-600 text-white hover:text-white px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-[0.2em] transition-all disabled:opacity-50 group"
-                    >
-                      <span>Transmit Signal</span>
-                      <SendIcon />
-                    </button>
+            {showGuidelines ? (
+              /* Guidelines View */
+              <div className="flex-1 flex flex-col items-center justify-center max-w-2xl mx-auto py-8 animate-in fade-in duration-500">
+                <div className="w-full bg-[#111] border border-zinc-800 rounded-3xl p-8 md:p-10 shadow-2xl relative overflow-hidden">
+                  <div className="absolute top-0 left-0 right-0 h-[4px] bg-gradient-to-r from-[#FF8A00] to-[#E67A00]" />
+                  <h2 className="text-2xl md:text-3xl font-black text-white mb-2 tracking-tight flex items-center gap-3">
+                    Evaluation Guidelines
+                  </h2>
+                  <p className="text-gray-400 text-sm md:text-base mb-8">
+                    Please read these guidelines carefully before starting the recruiter assessment.
+                  </p>
+
+                  <div className="space-y-6 mb-10 text-left">
+                    <div className="flex gap-4">
+                      <div className="h-10 w-10 shrink-0 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-[#FF8A00] text-lg font-bold">⏰</div>
+                      <div>
+                        <h3 className="text-white font-bold text-sm tracking-wide">60 Seconds per Question</h3>
+                        <p className="text-gray-400 text-xs mt-1 leading-relaxed">
+                          You will have 60 seconds to answer each onboarding assessment question. When time expires, your response will be submitted automatically.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-4">
+                      <div className="h-10 w-10 shrink-0 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-[#FF8A00] text-lg font-bold">🚫</div>
+                      <div>
+                        <h3 className="text-white font-bold text-sm tracking-wide">Tab Switching Monitoring</h3>
+                        <p className="text-gray-400 text-xs mt-1 leading-relaxed">
+                          Leaving or switching away from this tab is strictly monitored. Subsequent violations will disqualify your recruiter onboarding.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-4">
+                      <div className="h-10 w-10 shrink-0 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-[#FF8A00] text-lg font-bold">🔒</div>
+                      <div>
+                        <h3 className="text-white font-bold text-sm tracking-wide">Direct Typing Only</h3>
+                        <p className="text-gray-400 text-xs mt-1 leading-relaxed">
+                          Copying and pasting is disabled for authenticity. Please type your responses manually.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-4">
+                      <div className="h-10 w-10 shrink-0 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-[#FF8A00] text-lg font-bold">🎙️</div>
+                      <div>
+                        <h3 className="text-white font-bold text-sm tracking-wide">Voice Input Mode</h3>
+                        <p className="text-gray-400 text-xs mt-1 leading-relaxed">
+                          You can optionally use the microphone icon to record/dictate your response if desired.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-4">
+                      <div className="h-10 w-10 shrink-0 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-[#FF8A00] text-lg font-bold">⌨️</div>
+                      <div>
+                        <h3 className="text-white font-bold text-sm tracking-wide">Enter to Submit</h3>
+                        <p className="text-gray-400 text-xs mt-1 leading-relaxed">
+                          Press <kbd className="bg-white/10 px-1.5 py-0.5 rounded text-[10px] text-white">Enter</kbd> to submit your answer, or <kbd className="bg-white/10 px-1.5 py-0.5 rounded text-[10px] text-white">Shift + Enter</kbd> for a new line.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={dismissGuidelines}
+                    className="w-full py-4 bg-[#FF8A00] hover:bg-[#E67A00] text-white font-black text-sm tracking-[0.2em] rounded-2xl transition-all shadow-xl shadow-orange-500/20 hover:shadow-orange-500/30 active:scale-[0.98] uppercase"
+                  >
+                    Begin Assessment
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Assessment Form */
+              <div className="flex-1 flex flex-col space-y-12 animate-in fade-in duration-500">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-[#FF8A00]">
+                    <div className="h-px w-8 bg-[#FF8A00]" />
+                    <span className="text-[10px] font-bold uppercase tracking-[0.3em]">Assessment Category: Onboarding</span>
+                  </div>
+                  <h2 className="text-2xl md:text-3xl font-bold leading-tight tracking-tight text-zinc-100 max-w-3xl">
+                    {dynamicQuestions[currentQuestionIndex]?.question_text || dynamicQuestions[currentQuestionIndex]?.text}
+                  </h2>
+                </div>
+
+                <div className="flex-1 flex flex-col justify-end pb-12">
+                  <div className="relative group">
+                    <div className="absolute -inset-1 bg-gradient-to-r from-[#FF8A00]/20 to-[#E67A00]/20 rounded-2xl blur opacity-25 group-focus-within:opacity-100 transition duration-1000"></div>
+                    <div className="relative flex flex-col bg-zinc-900/50 border border-zinc-800 focus-within:border-[#FF8A00]/50 transition-all rounded-2xl p-4">
+                      <textarea
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            if (input.trim() && !isLoading) {
+                              handleSend();
+                            }
+                          }
+                        }}
+                        placeholder="Type your response here..."
+                        className="w-full bg-transparent border-none focus:ring-0 text-zinc-200 placeholder:text-zinc-600 text-lg min-h-[160px] resize-none font-medium focus:outline-none"
+                        onCopy={(e) => e.preventDefault()}
+                        onPaste={(e) => e.preventDefault()}
+                      />
+                      
+                      {/* Keyboard helper text */}
+                      <div className="absolute left-4 bottom-4 text-[10px] text-zinc-500 font-medium hidden sm:block">
+                        Press <kbd className="bg-white/5 px-1 py-0.5 rounded text-[10px] text-zinc-400">Enter</kbd> to submit, <kbd className="bg-white/5 px-1 py-0.5 rounded text-[10px] text-zinc-400">Shift + Enter</kbd> for a new line
+                      </div>
+
+                      <div className="flex justify-between items-center mt-4 border-t border-zinc-800/50 pt-4">
+                        <button
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            if (!isListening) startListening();
+                          }}
+                          onMouseUp={(e) => {
+                            e.preventDefault();
+                            if (isListening) stopListening();
+                          }}
+                          className={`p-3 rounded-xl transition-all ${isListening ? "bg-red-500 text-white" : "text-zinc-500 hover:text-white"}`}
+                        >
+                          <MicIcon />
+                        </button>
+                        <button
+                          onClick={() => handleSend()}
+                          disabled={isLoading || !input.trim()}
+                          className="flex items-center gap-3 bg-zinc-800 hover:bg-[#FF8A00] text-white px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-[0.2em] transition-all disabled:opacity-50 group"
+                        >
+                          {isLoading ? (
+                            <Loader2 className="animate-spin" size={16} />
+                          ) : (
+                            <>
+                              <span>Submit Answer</span>
+                              <SendIcon />
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center mt-6 px-2">
+                    <div className="flex items-center gap-6">
+                      <div className="flex items-center gap-2">
+                        <div className="h-1.5 w-1.5 rounded-full bg-[#FF8A00] animate-pulse" />
+                        <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">Status: Assessment Active</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="h-1.5 w-1.5 rounded-full bg-zinc-700" />
+                        <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">Connection: Secured</span>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-bold text-zinc-700 uppercase tracking-widest">© 2026, TechSalesAxis.com The Next Big Idea Technologies Pvt. Ltd . All rights reserved.</span>
                   </div>
                 </div>
               </div>
-              <div className="flex justify-between items-center mt-6 px-2">
-                <div className="flex items-center gap-6">
-                  <div className="flex items-center gap-2">
-                    <div className="h-1 w-1 rounded-full bg-blue-500 animate-pulse" />
-                    <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">Evaluation_Mode: Active</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="h-1 w-1 rounded-full bg-zinc-700" />
-                    <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">Encryption: Shield-V3.0-AES-256</span>
-                  </div>
-                </div>
-                <span className="text-[10px] font-bold text-zinc-700 uppercase tracking-widest">© 2026, TechSalesAxis.com The Next Big Idea Technologies Pvt. Ltd . All rights reserved.</span>
-              </div>
-            </div>
+            )}
           </div>
         ) : (
           /* Onboarding View with 35/65 Layout */

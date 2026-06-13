@@ -222,8 +222,52 @@ def _ensure_sessions_table(db) -> None:
         CREATE INDEX IF NOT EXISTS idx_ai_sessions_user_updated
             ON ai_assistant_sessions (user_id, updated_at DESC)
     """))
+    db.execute(text("""
+        CREATE TABLE IF NOT EXISTS recruiter_chat_actions (
+            id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id         UUID NOT NULL,
+            session_id      UUID,
+            action_type     TEXT NOT NULL,
+            target_id       TEXT,
+            metadata        JSONB DEFAULT '{}',
+            created_at      TIMESTAMPTZ DEFAULT NOW()
+        )
+    """))
+    db.execute(text("""
+        CREATE INDEX IF NOT EXISTS idx_recruiter_chat_actions_user
+            ON recruiter_chat_actions (user_id, created_at DESC)
+    """))
     db.commit()
     _TABLE_ENSURED = True
+
+
+def _log_recruiter_action(db, user_id: str, session_id: Optional[str], action_type: str, target_id: Optional[str] = None, metadata: Optional[Dict] = None) -> None:
+    try:
+        sid_val = None
+        if session_id:
+            try:
+                import uuid
+                sid_val = str(uuid.UUID(session_id))
+            except Exception:
+                pass
+        
+        db.execute(
+            text("""
+                INSERT INTO recruiter_chat_actions (user_id, session_id, action_type, target_id, metadata)
+                VALUES (:uid, :sid, :atype, :tid, :meta)
+            """),
+            {
+                "uid": user_id,
+                "sid": sid_val,
+                "atype": action_type,
+                "tid": target_id,
+                "meta": json.dumps(metadata or {})
+            }
+        )
+        db.commit()
+        log.info("Logged recruiter action: %s", action_type)
+    except Exception as e:
+        log.error("Failed to log recruiter action: %s", e)
 
 
 def _get_or_create_session(db, user_id: str, session_id: Optional[str]) -> Dict:
@@ -504,6 +548,8 @@ If the user says "no", "cancel", "stop", "abort", or matches a negative confirma
 
 If the user wants to update, edit, modify, or change details of an existing job posting they have on the platform (e.g. "edit Sales Manager role", "update location of Account Executive job", "change the description of the Sales Rep vacancy", "modify the requirements for the Senior Manager job"), classify intent as "job_edit" and extract the job title or job ID in filters.
 
+DATABASE STATUS AWARENESS: If the query requests specific candidates, jobs, or applications that do not exist, do not hallucinate fake details. Classify the intent correctly and allow the data pipeline to execute. If the database/tool execution returns no records, the system must clearly report that no such records exist in the database.
+
 CRITICAL: Determine if the user is switching context. If there is an active workflow but the user's query is completely unrelated (e.g. they want to search candidates/jobs, view organizations, ask a general question like "What is Python?", or start a different task), set "is_context_switch" to true. Otherwise, if they are answering slot questions, giving a JD, or confirming/canceling the workflow, set "is_context_switch" to false.
 
 For "career_readiness", extract and map any availability/mobility/relocation preferences to these exact enum tokens:
@@ -630,23 +676,44 @@ async def _execute_tool(intent: str, filters: Dict, user_id: str, role: str, pro
     try:
         if intent == "candidate_search" and role == "recruiter":
             if filters.get("skills"):
+                orig = filters["skills"]
+                if isinstance(orig, list):
+                    filters["original_skills"] = list(orig)
+                elif isinstance(orig, str):
+                    filters["original_skills"] = [s.strip() for s in orig.split(",") if s.strip()]
+                else:
+                    filters["original_skills"] = []
                 filters["skills"] = await _expand_search_skills(filters["skills"])
             
-            # If not a recommendation request, do pure search/filter
-            if not is_recommendation_request(prompt, filters):
+            is_rec = is_recommendation_request(prompt, filters)
+            
+            # If it's a recommendation request because of job title or job ID,
+            # verify that the job actually exists in the database.
+            job_exists = False
+            job_id = filters.get("job_id")
+            job_title = filters.get("job_title")
+            if is_rec and (job_id or job_title):
+                db_check = SessionLocal()
+                try:
+                    if job_id:
+                        job_exists = db_check.query(Job).filter(Job.id == job_id).first() is not None
+                    elif job_title:
+                        job_exists = db_check.query(Job).filter(
+                            Job.recruiter_id == user_id,
+                            Job.title.ilike(f"%%{job_title}%%")
+                        ).first() is not None
+                except Exception:
+                    pass
+                finally:
+                    db_check.close()
+            
+            # If recommendation request is specified but the job does NOT exist,
+            # or if it is not a recommendation request, do a pure talent pool search/filter!
+            if not is_rec or ((job_id or job_title) and not job_exists):
                 return await recruiter_service.search_talent_pool(filters)
 
-            # 1. Resolve filter_type
-            filter_type = filters.get("match_type")
-            if not filter_type:
-                prompt_lower = prompt.lower()
-                if "skill" in prompt_lower or "overlap" in prompt_lower or "matching candidate" in prompt_lower or "match candidate" in prompt_lower or "matching for the role" in prompt_lower or ("role" in prompt_lower and "match" in prompt_lower):
-                    filter_type = "skill_match"
-                else:
-                    filter_type = "culture_fit"
-            
-            if filter_type not in ("culture_fit", "skill_match"):
-                filter_type = "culture_fit"
+            # 1. Resolve filter_type - recommendation type is fixed to skills match
+            filter_type = "skill_match"
             
             # 2. Resolve job_id
             job_id = filters.get("job_id")
@@ -694,8 +761,13 @@ async def _execute_tool(intent: str, filters: Dict, user_id: str, role: str, pro
                 "min_current_salary": filters.get("min_current_salary"),
                 "max_current_salary": filters.get("max_current_salary"),
                 "required_skills": skills_list,
+                "original_skills": filters.get("original_skills"),
                 "career_readiness": ",".join(filters["career_readiness"]) if isinstance(filters.get("career_readiness"), list) else filters.get("career_readiness"),
                 "experience_band": filters.get("experience_band", "all"),
+                "min_experience": filters.get("min_experience"),
+                "max_experience": filters.get("max_experience"),
+                "job_type": filters.get("job_type"),
+                "job_title": filters.get("job_title"),
             }
             if job_id:
                 params["job_id"] = job_id
@@ -709,7 +781,7 @@ async def _execute_tool(intent: str, filters: Dict, user_id: str, role: str, pro
         elif intent == "job_search":
             return await CandidateService.get_recommended_jobs(
                 user_id=user_id,
-                filter_type="role_match",
+                filter_type="skills_focus",
                 location=filters.get("location"),
                 experience_band=filters.get("experience_band"),
                 min_salary=filters.get("min_salary"),
@@ -752,41 +824,8 @@ async def _generate_greeting(
 ) -> str:
     time_label = _infer_time_label(client_context)
     first_name = (user_context.get("full_name") or "").split()[0] or ""
-
-    prev_ref = f'Previously: "{prev_summary}".' if prev_summary else ""
-
-    # Recruiter-specific stats
-    stats = ""
-    if role == "recruiter":
-        active = user_context.get("active_jobs", 0)
-        pending = user_context.get("pending_applications", 0)
-        new_today = user_context.get("new_today", 0)
-        if active or pending:
-            stats = f"You have {active} active job(s) and {pending} pending application(s). {new_today} new today."
-    else:
-        apps = user_context.get("total_applications", 0)
-        saved = user_context.get("saved_jobs_count", 0)
-        if apps or saved:
-            stats = f"You have applied to {apps} job(s) and saved {saved}."
-
-    prompt = f"""
-Write a warm, direct, PROFESSIONAL greeting. 2 sentences MAX. No markdown.
-
-Name: {first_name or "there"}
-Role: {role}
-Time: Good {time_label}
-Stats: {stats}
-{prev_ref}
-
-Rules:
-- Address by first name if available
-- If prev_ref exists, say "Last time you were looking at …, want to continue?"
-- Otherwise offer a relevant suggestion based on their stats
-- Natural tone, not robotic
-- End with a soft open question or offer
-"""
-    greeting = await _call_ai(prompt, "Warm professional AI greeter")
-    return greeting or f"Good {time_label}{', ' + first_name if first_name else ''}! What can I help you with today?"
+    greeting_name = f", {first_name}" if first_name else ""
+    return f"Good {time_label}{greeting_name}! How can I assist you today?"
 
 
 async def _generate_chat_title(prompt: str) -> str:
@@ -842,9 +881,9 @@ Conversation context:
 Suggested next steps: {next_steps}
 
 STRICT RULES:
-1. If data_results exist → present them naturally (name, role, why they match). No "I found X results."
+1. If data_results exist and are being rendered as structured cards (e.g. candidate profiles, candidate lists, resumes, job lists, company lists), DO NOT output their full details (like phone numbers, emails, skills, experience, description, or requirements) in the conversational text. Instead, keep the text response extremely brief (1-2 sentences), introducing the results and directing the user to look at the card(s) rendered below. Do not repeat the information that is already displayed inside the cards. If there is a single candidate profile view, only give a brief intro (e.g. "Here is the profile for Sonam Shukla:") and avoid listing their experience, phone, email, and skills in the text.
 2. Limit to {limit} items. Reference is_followup context from history if relevant.
-3. If NO results → ask exactly ONE focused follow-up question to refine the search.
+3. If NO results (the results list is empty) → explicitly and clearly state to the user that no matching records were found in the database. Do not invent, assume, or hallucinate any mock or fake records. Ask exactly ONE focused follow-up question to refine the search.
 4. Briefly mention 1-2 next_steps at the end as natural suggestions (not a list).
 5. No markdown headers, no bullet points, no emoji. Conversational prose only.
 6. Keep response under 220 words.
@@ -977,29 +1016,140 @@ def _get_dynamic_next_steps(role: str, intent: str, data_results: List[Dict], ne
     return combined_steps
 
 
+async def _get_learned_next_steps(db, user_id: str, role: str, intent: str, data_results: List[Dict], next_steps: List[str]) -> List[str]:
+    if role != "recruiter":
+        return next_steps
+    try:
+        rows = db.execute(
+            text("""
+                SELECT action_type 
+                FROM recruiter_chat_actions 
+                WHERE user_id = :uid 
+                ORDER BY created_at DESC 
+                LIMIT 20
+            """),
+            {"uid": user_id}
+        ).fetchall()
+        actions = [r[0] for r in rows]
+    except Exception as e:
+        log.error("Failed to query recruiter actions: %s", e)
+        actions = []
+
+    intent_to_action = {
+        "candidate_search": "searched_candidates",
+        "profile_view": "viewed_profile",
+        "resume_view": "viewed_resume",
+        "view_jobs": "viewed_jobs",
+        "job_creation": "created_job",
+        "post_job": "created_job",
+        "job_edit": "edited_job",
+        "application_status": "viewed_applications",
+        "application_status_update": "updated_application",
+        "market_insights": "viewed_insights"
+    }
+    
+    current_action = intent_to_action.get(intent)
+    
+    next_action_counts = {}
+    if len(actions) >= 2 and current_action:
+        for i in range(len(actions) - 1):
+            if actions[i+1] == current_action:
+                followed_by = actions[i]
+                next_action_counts[followed_by] = next_action_counts.get(followed_by, 0) + 1
+
+    predicted_actions = sorted(next_action_counts.keys(), key=lambda k: next_action_counts[k], reverse=True)
+    
+    action_chips = {
+        "viewed_profile": "Would you like to view candidate profiles?",
+        "viewed_resume": "Would you like to view candidate resumes?",
+        "invited_candidate": "Would you like to invite candidates to your active jobs?",
+        "scheduled_interview": "Would you like to schedule an interview?",
+        "updated_application": "Would you like to update application statuses?",
+        "created_job": "Would you like to post a new job?",
+        "edited_job": "Would you like to edit your posted jobs?",
+        "viewed_insights": "Would you like to see real-time market insights?",
+        "searched_candidates": "Would you like to search for matching candidates?"
+    }
+
+    dynamic_steps = []
+    for act in predicted_actions:
+        chip = action_chips.get(act)
+        if chip and chip not in dynamic_steps:
+            dynamic_steps.append(chip)
+            
+    defaults = []
+    if intent in ("candidate_search", "view_candidates"):
+        defaults = [
+            "Would you like to post a job?",
+            "Would you like to see real-time market insights?",
+            "Would you like to view matching candidates for your active jobs?",
+            "Would you like to search for candidates with other experience levels?"
+        ]
+    elif intent in ("job_creation", "post_job", "job_edit"):
+        defaults = [
+            "Would you like to view matching candidates?",
+            "Would you like to see real-time market insights?",
+            "Would you like to view your posted jobs?",
+            "Would you like to post another job?"
+        ]
+    elif intent == "market_insights":
+        defaults = [
+            "Would you like to post a job?",
+            "Would you like to view matching candidates?",
+            "Would you like to view your posted jobs?",
+            "Would you like to refine search by location?"
+        ]
+    else:
+        defaults = [
+            "Would you like to post a job?",
+            "Would you like to view matching candidates?",
+            "Would you like to see real-time market insights?",
+            "Would you like to view your posted jobs?"
+        ]
+
+    for d in defaults:
+        if d not in dynamic_steps and len(dynamic_steps) < 4:
+            dynamic_steps.append(d)
+
+    combined_steps = []
+    seen = set()
+    for step in (dynamic_steps + next_steps):
+        step_clean = step.strip().lower()
+        if step_clean not in seen and len(combined_steps) < 4:
+            combined_steps.append(step)
+            seen.add(step_clean)
+            
+    return combined_steps
+
+
 # ────────────────────────────────────────────────────────────────
 # Intent → data_type mapping
 # ────────────────────────────────────────────────────────────────
 
 _INTENT_TYPE: Dict[str, str] = {
     "candidate_search": "candidate_list",
+    "view_candidates":  "candidate_list",
     "job_search":       "job_list",
+    "view_jobs":        "job_list",
+    "job_stats":        "job_list",
     "company_search":   "company_list",
     "market_insights":  "market_data",
     "profile_view":     "candidate_profile",
     "resume_view":      "resume_info",
-    "application_status": "application_list",
+    "application_status": "application_cards",
+    "application_status_update": "application_cards",
+    "schedule_interview": "schedule_interview",
 }
 
 
 def is_recommendation_request(prompt: str, filters: Dict) -> bool:
     p_lower = prompt.lower()
-    rec_keywords = ["recommend", "matching", "culture fit", "skill match", "best fit", "suitable candidates", "icp", "dna assessment"]
+    rec_keywords = ["recommend", "matching", "culture fit", "skill match", "best fit", "suitable candidates", "icp", "dna assessment", "suggest"]
     if any(kw in p_lower for kw in rec_keywords):
         return True
     if filters.get("match_type") in ("culture_fit", "skill_match") and ("fit" in p_lower or "match" in p_lower):
         return True
-    if filters.get("job_title") or filters.get("job_id"):
+    if filters.get("job_id"):
         return True
     return False
 
@@ -1164,10 +1314,29 @@ async def assistant_chat(
                 intent = "candidate_search"
 
         # Override intent to candidate_search if recruiter is searching for candidates/talent
-        if role == "recruiter" and intent in ("view_jobs", "job_search", "general", "greeting", "view_candidates"):
-            prompt_lower = prompt.lower()
-            if "candidate" in prompt_lower or "talent" in prompt_lower or "people" in prompt_lower or "resume" in prompt_lower:
-                intent = "candidate_search"
+        # or refining a previous candidate search
+        prev_is_candidate_search = False
+        if messages:
+            for m in reversed(messages):
+                if m.get("role") == "assistant":
+                    if m.get("intent") in ("candidate_search", "view_candidates") or m.get("data_type") == "candidate_list":
+                        prev_is_candidate_search = True
+                    break
+
+        if role == "recruiter":
+            prompt_lower = prompt.lower().strip()
+            refine_keywords = ["among", "whose", "with", "having", "filter", "restrict", "only", "also", "and", "who ", "immediate joiner", "years of experience", "experience of", "in ", "from ", "salary", "lpa", "experience", "skill", "knows"]
+            
+            is_refinement = False
+            if prev_is_candidate_search:
+                if any(prompt_lower.startswith(kw) or kw in prompt_lower for kw in refine_keywords):
+                    is_refinement = True
+                elif any(intent_data.get("filters", {}).get(k) for k in ("skills", "location", "experience_band", "min_experience", "max_experience", "min_salary", "max_salary", "min_current_salary", "max_current_salary", "career_readiness", "job_type")):
+                    is_refinement = True
+
+            if intent in ("view_jobs", "job_search", "general", "greeting", "view_candidates", "help") or is_refinement:
+                if "candidate" in prompt_lower or "talent" in prompt_lower or "people" in prompt_lower or "resume" in prompt_lower or is_refinement:
+                    intent = "candidate_search"
 
         # Sticky candidate search filters merge
         if role == "recruiter" and intent == "candidate_search":
@@ -1302,6 +1471,7 @@ async def assistant_chat(
 
                 if current_slots.get("title") and current_slots.get("description"):
                     res = await recruiter_service.create_job(user_id, current_slots)
+                    _log_recruiter_action(db, user_id, session_id, "created_job", target_id=res.get("id") if isinstance(res, dict) else None, metadata={"job_title": current_slots.get('title')})
                     workflow_text = f"Awesome! The job '{current_slots.get('title')}' has been successfully published to the platform."
                     
                     # Fetch recruiter's jobs to show
@@ -1411,6 +1581,7 @@ async def assistant_chat(
                                 if k in current_slots:
                                     setattr(job, k, current_slots[k])
                             db.commit()
+                            _log_recruiter_action(db, user_id, session_id, "edited_job", target_id=str(job.id), metadata={"job_title": job.title})
                             workflow_text = f"Awesome! The job '{job.title}' has been successfully updated."
                         else:
                             workflow_text = "Sorry, I couldn't find the job to update, or you don't have permission to edit it."
@@ -1666,6 +1837,7 @@ async def assistant_chat(
                             db,
                         )
                         db.commit()
+                        _log_recruiter_action(db, user_id, session_id, "invited_candidate", target_id=candidate_id, metadata={"job_id": job_id, "message": invite_msg})
 
                         workflow_text = f"Invite sent successfully to {target_name}!"
                         active_workflow = None
@@ -1762,6 +1934,7 @@ async def assistant_chat(
                                 db=db
                             )
                         db.commit()
+                        _log_recruiter_action(db, user_id, session_id, "updated_application", target_id=application_id, metadata={"candidate_id": candidate_id, "job_id": job_id, "status": status})
 
                         # Fetch updated applications for this job (or all)
                         query = db.query(JobApplication, Job, CandidateProfile, ProfileScore, User).join(
@@ -1860,6 +2033,7 @@ async def assistant_chat(
                     if job:
                         db.delete(job)
                         db.commit()
+                        _log_recruiter_action(db, user_id, session_id, "deleted_job", target_id=target_job_id, metadata={"job_title": job.title})
                         workflow_text = f"Successfully deleted the job posting for '{current_slots.get('job_title')}'."
                         
                         # Fetch updated job list to show
@@ -1980,6 +2154,7 @@ async def assistant_chat(
                 else:
                     job.status = status
                     db.commit()
+                    _log_recruiter_action(db, user_id, session_id, "edited_job", target_id=str(job.id), metadata={"status": status, "job_title": job.title})
                     workflow_text = f"Successfully updated the status of '{job.title}' to '{status}' (Open/Active)." if status == "active" else f"Successfully updated the status of '{job.title}' to '{status}'."
                     
                     # Fetch updated job list to show
@@ -2255,6 +2430,7 @@ async def assistant_chat(
                 }]
                 workflow_text = f"Ready to schedule an interview with {app_obj[2].full_name} for the '{app_obj[1].title}' position."
                 data_type = "schedule_interview"
+                _log_recruiter_action(db, user_id, session_id, "scheduled_interview", target_id=str(app_obj[0].id), metadata={"candidate_name": app_obj[2].full_name, "job_title": app_obj[1].title})
             else:
                 workflow_text = "Could not find a matching active candidate application to schedule an interview for."
                 data_type = "none"
@@ -2345,7 +2521,7 @@ async def assistant_chat(
             data_results = data_results[:limit]
             data_type = _INTENT_TYPE.get(intent, "none") if data_results else "none"
 
-            next_steps = _get_dynamic_next_steps(role, intent, data_results, next_steps)
+            next_steps = await _get_learned_next_steps(db, user_id, role, intent, data_results, next_steps)
 
             final_text = await _generate_response(
                 prompt=prompt,
@@ -2360,7 +2536,7 @@ async def assistant_chat(
             )
         else:
             final_text = workflow_text
-            next_steps = _get_dynamic_next_steps(role, intent, data_results, next_steps)
+            next_steps = await _get_learned_next_steps(db, user_id, role, intent, data_results, next_steps)
 
         # ── 8. Greeting prefix for new sessions ─────────────────
         if is_new_session and prompt == "__greeting__":
@@ -2394,6 +2570,7 @@ async def assistant_chat(
                         db=db
                     )
                     db.commit()
+                    _log_recruiter_action(db, user_id, session_id, "searched_candidates", metadata={"filters": filters, "results_count": match_count})
                 elif intent == "profile_view":
                     cand_name = data_results[0].get("full_name") or "Candidate"
                     NotificationService.create_notification(
@@ -2405,6 +2582,7 @@ async def assistant_chat(
                         db=db
                     )
                     db.commit()
+                    _log_recruiter_action(db, user_id, session_id, "viewed_profile", target_id=data_results[0].get("user_id"), metadata={"candidate_name": cand_name})
                 elif intent == "resume_view":
                     cand_name = data_results[0].get("full_name") or "Candidate"
                     NotificationService.create_notification(
@@ -2416,6 +2594,9 @@ async def assistant_chat(
                         db=db
                     )
                     db.commit()
+                    _log_recruiter_action(db, user_id, session_id, "viewed_resume", target_id=data_results[0].get("user_id"), metadata={"candidate_name": cand_name})
+                elif intent == "market_insights":
+                    _log_recruiter_action(db, user_id, session_id, "viewed_insights")
             except Exception as notif_err:
                 log.warning("Could not create recruiter notification: %s", notif_err)
 

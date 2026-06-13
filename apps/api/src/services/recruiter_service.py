@@ -281,11 +281,15 @@ class RecruiterService:
         return alias_map.get(normalized, normalized)
 
     def _canonicalize_skill_terms(self, skills) -> set:
+        import re
         terms = set()
         for skill in skills or []:
-            token = self._normalize_skill_token(skill)
-            if token:
-                terms.add(token)
+            # Split compound skill names by common delimiters like & and , /
+            sub_skills = re.split(r'\s+and\s+|\s+&\s+|\s*,\s*|\s*/\s*', str(skill))
+            for s in sub_skills:
+                token = self._normalize_skill_token(s)
+                if token:
+                    terms.add(token)
         return terms
 
     async def _expand_job_skills_with_ai(self, target_job, target_skills) -> list:
@@ -1157,6 +1161,23 @@ Respond with ONLY the domain in format: domain.com (no https://, no www., just t
         """
         db = SessionLocal()
         try:
+            # Extract query parameters for filtering recommended candidates
+            search_skills_list = params.get("required_skills") or []
+            search_skills_lower = set([s.lower().strip() for s in search_skills_list if s])
+            
+            original_skills = params.get("original_skills")
+            original_skills_list = []
+            if original_skills:
+                if isinstance(original_skills, list):
+                    original_skills_list = [s.lower().strip() for s in original_skills if s]
+                elif isinstance(original_skills, str):
+                    original_skills_list = [s.lower().strip() for s in original_skills.split(",") if s.strip()]
+            
+            min_experience = params.get("min_experience")
+            max_experience = params.get("max_experience")
+            job_type_filter = params.get("job_type")
+            job_title_filter = params.get("job_title")
+
             # 1. Context building
             target_job = None
             if params.get("job_id"):
@@ -1273,19 +1294,20 @@ Respond with ONLY the domain in format: domain.com (no https://, no www., just t
                 elif params["experience_band"] == "leadership":
                     query = query.filter(CandidateProfile.years_of_experience > 10)
 
-            candidates = query.limit(200).all()
+            candidates = query.all()
             
-            # 4. Build target skills from the posted role.
-            # Skills Match must stay anchored to the job that was posted for this recommendation.
+            # 4. Build target skills from the posted role or custom search skills.
             target_skills = set()
             if filter_type == "skill_match" and target_job and target_job.skills_required:
                 target_skills = set([s.lower() for s in target_job.skills_required if s])
+            
+            # Fallback to search skills if no target job is defined
+            if not target_skills and search_skills_lower:
+                target_skills = search_skills_lower
 
             target_exp_band = target_job.experience_band if target_job else params.get("experience_band")
 
-            resolved_target_skills = set()
-            if filter_type == "skill_match" and target_job:
-                resolved_target_skills = await self._resolve_target_skill_terms(target_job, target_skills)
+            resolved_target_skills = self._canonicalize_skill_terms(target_skills)
             
             target_max_salary = 0
             if target_job and target_job.salary_range:
@@ -1295,39 +1317,63 @@ Respond with ONLY the domain in format: domain.com (no https://, no www., just t
                 try: target_max_salary = float(params["max_salary"])
                 except: pass
 
-            # 5. Score candidates according to filter_type
+            # 5. Score candidates according to filter_type (fixed to skill_match)
             results = []
-            borderline_candidates = []
-            existing_result_ids = set()
-
-            if filter_type == "skill_match" and not target_job:
-                return []
             
             for c in candidates:
                 is_shadow = getattr(c, 'is_shadow_profile', False)
                 c_skills = self._canonicalize_skill_terms(c.skills or [])
+                
+                # A. Apply direct query skills hard filter if specified
+                if search_skills_lower:
+                    if not c_skills.intersection(search_skills_lower):
+                        continue
+                
+                # B. Filter by min/max experience
+                c_years = c.years_of_experience or 0
+                if min_experience is not None:
+                    try:
+                        if c_years < int(min_experience):
+                            continue
+                    except ValueError:
+                        pass
+                if max_experience is not None:
+                    try:
+                        if c_years > int(max_experience):
+                            continue
+                    except ValueError:
+                        pass
+                        
+                # C. Filter by job type
+                if job_type_filter:
+                    c_jt = str(c.job_type or "").lower().strip()
+                    if job_type_filter.lower().strip() not in c_jt:
+                        continue
+                        
+                # D. Filter by Job Title / Role match
+                if job_title_filter:
+                    c_role = str(c.current_role or "").lower().strip()
+                    c_t_role = str(c.target_role or "").lower().strip()
+                    jt_search = job_title_filter.lower().strip()
+                    if jt_search not in c_role and jt_search not in c_t_role:
+                        continue
+
                 target_skills_lower = resolved_target_skills if resolved_target_skills else self._canonicalize_skill_terms(target_skills)
                 skill_overlap = c_skills.intersection(target_skills_lower)
-                exp_label = self._get_exp_label(c.years_of_experience or 0)
-                target_exp_match = bool(target_exp_band and target_exp_band.lower() == exp_label)
-                target_exp_adjacent = False
-                if target_exp_band and target_exp_band.lower() != exp_label:
-                    exp_order = ["fresher", "mid", "senior", "leadership"]
-                    if target_exp_band.lower() in exp_order and exp_label in exp_order:
-                        target_exp_adjacent = abs(exp_order.index(target_exp_band.lower()) - exp_order.index(exp_label)) == 1
-
-                if filter_type == "skill_match":
-                    if not target_skills_lower:
-                        continue
-                    if not skill_overlap:
-                        continue
-                    if not (target_exp_match or target_exp_adjacent):
-                        continue
-                elif target_job and target_skills_lower:
-                    if not skill_overlap:
-                        continue
-                elif target_job and not (target_exp_match or target_exp_adjacent):
+                
+                # Must have at least one skill overlap to match (unless no target skills are defined)
+                if target_skills_lower and not skill_overlap:
                     continue
+
+                if target_skills_lower:
+                    if not target_job and original_skills_list:
+                        match_ratio = len(skill_overlap) / len(original_skills_list)
+                        skills_match_score = min(100, int(round(match_ratio * 100)))
+                    else:
+                        match_ratio = len(skill_overlap) / len(target_skills_lower)
+                        skills_match_score = int(round(match_ratio * 100))
+                else:
+                    skills_match_score = 0
 
                 if career_readiness_values:
                     matched_all_readiness = True
@@ -1341,65 +1387,48 @@ Respond with ONLY the domain in format: domain.com (no https://, no www., just t
                             break
                     if not matched_all_readiness:
                         continue
-                
-                if filter_type == "profile_matching":
-                    # **EXPERT VIEW: Master Match Algorithm**
+
+                # Compute culture fit score
+                culture_score, culture_reason = await self._score_culture_fit(
+                    c, target_skills, target_exp_band, target_max_salary,
+                    is_shadow=is_shadow,
+                    recruiter_icp=recruiter_icp,
+                    recruiter_assessments=recruiter_assessments,
+                    db=db
+                )
+
+                # Filter by min_culture_score
+                min_culture_score = params.get("min_culture_score")
+                if min_culture_score:
+                    try:
+                        if culture_score < float(min_culture_score):
+                            continue
+                    except ValueError:
+                        pass
+
+                # Filter by candidate_types
+                candidate_types = params.get("candidate_types") or []
+                if candidate_types:
+                    is_completed = (c.assessment_status or "").strip().lower() == "completed"
+                    c_type = ""
                     if is_shadow:
-                        # Shadow profiles: Use pedigree-based matching
-                        score, reasoning = await self._expert_match_score_shadow(c, target_skills, target_exp_band, target_max_salary)
+                        c_type = "passive"
+                    elif is_completed:
+                        c_type = "active_verified"
                     else:
-                        # Verified candidates: Full assessment analysis
-                        score, reasoning = await self._expert_match_score(
-                            c, target_skills, target_exp_band, target_max_salary,
-                            recruiter_icp=recruiter_icp,
-                            recruiter_assessments=recruiter_assessments,
-                            user_id=user_id,
-                            db=db
-                        )
-                elif filter_type == "skill_match":
-                    # **SKILLS FOCUS**
-                    if not target_job or not target_skills_lower:
-                        continue
-                    match_ratio = len(skill_overlap) / len(target_skills_lower)
-                    deterministic_score = int(round(match_ratio * 100))
-                    if match_ratio > 0.65:
-                        score, reasoning = self._score_skill_match(c, target_skills, target_exp_band, target_max_salary, is_shadow)
-                        results.append({
-                            "user_id": str(c.user_id),
-                            "full_name": c.full_name or ("Potential Lead" if is_shadow else "Anonymous Talent"),
-                            "current_role": c.current_role or "Sales Professional",
-                            "experience": self._get_exp_label(c.years_of_experience or 0),
-                            "years_of_experience": c.years_of_experience or 0,
-                            "culture_match_score": score,
-                            "match_reasoning": reasoning,
-                            "skills": c.skills or [],
-                            "profile_photo_url": get_s3_url_with_fallback(c.profile_photo_url) or f"https://api.dicebear.com/7.x/avataaars/svg?seed={(c.full_name or 'User').replace(' ', '%20')}",
-                            "resume_path": S3Service.get_signed_url(c.resume_path) if c.resume_path else None,
-                            "identity_verified": c.identity_verified or False,
-                            "profile_strength": "Lead" if is_shadow else (c.profile_strength or "Moderate"),
-                            "expected_salary": float(c.expected_salary or 0),
-                            "is_shadow": is_shadow,
-                            "assessment_status": "verified" if not is_shadow else "passive_lead",
-                            "match_type": "strict_skill_match",
-                            "deterministic_skill_score": deterministic_score,
-                        })
-                        existing_result_ids.add(str(c.user_id))
-                    continue
-                else:
-                    # **CULTURE FIT (Default)**
-                    score, reasoning = await self._score_culture_fit(
-                        c, target_skills, target_exp_band, target_max_salary,
-                        is_shadow=is_shadow,
-                        recruiter_icp=recruiter_icp,
-                        recruiter_assessments=recruiter_assessments,
-                        db=db
-                    )
+                        c_type = "active_unverified"
 
-                    if score < CULTURE_FIT_BENCHMARK:
+                    if c_type not in candidate_types:
                         continue
 
-                if str(c.user_id) in existing_result_ids:
-                    continue
+                # Generate clean matched/missing skills list with casing preserved
+                matched_skills_list = []
+                missing_skills_list = []
+                for s in (target_skills or []):
+                    if s and self._normalize_skill_token(s) in skill_overlap:
+                        matched_skills_list.append(s)
+                    elif s:
+                        missing_skills_list.append(s)
 
                 results.append({
                     "user_id": str(c.user_id),
@@ -1407,64 +1436,31 @@ Respond with ONLY the domain in format: domain.com (no https://, no www., just t
                     "current_role": c.current_role or "Sales Professional",
                     "experience": self._get_exp_label(c.years_of_experience or 0),
                     "years_of_experience": c.years_of_experience or 0,
-                    "culture_match_score": score,
-                    "match_reasoning": reasoning,
+                    "culture_match_score": skills_match_score, # displays skills match score primarily
+                    "actual_culture_fit_score": culture_score,
+                    "match_reasoning": f"Matched {len(skill_overlap)} of {len(target_skills_lower)} required skills.",
                     "skills": c.skills or [],
+                    "matched_skills": matched_skills_list,
+                    "missing_skills": missing_skills_list,
                     "profile_photo_url": get_s3_url_with_fallback(c.profile_photo_url) or f"https://api.dicebear.com/7.x/avataaars/svg?seed={(c.full_name or 'User').replace(' ', '%20')}",
                     "resume_path": S3Service.get_signed_url(c.resume_path) if c.resume_path else None,
                     "identity_verified": c.identity_verified or False,
                     "profile_strength": "Lead" if is_shadow else (c.profile_strength or "Moderate"),
                     "expected_salary": float(c.expected_salary or 0),
                     "is_shadow": is_shadow,
-                    "assessment_status": "verified" if not is_shadow else "passive_lead"
+                    "assessment_status": "verified" if not is_shadow else "passive_lead",
+                    "assessment_completed": (c.assessment_status or "").strip().lower() == "completed" and not is_shadow
                 })
 
-            if filter_type == "skill_match" and borderline_candidates:
-                semantic_ranked = await self._semantic_rerank_borderline_skill_matches(
-                    target_job,
-                    target_skills,
-                    borderline_candidates,
-                )
-                borderline_lookup = {
-                    str(item["candidate"].user_id): item
-                    for item in borderline_candidates
-                }
-
-                for ranked_item in semantic_ranked:
-                    user_id = ranked_item["user_id"]
-                    if user_id in existing_result_ids:
-                        continue
-
-                    source_item = borderline_lookup.get(user_id)
-                    if not source_item:
-                        continue
-                    if ranked_item["semantic_score"] < 75:
-                        continue
-
-                    candidate = source_item["candidate"]
-                    is_shadow = getattr(candidate, 'is_shadow_profile', False)
-                    results.append({
-                        "user_id": str(candidate.user_id),
-                        "full_name": candidate.full_name or ("Potential Lead" if is_shadow else "Anonymous Talent"),
-                        "current_role": candidate.current_role or "Sales Professional",
-                        "experience": self._get_exp_label(candidate.years_of_experience or 0),
-                        "years_of_experience": candidate.years_of_experience or 0,
-                        "culture_match_score": ranked_item["semantic_score"],
-                        "match_reasoning": ranked_item["reason"],
-                        "skills": candidate.skills or [],
-                        "profile_photo_url": get_s3_url_with_fallback(candidate.profile_photo_url) or f"https://api.dicebear.com/7.x/avataaars/svg?seed={(candidate.full_name or 'User').replace(' ', '%20')}",
-                        "resume_path": S3Service.get_signed_url(candidate.resume_path) if candidate.resume_path else None,
-                        "identity_verified": candidate.identity_verified or False,
-                        "profile_strength": "Lead" if is_shadow else (candidate.profile_strength or "Moderate"),
-                        "expected_salary": float(candidate.expected_salary or 0),
-                        "is_shadow": is_shadow,
-                        "assessment_status": "verified" if not is_shadow else "passive_lead",
-                        "match_type": "semantic_skill_fallback",
-                        "deterministic_skill_score": int(round(source_item["match_ratio"] * 100)),
-                    })
-                    existing_result_ids.add(user_id)
-            
-            results.sort(key=lambda x: x["culture_match_score"], reverse=True)
+            # Sort: High matching (Skills Match score) first, then Verified active first
+            results.sort(
+                key=lambda x: (
+                    x["culture_match_score"],
+                    x["assessment_completed"],
+                    not x["is_shadow"]
+                ),
+                reverse=True
+            )
             return results
         finally:
             db.close()
@@ -1963,6 +1959,16 @@ Rate ICP alignment on 0-100. Output format: SCORE: [number] | REASON: [one sente
             min_current_salary = params.get("min_current_salary")
             max_current_salary = params.get("max_current_salary")
             skills = params.get("skills") or []
+            original_skills = params.get("original_skills")
+            original_skills_list = []
+            if original_skills:
+                if isinstance(original_skills, list):
+                    original_skills_list = [s.lower().strip() for s in original_skills if s]
+                elif isinstance(original_skills, str):
+                    original_skills_list = [s.lower().strip() for s in original_skills.split(",") if s.strip()]
+            if not original_skills_list:
+                original_skills_list = [s.lower().strip() for s in skills if s] if isinstance(skills, list) else [s.lower().strip() for s in str(skills).split(",") if s.strip()]
+
             job_type = params.get("job_type")
             career_readiness = params.get("career_readiness") or []
             job_title = params.get("job_title")
@@ -2116,8 +2122,9 @@ Rate ICP alignment on 0-100. Output format: SCORE: [number] | REASON: [one sente
                 
                 # 7. Filter: Skills
                 if skills_search:
-                    c_skills = [s.lower().strip() for s in (c.skills or []) if s]
-                    if not any(any(ss in cs or cs in ss for cs in c_skills) for ss in skills_search):
+                    c_skills_canonical = self._canonicalize_skill_terms(c.skills or [])
+                    search_skills_canonical = self._canonicalize_skill_terms(skills_search)
+                    if not c_skills_canonical.intersection(search_skills_canonical):
                         continue
                 
                 # 8. Filter: Job Title / Role
@@ -2128,112 +2135,18 @@ Rate ICP alignment on 0-100. Output format: SCORE: [number] | REASON: [one sente
                     if jt_search not in c_role and jt_search not in c_t_role:
                         continue
 
-                # Compute dynamic match score based on active criteria weights
-                score_components = []
-                total_weight = 0.0
-
-                # A. Skills Fit (40%)
+                # Compute strict Skills Match score (ratio of overlapping skills to total search skills)
                 if skills_search:
-                    c_skills_lower = [s.lower().strip() for s in (c.skills or []) if s]
-                    overlap_count = 0
-                    for ss in skills_search:
-                        if any(ss in cs or cs in ss for cs in c_skills_lower):
-                            overlap_count += 1
-                    skills_score = (overlap_count / len(skills_search)) * 100.0
-                    score_components.append((skills_score, 0.40))
-                    total_weight += 0.40
-
-                # B. Experience Fit (30%)
-                exp_components = []
-                if min_experience is not None:
-                    try:
-                        min_exp_val = int(min_experience)
-                        if c_years >= min_exp_val:
-                            exp_components.append(100.0)
-                        else:
-                            diff = min_exp_val - c_years
-                            exp_components.append(max(0.0, 100.0 - (diff * 20.0)))
-                    except ValueError:
-                        pass
-                if max_experience is not None:
-                    try:
-                        max_exp_val = int(max_experience)
-                        if c_years <= max_exp_val:
-                            exp_components.append(100.0)
-                        else:
-                            diff = c_years - max_exp_val
-                            exp_components.append(max(0.0, 100.0 - (diff * 20.0)))
-                    except ValueError:
-                        pass
-                if experience_band and experience_band != "all":
-                    c_band = get_exp_band(c_years)
-                    if c_band == experience_band:
-                        exp_components.append(100.0)
-                    else:
-                        exp_components.append(50.0)
-
-                if exp_components:
-                    avg_exp_score = sum(exp_components) / len(exp_components)
-                    score_components.append((avg_exp_score, 0.30))
-                    total_weight += 0.30
-
-                # C. Salary Fit (20%)
-                if min_salary is not None or max_salary is not None:
-                    if c_salary is not None and c_salary > 0:
-                        salary_components = []
-                        if min_salary is not None:
-                            if c_salary >= min_salary:
-                                salary_components.append(100.0)
-                            else:
-                                diff = min_salary - c_salary
-                                pct = diff / min_salary
-                                salary_components.append(max(0.0, 100.0 - (pct * 100.0)))
-                        if max_salary is not None:
-                            if c_salary <= max_salary:
-                                salary_components.append(100.0)
-                            else:
-                                diff = c_salary - max_salary
-                                pct = diff / max_salary
-                                salary_components.append(max(0.0, 100.0 - (pct * 100.0)))
-                        avg_salary_score = sum(salary_components) / len(salary_components)
-                        score_components.append((avg_salary_score, 0.20))
-                        total_weight += 0.20
-                    else:
-                        score_components.append((80.0, 0.20))
-                        total_weight += 0.20
-
-                # D. Location & Job Type Fit (10%)
-                loc_jt_components = []
-                if loc_search:
-                    c_loc = str(c.location or "").lower().strip()
-                    if any(eq in c_loc for eq in loc_equivalents):
-                        loc_jt_components.append(100.0)
-                    else:
-                        loc_jt_components.append(0.0)
-                if job_type:
-                    c_jt = str(c.job_type or "").lower().strip()
-                    if job_type.lower().strip() in c_jt:
-                        loc_jt_components.append(100.0)
-                    else:
-                        loc_jt_components.append(0.0)
-
-                if loc_jt_components:
-                    avg_loc_jt_score = sum(loc_jt_components) / len(loc_jt_components)
-                    score_components.append((avg_loc_jt_score, 0.10))
-                    total_weight += 0.10
-
-                # Final composite score or fallback default
-                if total_weight > 0:
-                    final_match_score = sum(s * w for s, w in score_components) / total_weight
+                    c_skills_canonical = self._canonicalize_skill_terms(c.skills or [])
+                    search_skills_canonical = self._canonicalize_skill_terms(skills_search)
+                    overlap = c_skills_canonical.intersection(search_skills_canonical)
+                    
+                    original_skills_canonical = self._canonicalize_skill_terms(original_skills_list)
+                    denominator = len(original_skills_canonical) if original_skills_canonical else len(search_skills_canonical)
+                    match_ratio = len(overlap) / denominator if denominator > 0 else 0
+                    final_match_score = min(100, int(round(match_ratio * 100)))
                 else:
-                    if c.is_shadow_profile:
-                        final_match_score = 75.0
-                    elif c.assessment_status == "completed" or c.assessment_status == "verified":
-                        final_match_score = 90.0
-                    else:
-                        final_match_score = 80.0
-
-                final_match_score = max(0, min(100, int(round(final_match_score))))
+                    final_match_score = 100
 
                 # Build descriptive reasoning
                 reasoning_parts = []
@@ -2241,7 +2154,6 @@ Rate ICP alignment on 0-100. Output format: SCORE: [number] | REASON: [one sente
                 if skills_search:
                     c_skills_original = c.skills or []
                     matched_skills_names = []
-                    c_skills_lower = [s.lower().strip() for s in c_skills_original if s]
                     for ss in skills_search:
                         for cs in c_skills_original:
                             if ss in cs.lower() or cs.lower() in ss:
@@ -2268,6 +2180,8 @@ Rate ICP alignment on 0-100. Output format: SCORE: [number] | REASON: [one sente
                 match_reasoning = " · ".join(reasoning_parts)
                 exp_label_returned = self._get_exp_label(c_years)
 
+                is_completed = (c.assessment_status or "").strip().lower() == "completed"
+
                 results.append({
                     "user_id": str(c.user_id),
                     "full_name": c.full_name or ("Potential Lead" if c.is_shadow_profile else "Anonymous Talent"),
@@ -2288,10 +2202,19 @@ Rate ICP alignment on 0-100. Output format: SCORE: [number] | REASON: [one sente
                     "is_shadow": c.is_shadow_profile or False,
                     "assessment_status": c.assessment_status or "not_started",
                     "culture_match_score": final_match_score,
-                    "match_reasoning": match_reasoning
+                    "match_reasoning": match_reasoning,
+                    "assessment_completed": is_completed and not c.is_shadow_profile
                 })
             
-            results.sort(key=lambda x: x["years_of_experience"], reverse=True)
+            # Sort: High matching (Skills Match score) first, then Verified active first
+            results.sort(
+                key=lambda x: (
+                    x["culture_match_score"],
+                    x["assessment_completed"],
+                    not x["is_shadow"]
+                ),
+                reverse=True
+            )
             return results
         finally:
             db.close()

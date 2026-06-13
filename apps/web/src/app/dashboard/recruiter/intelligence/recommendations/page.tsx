@@ -83,8 +83,8 @@ export default function RecommendationsPage() {
   const router = useRouter();
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeFilters, setActiveFilters] = useState<string[]>(["culture_fit"]);
-  const [appliedFilters, setAppliedFilters] = useState<string[]>(["culture_fit"]);
+  const [activeFilters, setActiveFilters] = useState<string[]>(["skill_match"]);
+  const [appliedFilters, setAppliedFilters] = useState<string[]>(["skill_match"]);
   const [recruiterProfile, setRecruiterProfile] =
     useState<RecruiterProfile | null>(null);
   const [jobs, setJobs] = useState<any[]>([]);
@@ -102,6 +102,10 @@ export default function RecommendationsPage() {
   const [appliedFilterMaxSalary, setAppliedFilterMaxSalary] = useState<string>("");
   const [selectedReadinessFilters, setSelectedReadinessFilters] = useState<string[]>([]);
   const [appliedReadinessFilters, setAppliedReadinessFilters] = useState<string[]>([]);
+  const [selectedCandidateTypes, setSelectedCandidateTypes] = useState<string[]>(["active_verified", "active_unverified", "passive"]);
+  const [appliedCandidateTypes, setAppliedCandidateTypes] = useState<string[]>(["active_verified", "active_unverified", "passive"]);
+  const [minCultureScore, setMinCultureScore] = useState<string>("");
+  const [appliedMinCultureScore, setAppliedMinCultureScore] = useState<string>("");
 
   const [currencySymbol, setCurrencySymbol] = useState<string>("$");
   const [isSyncing, setIsSyncing] = useState(false);
@@ -173,6 +177,8 @@ export default function RecommendationsPage() {
     setAppliedFilterLocation(filterLocation);
     setAppliedFilterMaxSalary(filterMaxSalary);
     setAppliedReadinessFilters(selectedReadinessFilters);
+    setAppliedCandidateTypes(selectedCandidateTypes);
+    setAppliedMinCultureScore(minCultureScore);
   };
 
   const [profileModal, setProfileModal] = useState<{
@@ -215,7 +221,7 @@ export default function RecommendationsPage() {
       ]);
 
       const jobList = Array.isArray(jobsData) ? jobsData : [];
-      const preferredJobId = String(jobIdFromUrl || appliedSelectedJobId || selectedJobId || jobList.find((job) => job.status === "active")?.id || jobList[0]?.id || "");
+      const preferredJobId = String(appliedSelectedJobId || selectedJobId || jobIdFromUrl || jobList.find((job) => job.status === "active")?.id || jobList[0]?.id || "");
       const selectedJob = jobList.find((job) => String(job.id) === preferredJobId) || null;
 
       if (preferredJobId && preferredJobId !== selectedJobId) {
@@ -244,10 +250,16 @@ export default function RecommendationsPage() {
       if (appliedReadinessFilters.length > 0) {
         url += `&career_readiness=${encodeURIComponent(appliedReadinessFilters.join(","))}`;
       }
-      if (!isSkillMatch && appliedFilterExperience !== "all") {
+      if (appliedFilterExperience !== "all") {
         url += `&experience_band=${encodeURIComponent(appliedFilterExperience)}`;
       }
       if (appliedSearchTerm) url += `&skills=${encodeURIComponent(appliedSearchTerm)}`;
+      if (appliedMinCultureScore) {
+        url += `&min_culture_score=${encodeURIComponent(appliedMinCultureScore)}`;
+      }
+      if (appliedCandidateTypes.length > 0) {
+        url += `&candidate_types=${encodeURIComponent(appliedCandidateTypes.join(","))}`;
+      }
 
       const recData = await apiClient.get(url, token);
 
@@ -275,7 +287,7 @@ export default function RecommendationsPage() {
       setLoading(false);
       setIsSyncing(false);
     }
-  }, [appliedFilters, appliedFilterExperience, appliedFilterLocation, appliedFilterMaxSalary, appliedReadinessFilters, appliedSearchTerm, router, appliedSelectedJobId, selectedJobId]);
+  }, [appliedFilters, appliedFilterExperience, appliedFilterLocation, appliedFilterMaxSalary, appliedReadinessFilters, appliedSearchTerm, router, appliedSelectedJobId, selectedJobId, appliedCandidateTypes, appliedMinCultureScore]);
 
   useEffect(() => {
     if (!selectedJobId && jobs.length > 0) {
@@ -404,14 +416,14 @@ export default function RecommendationsPage() {
     return matchesSearch && matchesFilter;
   });
 
-  // Group by Match Strength with 50% minimum threshold
+  // Group by Match Strength with any overlap minimum threshold
   const tiers = {
     elite: filteredCandidates.filter((c) => c.culture_match_score >= 85),
     strong: filteredCandidates.filter(
       (c) => c.culture_match_score >= 70 && c.culture_match_score < 85,
     ),
     potential: filteredCandidates.filter(
-      (c) => c.culture_match_score >= 50 && c.culture_match_score < 70,
+      (c) => c.culture_match_score >= 1 && c.culture_match_score < 70,
     ),
   };
 
@@ -459,28 +471,28 @@ export default function RecommendationsPage() {
               <aside className="sticky top-3 flex max-h-[calc(100vh-1.5rem)] flex-col overflow-hidden rounded-[28px] border border-orange-100/80 bg-white/90 shadow-[0_8px_28px_rgba(255,138,0,0.07)]">
                 <div className="flex-shrink-0 border-b border-orange-100/70 bg-gradient-to-r from-[#FFF6ED] to-white px-4 py-3">
                   <p className="text-xs font-black uppercase tracking-[0.22em] text-[#FF8A00]">Filters</p>
-                  <p className="mt-1 text-xs text-slate-500">Pick the posted role first, then narrow the candidate pool.</p>
                 </div>
-
                 <div className="reco-scroll flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
-                  {activeFilters.includes("skill_match") && (
-                    <div>
-                      <label className="mb-1.5 block text-xs font-bold text-slate-600">Posted role</label>
-                      <select
-                        value={selectedJobId}
-                        onChange={(e) => setSelectedJobId(e.target.value)}
-                        className="w-full cursor-pointer rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-medium text-slate-900 outline-none transition-all focus:border-[#FF8A00]/60 focus:ring-2 focus:ring-[#FF8A00]/15"
-                      >
-                        <option value="">Select a posted role</option>
-                        {jobs.map((job) => (
-                          <option key={String(job.id)} value={String(job.id)}>
-                            {job.title}{job.location ? ` • ${job.location}` : ""}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="mt-1 text-[11px] text-slate-500">Skills Match uses the selected job description skills only.</p>
-                    </div>
-                  )}
+                  <div>
+                    <label className="mb-1.5 block text-xs font-bold text-slate-600">Posted role</label>
+                    <select
+                      value={selectedJobId}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSelectedJobId(val);
+                        setAppliedSelectedJobId(val);
+                      }}
+                      className="w-full cursor-pointer rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-medium text-slate-900 outline-none transition-all focus:border-[#FF8A00]/60 focus:ring-2 focus:ring-[#FF8A00]/15"
+                    >
+                      <option value="">Select a posted role</option>
+                      {jobs.map((job) => (
+                        <option key={String(job.id)} value={String(job.id)}>
+                          {job.title} ({job.matching_candidates_count || 0} matches)
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-[11px] text-slate-500">Skills Match uses the selected job description skills only.</p>
+                  </div>
 
                   <div className="relative">
                     <label className="mb-1.5 block text-xs font-bold text-slate-600">Search</label>
@@ -495,41 +507,87 @@ export default function RecommendationsPage() {
                   </div>
 
                   <div className="grid gap-3">
+                    {/* Candidate Source Section */}
+                    <div>
+                      <label className="mb-1.5 block text-xs font-bold text-slate-600">Candidate Source</label>
+                      <div className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-3">
+                        <label className="flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={selectedCandidateTypes.includes("active_verified")}
+                            onChange={(e) => {
+                              setSelectedCandidateTypes(prev =>
+                                e.target.checked
+                                  ? [...prev, "active_verified"]
+                                  : prev.filter(t => t !== "active_verified")
+                              );
+                            }}
+                            className="rounded text-[#FF8A00] focus:ring-[#FF8A00]/25"
+                          />
+                          Active - Verified
+                        </label>
+                        <label className="flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={selectedCandidateTypes.includes("active_unverified")}
+                            onChange={(e) => {
+                              setSelectedCandidateTypes(prev =>
+                                e.target.checked
+                                  ? [...prev, "active_unverified"]
+                                  : prev.filter(t => t !== "active_unverified")
+                              );
+                            }}
+                            className="rounded text-[#FF8A00] focus:ring-[#FF8A00]/25"
+                          />
+                          Active - Unverified
+                        </label>
+                        <label className="flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={selectedCandidateTypes.includes("passive")}
+                            onChange={(e) => {
+                              setSelectedCandidateTypes(prev =>
+                                e.target.checked
+                                  ? [...prev, "passive"]
+                                  : prev.filter(t => t !== "passive")
+                              );
+                            }}
+                            className="rounded text-[#FF8A00] focus:ring-[#FF8A00]/25"
+                          />
+                          Passive Talent Pool
+                        </label>
+                      </div>
+                    </div>
+
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div>
-                        <label className="mb-1.5 block text-xs font-bold text-slate-600">Match type</label>
+                        <label className="mb-1.5 block text-xs font-bold text-slate-600">Min Culture Fit</label>
                         <select
-                          value={activeFilters[0]}
-                          onChange={(e) => toggleFilter(e.target.value)}
+                          value={minCultureScore}
+                          onChange={(e) => setMinCultureScore(e.target.value)}
                           className="w-full cursor-pointer rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-medium text-slate-900 outline-none transition-all focus:border-[#FF8A00]/60 focus:ring-2 focus:ring-[#FF8A00]/15"
                         >
-                          <option value="culture_fit">Culture Fit</option>
-                          <option value="skill_match">Skills Match</option>
+                          <option value="">Any Culture Score</option>
+                          <option value="85">Elite (&gt;=85%)</option>
+                          <option value="70">Strong (&gt;=70%)</option>
+                          <option value="50">Potential (&gt;=50%)</option>
                         </select>
                       </div>
 
-                      {!activeFilters.includes("skill_match") ? (
-                        <div>
-                          <label className="mb-1.5 block text-xs font-bold text-slate-600">Experience</label>
-                          <select
-                            value={filterExperience}
-                            onChange={(e) => toggleExperienceFilter(e.target.value)}
-                            className="w-full cursor-pointer rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-medium text-slate-900 outline-none transition-all focus:border-[#FF8A00]/60 focus:ring-2 focus:ring-[#FF8A00]/15"
-                          >
-                            <option value="all">All</option>
-                            <option value="fresher">0-1 yrs</option>
-                            <option value="mid">1-5 yrs</option>
-                            <option value="senior">5-10 yrs</option>
-                            <option value="leadership">10+ yrs</option>
-                          </select>
-                        </div>
-                      ) : (
-                        <div className="rounded-2xl border border-blue-100 bg-blue-50 px-3 py-2.5 sm:col-span-2">
-                          <p className="text-[11px] font-semibold text-blue-700">
-                            Skills Match already applies role-level experience matching (same band or adjacent).
-                          </p>
-                        </div>
-                      )}
+                      <div>
+                        <label className="mb-1.5 block text-xs font-bold text-slate-600">Experience</label>
+                        <select
+                          value={filterExperience}
+                          onChange={(e) => toggleExperienceFilter(e.target.value)}
+                          className="w-full cursor-pointer rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-medium text-slate-900 outline-none transition-all focus:border-[#FF8A00]/60 focus:ring-2 focus:ring-[#FF8A00]/15"
+                        >
+                          <option value="all">All</option>
+                          <option value="fresher">0-1 yrs</option>
+                          <option value="mid">1-5 yrs</option>
+                          <option value="senior">5-10 yrs</option>
+                          <option value="leadership">10+ yrs</option>
+                        </select>
+                      </div>
 
                       <div>
                         <label className="mb-1.5 block text-xs font-bold text-slate-600">Location</label>
@@ -765,104 +823,134 @@ function RecommendedCard({
   onInvite,
   getDisplayName,
 }: {
-  candidate: Candidate;
+  candidate: any;
   postedJobTitle?: string | null;
   onViewProfile: () => void;
   onInvite: () => void;
   getDisplayName: (name: string, id: string) => string;
 }) {
+  const isCompleted = candidate.assessment_completed || false;
+  const isShadow = candidate.is_shadow || false;
+  
+  let typeLabel = "Active - Unverified";
+  let typeStyle = "bg-amber-50 text-amber-700 border-amber-100/80";
+  
+  if (isShadow) {
+    typeLabel = "Passive Lead";
+    typeStyle = "bg-blue-50 text-blue-700 border-blue-100/80";
+  } else if (isCompleted) {
+    typeLabel = "Active - Verified";
+    typeStyle = "bg-emerald-50 text-emerald-700 border-emerald-100/80";
+  }
+
   return (
-    <div className="group flex h-full flex-col overflow-hidden rounded-[24px] border border-orange-100/80 bg-white shadow-[0_10px_28px_rgba(255,138,0,0.06)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_36px_rgba(255,138,0,0.14)]">
-      <div className="h-1 bg-gradient-to-r from-[#FF8A00] via-[#FFB366] to-[#FFE3BF]" />
+    <div className="group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_4px_20px_rgba(0,0,0,0.02)] transition-all duration-300 hover:-translate-y-1 hover:border-orange-100 hover:shadow-[0_12px_24px_rgba(255,138,0,0.08)]">
+      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#FF8A00] via-[#FFB366] to-[#FFE3BF]" />
 
-      <div className="flex items-start justify-between gap-4 px-5 py-4">
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-orange-100 bg-[#FFF6ED] text-[#FF8A00] shadow-sm">
-            {candidate.profile_photo_url ? (
-              <img
-                src={candidate.profile_photo_url}
-                alt={candidate.full_name}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <User className="h-5 w-5" />
-            )}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <h3 className="truncate text-sm font-black text-slate-900">
-                {getDisplayName(candidate.full_name, candidate.user_id)}
-              </h3>
-              {candidate.identity_verified && <CheckCircle2 className="h-4 w-4 flex-shrink-0 text-emerald-600" />}
+      <div className="flex flex-col gap-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-100 bg-[#FFF6ED] text-[#FF8A00] shadow-sm">
+              {candidate.profile_photo_url ? (
+                <img
+                  src={candidate.profile_photo_url}
+                  alt={candidate.full_name}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <User className="h-5 w-5" />
+              )}
             </div>
-            <p className="truncate text-xs text-slate-500">{candidate.current_role}</p>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <h3 className="truncate text-sm font-bold text-slate-800">
+                  {getDisplayName(candidate.full_name, candidate.user_id)}
+                </h3>
+                {candidate.identity_verified && (
+                  <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0 text-emerald-600" />
+                )}
+              </div>
+              <p className="truncate text-xs text-slate-400 font-medium">{candidate.current_role}</p>
+            </div>
           </div>
-        </div>
-
-        <div className="flex flex-shrink-0 flex-col items-end gap-1 rounded-2xl bg-[#FFF8F1] px-3 py-2 text-right">
-          <span className="text-[10px] font-black uppercase tracking-[0.18em] text-[#C96B00]">Match</span>
-          <span className="text-2xl font-black tracking-tight text-[#FF8A00]">{candidate.culture_match_score}%</span>
-        </div>
-      </div>
-
-      {postedJobTitle && (
-        <div className="px-5 pb-2">
-          <div className="rounded-2xl border border-orange-100 bg-[#FFF8F1] px-3 py-2">
-            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#C96B00]">Matched to</p>
-            <p className="mt-1 text-sm font-semibold text-slate-800">{postedJobTitle}</p>
-          </div>
-        </div>
-      )}
-
-      <div className="px-5 pb-4">
-        <div className="grid grid-cols-2 gap-2 text-xs">
-          <div className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2">
-            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Experience</p>
-            <p className="mt-1 font-semibold text-slate-800">{candidate.years_of_experience} years</p>
-          </div>
-          <div className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2">
-            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Career stage</p>
-            <p className="mt-1 font-semibold text-slate-800 capitalize">{candidate.experience}</p>
-          </div>
-        </div>
-
-        {candidate.match_reasoning && (
-          <div className="mt-3 rounded-2xl border border-orange-100 bg-[#FFF8F1] px-3 py-2">
-            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#C96B00]">Why this match</p>
-            <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-600">{candidate.match_reasoning}</p>
-          </div>
-        )}
-
-        {candidate.skills && candidate.skills.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {candidate.skills.slice(0, 3).map((skill) => (
-              <span
-                key={skill}
-                className="rounded-full border border-orange-100 bg-[#FFF6ED] px-2.5 py-1 text-xs font-medium text-[#FF8A00]"
-              >
-                {skill}
-              </span>
-            ))}
-            {candidate.skills.length > 3 && (
-              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
-                +{candidate.skills.length - 3}
+          
+          <div className="flex flex-col items-end flex-shrink-0">
+            <span className="inline-flex items-center rounded-lg bg-orange-50 px-2 py-1 text-xs font-bold text-[#FF8A00] border border-orange-100/50">
+              {candidate.culture_match_score}% Match
+            </span>
+            {candidate.actual_culture_fit_score > 0 && (
+              <span className="mt-1 text-[10px] font-semibold text-slate-400">
+                Culture: {candidate.actual_culture_fit_score}%
               </span>
             )}
           </div>
-        )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-bold ${typeStyle}`}>
+            {typeLabel}
+          </span>
+          <span className="inline-flex items-center rounded-md border border-slate-100 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+            {candidate.years_of_experience} yrs exp
+          </span>
+          {candidate.location && (
+            <span className="inline-flex items-center gap-0.5 rounded-md border border-slate-100 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600 truncate max-w-[120px]">
+              <MapPin className="h-3 w-3 text-slate-400" />
+              {candidate.location}
+            </span>
+          )}
+        </div>
+
+        <div className="rounded-xl bg-slate-50/50 p-2.5 border border-slate-100/50 text-xs">
+          {candidate.matched_skills && candidate.matched_skills.length > 0 && (
+            <div className="mb-2">
+              <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Matched Skills</span>
+              <div className="flex flex-wrap gap-1">
+                {candidate.matched_skills.slice(0, 4).map((skill) => (
+                  <span key={skill} className="inline-flex items-center rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 border border-emerald-100/50">
+                    {skill}
+                  </span>
+                ))}
+                {candidate.matched_skills.length > 4 && (
+                  <span className="inline-flex items-center rounded bg-emerald-50/40 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600">
+                    +{candidate.matched_skills.length - 4}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {candidate.missing_skills && candidate.missing_skills.length > 0 && (
+            <div>
+              <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Missing Skills</span>
+              <div className="flex flex-wrap gap-1">
+                {candidate.missing_skills.slice(0, 3).map((skill) => (
+                  <span key={skill} className="inline-flex items-center rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-400 border border-slate-200/50 line-through">
+                    {skill}
+                  </span>
+                ))}
+                {candidate.missing_skills.length > 3 && (
+                  <span className="inline-flex items-center rounded bg-slate-100/40 px-1.5 py-0.5 text-[10px] font-medium text-slate-400">
+                    +{candidate.missing_skills.length - 3}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="mt-auto flex items-center gap-2 border-t border-orange-100/70 px-5 py-4">
+      <div className="mt-4 flex items-center gap-2 pt-3 border-t border-slate-50">
         <button
           onClick={onViewProfile}
-          className="flex-1 rounded-xl bg-slate-900 px-3 py-2.5 text-sm font-bold text-white transition-all hover:bg-slate-800 active:scale-95"
+          className="flex-1 rounded-lg bg-slate-900 py-2 text-xs font-bold text-white transition-all hover:bg-slate-800 active:scale-95"
         >
-          View profile
+          View Profile
         </button>
         <button
           onClick={onInvite}
-          className="flex-shrink-0 rounded-xl border border-orange-100 bg-white p-2.5 text-[#FF8A00] transition-all hover:bg-[#FFF6ED] active:scale-95"
-          title="Invite"
+          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-orange-100 bg-[#FFF6ED] text-[#FF8A00] transition-all hover:bg-[#FF8A00] hover:text-white active:scale-95"
+          title="Invite to Job"
         >
           <Plus className="w-4 h-4" />
         </button>

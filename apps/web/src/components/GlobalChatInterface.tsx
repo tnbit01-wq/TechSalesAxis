@@ -11,7 +11,7 @@ import {
   TrendingUp, Search, CheckCircle2, Loader2, Bookmark,
   MapPin, DollarSign, Star, Award, UserCheck, UserX,
   ClipboardList, Navigation, MessageSquare, Zap, Edit2,
-  Calendar, XCircle, Lock,
+  Calendar, XCircle, Lock, RotateCcw,
 } from 'lucide-react';
 import { awsAuth } from '@/lib/awsAuth';
 import { apiClient } from '@/lib/apiClient';
@@ -20,6 +20,9 @@ import InterviewScheduler from '@/components/InterviewScheduler';
 import CandidateProfileModal from '@/components/CandidateProfileModal';
 import JobInviteModal from '@/components/JobInviteModal';
 import { toast } from 'sonner';
+
+// Theme Context for inline versus full-screen drawer modes
+const ChatThemeContext = React.createContext<{ isInline: boolean }>({ isInline: false });
 
 // ─────────────────────────────────────────────
 // Types
@@ -164,6 +167,7 @@ function CandidateCards({
   onOpenProfileModal?: (c: any) => void;
   onOpenInviteModal?: (id: string, name: string) => void;
 }) {
+  const { isInline } = React.useContext(ChatThemeContext);
   const hasScores = items.some(c => typeof c.culture_match_score === 'number' || typeof c.match_score === 'number');
 
   const elite = items.filter(c => {
@@ -178,7 +182,7 @@ function CandidateCards({
 
   const potential = items.filter(c => {
     const score = c.culture_match_score ?? c.match_score;
-    return typeof score === 'number' && score >= 50 && score < 70;
+    return typeof score === 'number' && score < 70;
   });
 
   const renderCard = (c: any, i: number) => {
@@ -190,37 +194,53 @@ function CandidateCards({
     const score = c.culture_match_score ?? c.match_score;
 
     // Determine HSL matching badge styles
-    let scoreBadgeStyle = "text-indigo-400 bg-indigo-500/10 border-indigo-500/20";
+    let scoreBadgeStyle = isInline
+      ? "text-[#FF8A00] bg-orange-50 border-[#FF8A00]/20"
+      : "text-orange-400 bg-orange-500/10 border-orange-500/20";
     if (typeof score === 'number') {
       if (score >= 85) {
-        scoreBadgeStyle = "text-emerald-400 bg-emerald-500/10 border-emerald-500/20";
+        scoreBadgeStyle = isInline
+          ? "text-emerald-650 bg-emerald-50 border-emerald-200/50"
+          : "text-emerald-400 bg-emerald-500/10 border-emerald-500/20";
       } else if (score >= 70) {
-        scoreBadgeStyle = "text-amber-400 bg-amber-500/10 border-amber-500/20";
+        scoreBadgeStyle = isInline
+          ? "text-amber-650 bg-amber-50 border-amber-200/50"
+          : "text-amber-400 bg-amber-500/10 border-amber-500/20";
       }
     }
 
     return (
       <div
         key={candId || i}
-        className="group bg-zinc-900/60 border border-white/[0.06] rounded-2xl p-4 hover:border-blue-500/30 hover:bg-zinc-800/60 transition-all duration-200"
+        className={`group border rounded-2xl p-4 transition-all duration-200 ${
+          isInline
+            ? 'bg-slate-50 border-slate-200 hover:border-orange-300 hover:bg-slate-100/50'
+            : 'bg-zinc-900/60 border-white/[0.06] hover:border-orange-500/35 hover:bg-zinc-800/60'
+        }`}
       >
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0 flex-1">
-            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-600/20 to-violet-600/20 flex items-center justify-center flex-shrink-0 border border-white/5 relative">
-              <User className="w-5 h-5 text-blue-400" />
+            <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 border relative ${
+              isInline
+                ? 'bg-orange-50 border-orange-200/55'
+                : 'bg-gradient-to-br from-orange-500/20 to-amber-500/20 border-white/5'
+            }`}>
+              <User className={`w-5 h-5 ${isInline ? 'text-[#FF8A00]' : 'text-orange-400'}`} />
               {/* Verified / passive / lead indicator dot */}
               <span
-                className={`absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border border-zinc-900 ${
-                  isVerified ? 'bg-emerald-500' : isLead ? 'bg-amber-500' : isPassive ? 'bg-amber-500' : 'bg-blue-400'
+                className={`absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border ${
+                  isInline ? 'border-white' : 'border-zinc-900'
+                } ${
+                  isVerified ? 'bg-emerald-500' : isLead ? 'bg-amber-500' : isPassive ? 'bg-amber-500' : 'bg-orange-400'
                 }`}
-                title={isVerified ? 'Verified' : isLead ? 'Passive Lead (Shadow Profile)' : isPassive ? 'Passive candidate' : 'Assessment in progress'}
+                title={isVerified ? 'Verified' : isLead ? 'Passive Lead' : isPassive ? 'Passive candidate' : 'Assessment in progress'}
               />
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-white truncate">
+              <p className={`text-sm font-semibold truncate ${isInline ? 'text-slate-800' : 'text-white'}`}>
                 {displayName}
               </p>
-              <p className="text-xs text-zinc-500 truncate">
+              <p className={`text-xs truncate ${isInline ? 'text-slate-500' : 'text-zinc-500'}`}>
                 {c.current_role || 'IT Sales Professional'}
               </p>
             </div>
@@ -241,13 +261,21 @@ function CandidateCards({
             {c.skills.slice(0, 3).map((s: string, si: number) => (
               <span
                 key={si}
-                className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-300 border border-blue-500/15"
+                className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${
+                  isInline
+                    ? 'bg-orange-50/60 text-orange-600 border-orange-200/40'
+                    : 'bg-orange-500/10 text-orange-300 border-orange-500/15'
+                }`}
               >
                 {s}
               </span>
             ))}
             {c.skills.length > 3 && (
-              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500 border border-zinc-700">
+              <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${
+                isInline
+                  ? 'bg-slate-100 text-slate-500 border-slate-200'
+                  : 'bg-zinc-800 text-zinc-500 border-zinc-700'
+              }`}>
                 +{c.skills.length - 3}
               </span>
             )}
@@ -255,8 +283,8 @@ function CandidateCards({
         )}
 
         <div className="mt-3 flex items-center gap-3 flex-wrap">
-          <span className="inline-flex items-center gap-1 text-[10px] font-mono text-zinc-400">
-            <Target className="w-3 h-3 text-zinc-600" />
+          <span className="inline-flex items-center gap-1 text-[10px] font-mono text-zinc-450">
+            <Target className="w-3 h-3 text-zinc-500" />
             {c.years_of_experience || 0}y exp
           </span>
           {c.location && (
@@ -267,22 +295,26 @@ function CandidateCards({
           )}
           {/* Verified / Passive / Lead badge */}
           {isVerified ? (
-            <span className="inline-flex items-center gap-1 text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+            <span className="inline-flex items-center gap-1 text-[10px] font-mono text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
               <ShieldCheck className="w-3 h-3" />
               Verified
             </span>
           ) : isLead ? (
-            <span className="inline-flex items-center gap-1 text-[10px] font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+            <span className="inline-flex items-center gap-1 text-[10px] font-mono text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
               <UserCheck className="w-3 h-3" />
-              Shadow Profile
+              Passive
             </span>
           ) : isPassive ? (
-            <span className="inline-flex items-center gap-1 text-[10px] font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+            <span className="inline-flex items-center gap-1 text-[10px] font-mono text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
               <UserCheck className="w-3 h-3" />
               Passive
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1 text-[10px] font-mono text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/20">
+            <span className={`inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-full border ${
+              isInline
+                ? 'text-orange-500 bg-orange-500/5 border-orange-500/20'
+                : 'text-orange-400 bg-orange-500/10 border-orange-500/20'
+            }`}>
               <Loader2 className="w-3 h-3 animate-spin" />
               In Progress
             </span>
@@ -291,15 +323,19 @@ function CandidateCards({
 
         {/* Why this match reasoning */}
         {c.match_reasoning && (
-          <div className="mt-3 rounded-xl border border-orange-500/10 bg-orange-500/5 p-3 text-left">
-            <p className="text-[10px] font-black uppercase tracking-wider text-orange-400">Why this match</p>
-            <p className="mt-1 text-xs leading-relaxed text-zinc-300">{c.match_reasoning}</p>
+          <div className={`mt-3 rounded-xl border p-3 text-left ${
+            isInline 
+              ? 'border-orange-200/50 bg-orange-50/20' 
+              : 'border-orange-500/10 bg-orange-500/5'
+          }`}>
+            <p className="text-[10px] font-black uppercase tracking-wider text-orange-500">Why this match</p>
+            <p className={`mt-1 text-xs leading-relaxed ${isInline ? 'text-slate-700' : 'text-zinc-300'}`}>{c.match_reasoning}</p>
           </div>
         )}
 
         {/* Recruiter Actions */}
         {role === 'recruiter' && (
-          <div className="mt-3 flex gap-2 border-t border-white/5 pt-3">
+          <div className={`mt-3 flex gap-2 border-t pt-3 ${isInline ? 'border-slate-100' : 'border-white/5'}`}>
             <button
               onClick={() => {
                 if (onOpenProfileModal) {
@@ -308,7 +344,11 @@ function CandidateCards({
                   onAction(`Show profile of ${c.full_name || c.name || ''}`);
                 }
               }}
-              className="px-2.5 py-1 rounded bg-zinc-850 hover:bg-zinc-700 text-zinc-300 hover:text-white text-[10px] font-semibold transition-all border border-white/10"
+              className={`px-2.5 py-1 rounded text-[10px] font-semibold transition-all border ${
+                isInline
+                  ? 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 shadow-sm'
+                  : 'bg-zinc-850 hover:bg-zinc-700 text-zinc-300 hover:text-white border-white/10'
+              }`}
             >
               View Profile
             </button>
@@ -325,7 +365,11 @@ function CandidateCards({
                     window.open(c.resume_path, '_blank');
                   }
                 }}
-                className={`px-2.5 py-1 rounded bg-zinc-850 hover:bg-zinc-700 text-zinc-300 hover:text-white text-[10px] font-semibold transition-all border border-white/10 ${
+                className={`px-2.5 py-1 rounded text-[10px] font-semibold transition-all border ${
+                  isInline
+                    ? 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 shadow-sm'
+                    : 'bg-zinc-850 hover:bg-zinc-700 text-zinc-300 hover:text-white border-white/10'
+                } ${
                   hasAccessToPersonalInfo && !hasAccessToPersonalInfo(candId) ? 'opacity-50 cursor-not-allowed' : ''
                 }`}
               >
@@ -340,7 +384,11 @@ function CandidateCards({
                   onAction(`Invite candidate ${c.full_name || c.name || ''}`);
                 }
               }}
-              className="px-2.5 py-1 rounded bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 text-[10px] font-semibold transition-all border border-blue-500/15"
+              className={`px-2.5 py-1 rounded text-[10px] font-semibold transition-all border ${
+                isInline
+                  ? 'bg-[#FF8A00] hover:bg-[#E67A00] text-white border-transparent shadow-sm'
+                  : 'bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 border-orange-500/15'
+              }`}
             >
               Invite
             </button>
@@ -356,7 +404,7 @@ function CandidateCards({
       <div className="w-full space-y-2 mt-4">
         <div className={`flex items-center gap-2 border-l-4 ${borderLeftColor} pl-2.5 py-0.5`}>
           <div>
-            <h4 className="text-xs font-bold text-zinc-100">{title}</h4>
+            <h4 className={`text-xs font-bold ${isInline ? 'text-slate-800' : 'text-zinc-150'}`}>{title}</h4>
             <p className="text-[10px] text-zinc-500">{list.length} candidate{list.length !== 1 ? 's' : ''}</p>
           </div>
         </div>
@@ -405,21 +453,30 @@ function CandidateProfileCard({
   onAction?: (text: string) => void;
   onOpenInviteModal?: (id: string, name: string) => void;
 }) {
+  const { isInline } = React.useContext(ChatThemeContext);
   const candId = item.user_id || item.id;
   const isUnlocked = hasAccessToPersonalInfo ? hasAccessToPersonalInfo(candId) : true;
   const displayName = getDisplayName ? getDisplayName(item.full_name || 'Candidate', candId) : (item.full_name || 'Candidate');
 
   return (
-    <div className="mt-3 bg-zinc-900/70 border border-white/[0.07] rounded-2xl p-5">
+    <div className={`mt-3 border rounded-2xl p-5 transition-all ${
+      isInline
+        ? 'bg-white border-slate-200/80 text-slate-800 shadow-sm'
+        : 'bg-zinc-900/70 border-white/[0.07] text-white'
+    }`}>
       <div className="flex items-start gap-4">
-        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-600/25 to-violet-600/25 flex items-center justify-center flex-shrink-0 border border-white/5">
-          <User className="w-7 h-7 text-blue-400" />
+        <div className={`w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 border ${
+          isInline
+            ? 'bg-orange-50 border-orange-200/50'
+            : 'bg-gradient-to-br from-orange-500/20 to-amber-500/20 border-white/5'
+        }`}>
+          <User className={`w-7 h-7 ${isInline ? 'text-[#FF8A00]' : 'text-orange-400'}`} />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-base font-bold text-white">{displayName}</p>
-          <p className="text-sm text-zinc-400 mt-0.5">{item.current_role || 'IT Sales Professional'}</p>
+          <p className={`text-base font-bold ${isInline ? 'text-slate-800' : 'text-white'}`}>{displayName}</p>
+          <p className={`text-sm mt-0.5 ${isInline ? 'text-slate-500' : 'text-zinc-400'}`}>{item.current_role || 'IT Sales Professional'}</p>
           {isUnlocked ? (
-            <p className="text-xs text-zinc-600 mt-0.5 font-mono truncate">
+            <p className={`text-xs mt-0.5 font-mono truncate ${isInline ? 'text-slate-500' : 'text-zinc-500'}`}>
               {item.email || 'No email'} · {item.phone || item.phone_number || 'No phone'}
             </p>
           ) : (
@@ -437,10 +494,14 @@ function CandidateProfileCard({
       </div>
 
       {!isUnlocked && (
-        <div className="mt-4 p-4 rounded-xl bg-amber-500/5 border border-amber-500/10 flex items-start gap-3">
+        <div className={`mt-4 p-4 rounded-xl border flex items-start gap-3 ${
+          isInline
+            ? 'bg-amber-500/10 border-amber-500/20 text-slate-700'
+            : 'bg-amber-500/5 border-amber-500/10 text-zinc-400'
+        }`}>
           <Lock className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-          <div className="text-xs text-zinc-400 leading-normal">
-            <p className="font-semibold text-amber-300">Contact Details Masked</p>
+          <div className="text-xs leading-normal">
+            <p className={`font-semibold ${isInline ? 'text-amber-800' : 'text-amber-300'}`}>Contact Details Masked</p>
             <p className="mt-1">Candidate contact details are hidden for privacy. They will be unmasked once the candidate accepts your invitation or is shortlisted.</p>
           </div>
         </div>
@@ -448,36 +509,50 @@ function CandidateProfileCard({
 
       <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
         {item.years_of_experience != null && (
-          <div className="bg-zinc-800/60 rounded-xl p-3 border border-white/5">
-            <p className="text-[10px] text-zinc-500 font-mono">Experience</p>
-            <p className="text-sm font-semibold text-white mt-0.5">{item.years_of_experience} yrs</p>
+          <div className={`rounded-xl p-3 border ${
+            isInline ? 'bg-slate-50 border-slate-100' : 'bg-zinc-800/60 border-white/5'
+          }`}>
+            <p className={`text-[10px] font-mono ${isInline ? 'text-slate-400' : 'text-zinc-500'}`}>Experience</p>
+            <p className={`text-sm font-semibold mt-0.5 ${isInline ? 'text-slate-800' : 'text-white'}`}>{item.years_of_experience} yrs</p>
           </div>
         )}
         {item.location && (
-          <div className="bg-zinc-800/60 rounded-xl p-3 border border-white/5">
-            <p className="text-[10px] text-zinc-500 font-mono">Location</p>
-            <p className="text-sm font-semibold text-white mt-0.5 truncate">{item.location}</p>
+          <div className={`rounded-xl p-3 border ${
+            isInline ? 'bg-slate-50 border-slate-100' : 'bg-zinc-800/60 border-white/5'
+          }`}>
+            <p className={`text-[10px] font-mono ${isInline ? 'text-slate-400' : 'text-zinc-500'}`}>Location</p>
+            <p className={`text-sm font-semibold mt-0.5 truncate ${isInline ? 'text-slate-800' : 'text-white'}`}>{item.location}</p>
           </div>
         )}
         {item.profile_strength && (
-          <div className="bg-zinc-800/60 rounded-xl p-3 border border-white/5">
-            <p className="text-[10px] text-zinc-500 font-mono">Profile</p>
-            <p className="text-sm font-semibold text-white mt-0.5">{item.profile_strength}</p>
+          <div className={`rounded-xl p-3 border ${
+            isInline ? 'bg-slate-50 border-slate-100' : 'bg-zinc-800/60 border-white/5'
+          }`}>
+            <p className={`text-[10px] font-mono ${isInline ? 'text-slate-400' : 'text-zinc-500'}`}>Profile</p>
+            <p className={`text-sm font-semibold mt-0.5 ${isInline ? 'text-slate-800' : 'text-white'}`}>{item.profile_strength}</p>
           </div>
         )}
       </div>
 
       {Array.isArray(item.skills) && item.skills.length > 0 && (
         <div className="mt-3">
-          <p className="text-[10px] text-zinc-500 font-mono mb-2">SKILLS</p>
+          <p className={`text-[10px] font-mono mb-2 ${isInline ? 'text-slate-400' : 'text-zinc-500'}`}>SKILLS</p>
           <div className="flex flex-wrap gap-1.5">
             {item.skills.slice(0, 8).map((s: string, i: number) => (
-              <span key={i} className="text-[10px] font-mono px-2 py-0.5 rounded-lg bg-blue-500/10 text-blue-300 border border-blue-500/15">
+              <span key={i} className={`text-[10px] font-mono px-2 py-0.5 rounded-lg border ${
+                isInline
+                  ? 'bg-orange-50/60 text-orange-600 border-orange-200/40'
+                  : 'bg-orange-500/10 text-orange-300 border-orange-500/15'
+              }`}>
                 {s}
               </span>
             ))}
             {item.skills.length > 8 && (
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-lg bg-zinc-800 text-zinc-500 border border-zinc-700">
+              <span className={`text-[10px] font-mono px-2 py-0.5 rounded-lg border ${
+                isInline
+                  ? 'bg-slate-100 text-slate-500 border-slate-200'
+                  : 'bg-zinc-800 text-zinc-500 border-zinc-700'
+              }`}>
                 +{item.skills.length - 8} more
               </span>
             )}
@@ -486,14 +561,18 @@ function CandidateProfileCard({
       )}
 
       {/* Recruiter Actions */}
-      <div className="mt-3 flex gap-2 border-t border-white/5 pt-3">
+      <div className={`mt-3 flex gap-2 border-t pt-3 ${isInline ? 'border-slate-100' : 'border-white/5'}`}>
         <button
           onClick={() => {
             if (onOpenProfileModal) {
               onOpenProfileModal(item);
             }
           }}
-          className="px-2.5 py-1 rounded bg-zinc-850 hover:bg-zinc-700 text-zinc-300 hover:text-white text-[10px] font-semibold transition-all border border-white/10"
+          className={`px-2.5 py-1 rounded text-[10px] font-semibold transition-all border ${
+            isInline
+              ? 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 shadow-sm'
+              : 'bg-zinc-850 hover:bg-zinc-700 text-zinc-300 hover:text-white border-white/10'
+          }`}
         >
           View Profile
         </button>
@@ -510,7 +589,11 @@ function CandidateProfileCard({
                 window.open(item.resume_path, '_blank');
               }
             }}
-            className={`px-2.5 py-1 rounded bg-zinc-850 hover:bg-zinc-700 text-zinc-300 hover:text-white text-[10px] font-semibold transition-all border border-white/10 ${
+            className={`px-2.5 py-1 rounded text-[10px] font-semibold transition-all border ${
+              isInline
+                ? 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 shadow-sm'
+                : 'bg-zinc-850 hover:bg-zinc-700 text-zinc-300 hover:text-white border-white/10'
+            } ${
               hasAccessToPersonalInfo && !hasAccessToPersonalInfo(candId) ? 'opacity-50 cursor-not-allowed' : ''
             }`}
           >
@@ -525,7 +608,11 @@ function CandidateProfileCard({
               onAction(`Invite candidate ${item.full_name || item.name || ''}`);
             }
           }}
-          className="px-2.5 py-1 rounded bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 text-[10px] font-semibold transition-all border border-blue-500/15"
+          className={`px-2.5 py-1 rounded text-[10px] font-semibold transition-all border ${
+            isInline
+              ? 'bg-[#FF8A00] hover:bg-[#E67A00] text-white border-transparent'
+              : 'bg-orange-500/10 text-orange-450 hover:bg-orange-500/20 border-orange-500/15'
+          }`}
         >
           Invite
         </button>
@@ -555,15 +642,16 @@ function ApplicationCards({
   getDisplayName?: (name: string, id: string) => string;
   onOpenPdfPreview?: (url: string, name: string) => void;
 }) {
+  const { isInline } = React.useContext(ChatThemeContext);
   const getStatusBadge = (status: string) => {
     switch (status?.toLowerCase()) {
       case 'applied':
-        return 'text-blue-400 bg-blue-500/10 border-blue-500/20';
+        return 'text-[#FF8A00] bg-orange-500/10 border-orange-500/20';
       case 'shortlisted':
         return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20';
       case 'interview':
       case 'interview_scheduled':
-        return 'text-violet-400 bg-violet-500/10 border-violet-500/20';
+        return 'text-amber-400 bg-amber-500/10 border-amber-500/20';
       case 'rejected':
         return 'text-rose-400 bg-rose-500/10 border-rose-500/20';
       case 'offered':
@@ -588,14 +676,22 @@ function ApplicationCards({
         const displayName = getDisplayName ? getDisplayName(app.candidate_name || 'Candidate', candId) : (app.candidate_name || 'Candidate');
 
         return (
-          <div key={i} className="group bg-zinc-900/60 border border-white/[0.06] rounded-2xl p-4 hover:border-blue-500/30 hover:bg-zinc-800/60 transition-all duration-200">
+          <div key={i} className={`group border rounded-2xl p-4 transition-all duration-200 ${
+            isInline
+              ? 'bg-white border-slate-200/80 hover:border-[#FF8A00]/30 hover:bg-slate-50/50 shadow-sm text-slate-800'
+              : 'bg-zinc-900/60 border-white/[0.06] hover:border-orange-555/35 hover:bg-zinc-800/60 text-white'
+          }`}>
             <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-600/20 to-violet-600/20 flex items-center justify-center flex-shrink-0 border border-white/5">
-                <User className="w-5 h-5 text-blue-400" />
+              <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 border ${
+                isInline
+                  ? 'bg-orange-50 border-orange-200/50'
+                  : 'bg-gradient-to-br from-orange-500/20 to-amber-500/20 border-white/5'
+              }`}>
+                <User className={`w-5 h-5 ${isInline ? 'text-[#FF8A00]' : 'text-orange-400'}`} />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-white truncate">{displayName}</p>
-                <p className="text-xs text-zinc-500 truncate">{app.candidate_role || 'IT Sales Professional'}</p>
+                <p className={`text-sm font-semibold truncate ${isInline ? 'text-slate-800' : 'text-white'}`}>{displayName}</p>
+                <p className={`text-xs truncate ${isInline ? 'text-slate-500' : 'text-zinc-500'}`}>{app.candidate_role || 'IT Sales Professional'}</p>
               </div>
             </div>
 
@@ -617,10 +713,14 @@ function ApplicationCards({
               </span>
             </div>
 
-            <div className="mt-3 flex flex-wrap gap-1.5 border-t border-white/5 pt-3">
+            <div className={`mt-3 flex flex-wrap gap-1.5 border-t pt-3 ${isInline ? 'border-slate-100' : 'border-white/5'}`}>
               <button
                 onClick={() => onAction(`Show profile of ${app.candidate_name}`)}
-                className="px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-[10px] font-semibold border border-white/10 transition-all"
+                className={`px-2.5 py-1 rounded text-[10px] font-semibold border transition-all ${
+                  isInline
+                    ? 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 shadow-sm'
+                    : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white border-white/10'
+                }`}
               >
                 Profile
               </button>
@@ -633,7 +733,11 @@ function ApplicationCards({
                       window.open(app.resume_path, '_blank');
                     }
                   }}
-                  className="px-2.5 py-1 rounded bg-zinc-850 hover:bg-zinc-700 text-zinc-300 hover:text-white text-[10px] font-semibold border border-white/10 transition-all"
+                  className={`px-2.5 py-1 rounded text-[10px] font-semibold border transition-all ${
+                    isInline
+                      ? 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 shadow-sm'
+                      : 'bg-zinc-850 hover:bg-zinc-700 text-zinc-300 hover:text-white border-white/10'
+                  }`}
                 >
                   Resume
                 </button>
@@ -641,7 +745,7 @@ function ApplicationCards({
               {canShortlist && (
                 <button
                   onClick={() => onAction(`Shortlist candidate ${app.candidate_name}`)}
-                  className="px-2.5 py-1 rounded bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 text-[10px] font-semibold border border-emerald-500/15 transition-all"
+                  className="px-2.5 py-1 rounded bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 text-[10px] font-semibold border border-emerald-500/15 transition-all"
                 >
                   Shortlist
                 </button>
@@ -649,7 +753,11 @@ function ApplicationCards({
               {canInterview && (
                 <button
                   onClick={() => onOpenInterviewModal(app.id)}
-                  className="px-2.5 py-1 rounded bg-violet-500/10 text-violet-400 hover:bg-violet-500/20 text-[10px] font-semibold border border-violet-500/15 transition-all"
+                  className={`px-2.5 py-1 rounded text-[10px] font-semibold transition-all border ${
+                    isInline
+                      ? 'bg-[#FF8A00] hover:bg-[#E67A00] text-white border-transparent'
+                      : 'bg-orange-500/20 text-orange-450 hover:bg-orange-500/30 border-orange-500/20'
+                  }`}
                 >
                   Interview
                 </button>
@@ -657,7 +765,7 @@ function ApplicationCards({
               {canReject && (
                 <button
                   onClick={() => onOpenRejectionModal(app.id)}
-                  className="px-2.5 py-1 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 text-[10px] font-semibold border border-red-500/15 transition-all"
+                  className="px-2.5 py-1 rounded bg-red-500/10 text-red-500 hover:bg-red-500/20 text-[10px] font-semibold border border-red-500/15 transition-all"
                 >
                   Reject
                 </button>
@@ -681,20 +789,29 @@ function ScheduleInterviewCard({
   item: any;
   onOpenInterviewModal: (appId: string) => void;
 }) {
+  const { isInline } = React.useContext(ChatThemeContext);
   return (
-    <div className="mt-3 bg-zinc-900/70 border border-violet-500/20 rounded-2xl p-4 flex flex-col gap-3">
+    <div className={`mt-3 border rounded-2xl p-4 flex flex-col gap-3 transition-all ${
+      isInline
+        ? 'bg-white border-slate-200/80 shadow-sm text-slate-800'
+        : 'bg-zinc-900/70 border-orange-500/20 text-white'
+    }`}>
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600/20 to-purple-600/20 flex items-center justify-center flex-shrink-0 border border-white/5">
-          <Calendar className="w-5 h-5 text-violet-400" />
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 border ${
+          isInline
+            ? 'bg-orange-50 border-orange-200/50'
+            : 'bg-gradient-to-br from-orange-500/20 to-amber-500/20 border-white/5'
+        }`}>
+          <Calendar className={`w-5 h-5 ${isInline ? 'text-[#FF8A00]' : 'text-orange-400'}`} />
         </div>
         <div>
-          <p className="text-sm font-semibold text-white">Interview with {item.candidate_name}</p>
-          <p className="text-xs text-zinc-500 truncate">{item.job_title}</p>
+          <p className={`text-sm font-semibold ${isInline ? 'text-slate-800' : 'text-white'}`}>Interview with {item.candidate_name}</p>
+          <p className={`text-xs truncate ${isInline ? 'text-slate-500' : 'text-zinc-500'}`}>{item.job_title}</p>
         </div>
       </div>
       <button
         onClick={() => onOpenInterviewModal(item.id)}
-        className="w-full py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-semibold shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5"
+        className="w-full py-2 bg-[#FF8A00] hover:bg-[#E67A00] text-white rounded-xl text-xs font-semibold shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5 border border-transparent"
       >
         <Calendar className="w-4 h-4" />
         Open Interview Scheduler
@@ -708,21 +825,30 @@ function ScheduleInterviewCard({
 // ─────────────────────────────────────────────
 
 function ResumeInfoCard({ item, onOpenPdfPreview }: { item: any; onOpenPdfPreview?: (url: string, name: string) => void }) {
+  const { isInline } = React.useContext(ChatThemeContext);
   const [activeTab, setActiveTab] = useState<'highlights' | 'experience' | 'education'>('highlights');
 
   const resumeData = item.resume_data || item.resumeData || null;
 
   return (
-    <div className="mt-3 bg-zinc-900/70 border border-white/[0.07] rounded-2xl p-4 flex flex-col gap-3 text-left">
+    <div className={`mt-3 border rounded-2xl p-4 flex flex-col gap-3 text-left transition-all ${
+      isInline
+        ? 'bg-white border-slate-200/80 text-slate-800 shadow-sm'
+        : 'bg-zinc-900/70 border-white/[0.07] text-white'
+    }`}>
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600/20 to-pink-600/20 flex items-center justify-center flex-shrink-0 border border-white/5">
-            <FileText className="w-5 h-5 text-violet-400" />
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 border ${
+            isInline
+              ? 'bg-orange-50 border-orange-200/50'
+              : 'bg-gradient-to-br from-orange-500/20 to-amber-500/20 border-white/5'
+          }`}>
+            <FileText className={`w-5 h-5 ${isInline ? 'text-[#FF8A00]' : 'text-orange-450'}`} />
           </div>
           <div>
-            <p className="text-sm font-semibold text-white">{item.full_name || item.name || 'Candidate'}'s Resume</p>
-            <p className="text-[10px] text-zinc-500 font-mono flex items-center gap-1">
+            <p className={`text-sm font-semibold ${isInline ? 'text-slate-800' : 'text-white'}`}>{item.full_name || item.name || 'Candidate'}'s Resume</p>
+            <p className={`text-[10px] font-mono flex items-center gap-1 ${isInline ? 'text-slate-500' : 'text-zinc-500'}`}>
               <span>{item.current_role || 'Sales Professional'}</span>
               <span>•</span>
               <span>{item.location || 'Remote'}</span>
@@ -734,7 +860,11 @@ function ResumeInfoCard({ item, onOpenPdfPreview }: { item: any; onOpenPdfPrevie
         {item.resume_path && onOpenPdfPreview && (
           <button
             onClick={() => onOpenPdfPreview(item.resume_path, item.full_name || item.name || 'Candidate')}
-            className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-[10px] font-semibold border border-white/10 transition-all flex items-center gap-1"
+            className={`px-3 py-1.5 rounded-lg text-[10px] font-semibold border transition-all flex items-center gap-1 ${
+              isInline
+                ? 'bg-slate-50 hover:bg-slate-100 text-slate-650 border-slate-200 shadow-sm'
+                : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white border-white/10'
+            }`}
           >
             <ExternalLink className="w-3 h-3" />
             Quick Preview
@@ -744,15 +874,15 @@ function ResumeInfoCard({ item, onOpenPdfPreview }: { item: any; onOpenPdfPrevie
 
       {/* Tabs Selection (only show if resumeData is present) */}
       {resumeData ? (
-        <div className="flex border-b border-white/5 pb-1 gap-4 mt-2">
+        <div className={`flex border-b pb-1 gap-4 mt-2 ${isInline ? 'border-slate-150' : 'border-white/5'}`}>
           {(['highlights', 'experience', 'education'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
               className={`text-[10px] font-bold uppercase tracking-wider pb-1 transition-all border-b-2 capitalize ${
                 activeTab === tab
-                  ? 'border-violet-500 text-violet-400'
-                  : 'border-transparent text-zinc-500 hover:text-zinc-300'
+                  ? (isInline ? 'border-[#FF8A00] text-[#FF8A00]' : 'border-orange-500 text-orange-400')
+                  : (isInline ? 'border-transparent text-slate-500 hover:text-slate-800' : 'border-transparent text-zinc-500 hover:text-zinc-300')
               }`}
             >
               {tab}
@@ -761,7 +891,9 @@ function ResumeInfoCard({ item, onOpenPdfPreview }: { item: any; onOpenPdfPrevie
         </div>
       ) : (
         item.parsed_data && (
-          <div className="text-xs text-zinc-400 bg-zinc-800/50 rounded-xl p-3 border border-white/5 font-mono whitespace-pre-wrap line-clamp-4">
+          <div className={`text-xs rounded-xl p-3 border font-mono whitespace-pre-wrap line-clamp-4 ${
+            isInline ? 'bg-slate-50 border-slate-100 text-slate-700' : 'bg-zinc-800/50 border-white/5 text-zinc-400'
+          }`}>
             {typeof item.parsed_data === 'string'
               ? item.parsed_data.slice(0, 300)
               : JSON.stringify(item.parsed_data).slice(0, 300)}
@@ -777,11 +909,13 @@ function ResumeInfoCard({ item, onOpenPdfPreview }: { item: any; onOpenPdfPrevie
             <div className="space-y-3">
               {/* Skills cloud */}
               <div>
-                <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500 mb-1.5">Key Skills</p>
+                <p className={`text-[10px] font-black uppercase tracking-wider mb-1.5 ${isInline ? 'text-slate-405' : 'text-zinc-500'}`}>Key Skills</p>
                 <div className="flex flex-wrap gap-1.5">
                   {resumeData.skills && resumeData.skills.length > 0 ? (
                     resumeData.skills.map((skill: string, idx: number) => (
-                      <span key={idx} className="px-2 py-0.5 rounded-md bg-zinc-800 text-zinc-300 border border-white/5 font-mono text-[9px]">
+                      <span key={idx} className={`px-2 py-0.5 rounded-md font-mono text-[9px] border ${
+                        isInline ? 'bg-orange-50 text-orange-600 border-orange-200/40' : 'bg-zinc-800 text-zinc-300 border-white/5'
+                      }`}>
                         {skill}
                       </span>
                     ))
@@ -809,8 +943,8 @@ function ResumeInfoCard({ item, onOpenPdfPreview }: { item: any; onOpenPdfPrevie
 
                 return (
                   <div>
-                    <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500 mb-1">Key Achievements</p>
-                    <ul className="list-disc pl-4 space-y-1 text-zinc-400 text-[11px] leading-relaxed">
+                    <p className={`text-[10px] font-black uppercase tracking-wider mb-1 ${isInline ? 'text-slate-400' : 'text-zinc-500'}`}>Key Achievements</p>
+                    <ul className={`list-disc pl-4 space-y-1 text-[11px] leading-relaxed ${isInline ? 'text-slate-700' : 'text-zinc-400'}`}>
                       {achievementsList.map((ach: string, idx: number) => (
                         <li key={idx}>{ach}</li>
                       ))}
@@ -825,22 +959,24 @@ function ResumeInfoCard({ item, onOpenPdfPreview }: { item: any; onOpenPdfPrevie
             <div className="space-y-4">
               {resumeData.timeline && resumeData.timeline.length > 0 ? (
                 resumeData.timeline.map((exp: any, idx: number) => (
-                  <div key={idx} className="relative pl-4 border-l border-white/5 last:border-transparent">
-                    <div className="absolute -left-1.5 top-1.5 w-3 h-3 rounded-full bg-violet-600/30 border border-violet-500 flex items-center justify-center">
-                      <div className="w-1.5 h-1.5 rounded-full bg-violet-400" />
+                  <div key={idx} className={`relative pl-4 border-l last:border-transparent ${isInline ? 'border-slate-150' : 'border-white/5'}`}>
+                    <div className={`absolute -left-1.5 top-1.5 w-3 h-3 rounded-full flex items-center justify-center border ${
+                      isInline ? 'bg-orange-100 border-[#FF8A00]' : 'bg-orange-600/30 border-orange-500'
+                    }`}>
+                      <div className={`w-1.5 h-1.5 rounded-full ${isInline ? 'bg-[#FF8A00]' : 'bg-orange-400'}`} />
                     </div>
                     <div className="flex justify-between items-start flex-wrap gap-1">
-                      <h4 className="font-semibold text-zinc-200 text-xs">{exp.role || 'Sales Executive'}</h4>
-                      <span className="text-[9px] font-mono text-zinc-500">
+                      <h4 className={`font-semibold text-xs ${isInline ? 'text-slate-800' : 'text-zinc-200'}`}>{exp.role || 'Sales Executive'}</h4>
+                      <span className={`text-[9px] font-mono ${isInline ? 'text-slate-400' : 'text-zinc-500'}`}>
                         {exp.start || 'N/A'} - {exp.end || 'Present'}
                       </span>
                     </div>
-                    <p className="text-[10px] font-mono text-zinc-400 mt-0.5">{exp.company || 'Company'} • {exp.location || 'Remote'}</p>
+                    <p className={`text-[10px] font-mono mt-0.5 ${isInline ? 'text-slate-500' : 'text-zinc-400'}`}>{exp.company || 'Company'} • {exp.location || 'Remote'}</p>
                     {exp.description && (
-                      <p className="text-[10px] text-zinc-500 mt-1 leading-relaxed">{exp.description}</p>
+                      <p className={`text-[10px] mt-1 leading-relaxed ${isInline ? 'text-slate-600' : 'text-zinc-500'}`}>{exp.description}</p>
                     )}
                     {exp.key_achievements && exp.key_achievements.length > 0 && (
-                      <ul className="list-disc pl-3 mt-1.5 space-y-0.5 text-[10px] text-zinc-400 leading-normal">
+                      <ul className={`list-disc pl-3 mt-1.5 space-y-0.5 text-[10px] leading-normal ${isInline ? 'text-slate-700' : 'text-zinc-400'}`}>
                         {exp.key_achievements.map((ka: string, kIdx: number) => (
                           <li key={kIdx}>{ka}</li>
                         ))}
@@ -858,16 +994,18 @@ function ResumeInfoCard({ item, onOpenPdfPreview }: { item: any; onOpenPdfPrevie
             <div className="space-y-3">
               {resumeData.education && resumeData.education.length > 0 ? (
                 resumeData.education.map((edu: any, idx: number) => (
-                  <div key={idx} className="bg-zinc-800/25 border border-white/5 rounded-xl p-3">
+                  <div key={idx} className={`border rounded-xl p-3 ${
+                    isInline ? 'bg-slate-50/50 border-slate-150' : 'bg-zinc-800/25 border-white/5'
+                  }`}>
                     <div className="flex justify-between items-start">
-                      <h4 className="font-semibold text-zinc-200 text-xs">{edu.degree || 'Degree'}</h4>
+                      <h4 className={`font-semibold text-xs ${isInline ? 'text-slate-800' : 'text-zinc-200'}`}>{edu.degree || 'Degree'}</h4>
                       {edu.years && (
-                        <span className="text-[9px] font-mono text-zinc-500">{edu.years}</span>
+                        <span className={`text-[9px] font-mono ${isInline ? 'text-slate-400' : 'text-zinc-500'}`}>{edu.years}</span>
                       )}
                     </div>
-                    <p className="text-[10px] text-zinc-400 mt-0.5">{edu.school || 'Institution'}</p>
+                    <p className={`text-[10px] mt-0.5 ${isInline ? 'text-slate-550' : 'text-zinc-400'}`}>{edu.school || 'Institution'}</p>
                     {edu.field && (
-                      <p className="text-[10px] text-zinc-500 font-mono mt-1">Field of Study: {edu.field}</p>
+                      <p className={`text-[10px] font-mono mt-1 ${isInline ? 'text-slate-500' : 'text-zinc-500'}`}>Field of Study: {edu.field}</p>
                     )}
                   </div>
                 ))
@@ -880,7 +1018,7 @@ function ResumeInfoCard({ item, onOpenPdfPreview }: { item: any; onOpenPdfPrevie
       )}
 
       {/* Footer Meta */}
-      <p className="mt-1 text-[9px] text-zinc-600 font-mono">
+      <p className={`mt-1 text-[9px] font-mono ${isInline ? 'text-slate-400' : 'text-zinc-500'}`}>
         Uploaded {item.uploaded_at ? new Date(item.uploaded_at).toLocaleDateString() : '—'}
       </p>
     </div>
@@ -892,6 +1030,7 @@ function ResumeInfoCard({ item, onOpenPdfPreview }: { item: any; onOpenPdfPrevie
 // ─────────────────────────────────────────────
 
 function JobCards({ items, role, onAction }: { items: any[]; role: string; onAction: (text: string) => void }) {
+  const { isInline } = React.useContext(ChatThemeContext);
   const getJobStatusStyle = (status: string) => {
     switch (status?.toLowerCase()) {
       case 'active':
@@ -919,37 +1058,45 @@ function JobCards({ items, role, onAction }: { items: any[]; role: string; onAct
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
       {items.map((job, i) => (
-        <div key={i} className="group bg-zinc-900/60 border border-white/[0.06] rounded-2xl p-4 hover:border-emerald-500/30 hover:bg-zinc-800/60 transition-all duration-200">
+        <div key={i} className={`group border rounded-2xl p-4 transition-all duration-200 ${
+          isInline
+            ? 'bg-white border-slate-200/80 hover:border-[#FF8A00]/30 hover:bg-slate-50/50 shadow-sm text-slate-800'
+            : 'bg-zinc-900/60 border-white/[0.06] hover:border-orange-500/35 hover:bg-zinc-800/60 text-white'
+        }`}>
           <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500/20 to-teal-500/20 flex items-center justify-center flex-shrink-0 border border-white/5">
-              <Briefcase className="w-4 h-4 text-emerald-400" />
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 border ${
+              isInline
+                ? 'bg-orange-50 border-orange-200/50'
+                : 'bg-gradient-to-br from-orange-500/20 to-amber-500/20 border-white/5'
+            }`}>
+              <Briefcase className={`w-4 h-4 ${isInline ? 'text-[#FF8A00]' : 'text-orange-450'}`} />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-white truncate">
+              <p className={`text-sm font-semibold truncate ${isInline ? 'text-slate-800' : 'text-white'}`}>
                 {job.title || job.job_title || 'Role'}
               </p>
-              <p className="text-xs text-zinc-500 truncate">
+              <p className={`text-xs truncate ${isInline ? 'text-slate-500' : 'text-zinc-500'}`}>
                 {job.company_name || 'Company'}{job.location ? ` · ${job.location}` : ''}
               </p>
               {job.salary_range && (
-                <p className="text-[11px] text-zinc-600 mt-0.5 inline-flex items-center gap-1">
+                <p className={`text-[11px] mt-0.5 inline-flex items-center gap-1 ${isInline ? 'text-slate-500' : 'text-zinc-500'}`}>
                   <DollarSign className="w-3 h-3" />
                   {job.salary_range}
                 </p>
               )}
               <div className="mt-2 flex flex-wrap gap-1.5 items-center">
                 {typeof job.match_score === 'number' && job.match_score > 0 && (
-                  <span className="text-[10px] font-mono text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                  <span className="text-[10px] font-mono text-emerald-450 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
                     {Math.round(job.match_score)}% match
                   </span>
                 )}
                 {job.experience_band && (
-                  <span className="text-[10px] font-mono text-zinc-400 bg-zinc-800 border border-zinc-700 px-2 py-0.5 rounded-full">
+                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${isInline ? 'text-slate-500 bg-slate-100 border-slate-200' : 'text-zinc-400 bg-zinc-800 border-zinc-700'}`}>
                     {job.experience_band}
                   </span>
                 )}
                 {job.job_type && (
-                  <span className="text-[10px] font-mono text-zinc-500 bg-zinc-800/50 border border-zinc-700/50 px-2 py-0.5 rounded-full">
+                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${isInline ? 'text-slate-550 bg-slate-100/50 border-slate-200/50' : 'text-zinc-500 bg-zinc-800/50 border-zinc-700/50'}`}>
                     {job.job_type}
                   </span>
                 )}
@@ -964,15 +1111,17 @@ function JobCards({ items, role, onAction }: { items: any[]; role: string; onAct
               {role === 'candidate' ? (
                 <button
                   onClick={() => onAction(`Apply for job ${job.title || job.job_title}`)}
-                  className="mt-3 w-full py-1.5 px-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-[10px] font-semibold shadow-md transition-all active:scale-95"
+                  className="mt-3 w-full py-1.5 px-3 bg-[#FF8A00] hover:bg-[#E67A00] text-white rounded-lg text-[10px] font-semibold shadow-md transition-all active:scale-95"
                 >
                   Apply Now
                 </button>
               ) : (
-                <div className="mt-3 flex flex-wrap gap-1.5 border-t border-white/5 pt-3">
+                <div className={`mt-3 flex flex-wrap gap-1.5 border-t pt-3 ${isInline ? 'border-slate-150' : 'border-white/5'}`}>
                   <button
                     onClick={() => onAction(`Show applications for ${job.title || job.job_title}`)}
-                    className="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-[10px] font-semibold border border-white/10 transition-all"
+                    className={`px-2 py-1 rounded text-[10px] font-semibold border transition-all ${
+                      isInline ? 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200' : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white border-white/10'
+                    }`}
                     title="View Pipeline Applications"
                   >
                     Applications
@@ -984,7 +1133,7 @@ function JobCards({ items, role, onAction }: { items: any[]; role: string; onAct
                         {(statusNormalized === 'paused' || statusNormalized === 'closed') && (
                           <button
                             onClick={() => onAction(`Open job ${job.title || job.job_title}`)}
-                            className="px-2 py-1 rounded bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 text-[10px] font-semibold border border-emerald-500/15 transition-all"
+                            className="px-2 py-1 rounded bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 text-[10px] font-semibold border border-emerald-500/15 transition-all"
                           >
                             Open
                           </button>
@@ -992,7 +1141,7 @@ function JobCards({ items, role, onAction }: { items: any[]; role: string; onAct
                         {(statusNormalized === 'active' || statusNormalized === 'open') && (
                           <button
                             onClick={() => onAction(`Pause hiring for ${job.title || job.job_title}`)}
-                            className="px-2 py-1 rounded bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 text-[10px] font-semibold border border-amber-500/15 transition-all"
+                            className="px-2 py-1 rounded bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 text-[10px] font-semibold border border-amber-500/15 transition-all"
                           >
                             Pause
                           </button>
@@ -1000,7 +1149,7 @@ function JobCards({ items, role, onAction }: { items: any[]; role: string; onAct
                         {(statusNormalized === 'active' || statusNormalized === 'open') && (
                           <button
                             onClick={() => onAction(`Close job ${job.title || job.job_title}`)}
-                            className="px-2 py-1 rounded bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 text-[10px] font-semibold border border-rose-500/15 transition-all"
+                            className="px-2 py-1 rounded bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 text-[10px] font-semibold border border-rose-500/15 transition-all"
                           >
                             Close
                           </button>
@@ -1010,7 +1159,11 @@ function JobCards({ items, role, onAction }: { items: any[]; role: string; onAct
                   })()}
                   <button
                     onClick={() => onAction(`Delete job ${job.title || job.job_title}`)}
-                    className="px-2 py-1 rounded bg-zinc-950 hover:bg-red-950/40 text-zinc-500 hover:text-red-400 text-[10px] font-semibold border border-white/5 transition-all ml-auto"
+                    className={`px-2 py-1 rounded text-[10px] font-semibold border transition-all ml-auto ${
+                      isInline
+                        ? 'bg-white hover:bg-red-50 hover:border-red-200 text-slate-400 hover:text-red-500 border-slate-200 shadow-sm'
+                        : 'bg-zinc-950 hover:bg-red-950/40 text-zinc-500 hover:text-red-400 border-white/5'
+                    }`}
                   >
                     Delete
                   </button>
@@ -1024,11 +1177,8 @@ function JobCards({ items, role, onAction }: { items: any[]; role: string; onAct
   );
 }
 
-// ─────────────────────────────────────────────
-// Job Draft Preview (inline creation)
-// ─────────────────────────────────────────────
-
 function JobDraftCard({ item, onConfirm, onCancel }: { item: any; onConfirm: (updatedData: any) => void; onCancel: () => void }) {
+  const { isInline } = React.useContext(ChatThemeContext);
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(item.title || '');
   const [location, setLocation] = useState(item.location || '');
@@ -1149,41 +1299,49 @@ function JobDraftCard({ item, onConfirm, onCancel }: { item: any; onConfirm: (up
 
   if (isEditing) {
     return (
-      <div className="mt-3 bg-zinc-900/90 border border-amber-500/30 rounded-2xl p-5 space-y-4 text-left">
+      <div className={`mt-3 border rounded-2xl p-5 space-y-4 text-left transition-all ${
+        isInline ? 'bg-white border-slate-200/80 text-slate-800 shadow-sm' : 'bg-zinc-900/90 border-[#FF8A00]/30 text-white'
+      }`}>
         <div className="flex items-center gap-2 mb-1">
-          <Sparkles className="w-4 h-4 text-amber-500 animate-pulse" />
-          <p className="text-sm font-semibold text-amber-300">Edit Job Draft</p>
+          <Sparkles className="w-4 h-4 text-amber-505 animate-pulse text-[#FF8A00]" />
+          <p className={`text-sm font-semibold ${isInline ? 'text-slate-805' : 'text-orange-350'}`}>Edit Job Draft</p>
         </div>
         
         <div className="space-y-3">
           <div>
-            <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">Job Title</label>
+            <label className={`block text-[10px] font-bold uppercase mb-1 ${isInline ? 'text-slate-400' : 'text-zinc-500'}`}>Job Title</label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500/50"
+              className={`w-full border rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#FF8A00]/50 ${
+                isInline ? 'bg-white border-slate-200 text-slate-800' : 'bg-zinc-950 border-white/10 text-white'
+              }`}
               placeholder="e.g. Senior Business Development Manager"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">Location</label>
+              <label className={`block text-[10px] font-bold uppercase mb-1 ${isInline ? 'text-slate-400' : 'text-zinc-500'}`}>Location</label>
               <input
                 type="text"
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
-                className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500/50"
+                className={`w-full border rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#FF8A00]/50 ${
+                  isInline ? 'bg-white border-slate-200 text-slate-800' : 'bg-zinc-950 border-white/10 text-white'
+                }`}
                 placeholder="e.g. Dallas, TX"
               />
             </div>
             <div>
-              <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">Job Type</label>
+              <label className={`block text-[10px] font-bold uppercase mb-1 ${isInline ? 'text-slate-400' : 'text-zinc-500'}`}>Job Type</label>
               <select
                 value={jobType}
                 onChange={(e) => setJobType(e.target.value)}
-                className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500/50 font-medium"
+                className={`w-full border rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#FF8A00]/50 font-medium ${
+                  isInline ? 'bg-white border-slate-200 text-slate-800' : 'bg-zinc-950 border-white/10 text-white'
+                }`}
               >
                 <option value="onsite">Onsite</option>
                 <option value="remote">Remote</option>
@@ -1194,31 +1352,35 @@ function JobDraftCard({ item, onConfirm, onCancel }: { item: any; onConfirm: (up
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">Salary Range</label>
+              <label className={`block text-[10px] font-bold uppercase mb-1 ${isInline ? 'text-slate-400' : 'text-zinc-500'}`}>Salary Range</label>
               <div className="flex gap-2">
                 <input
                   type="text"
                   value={salaryRange}
                   onChange={(e) => setSalaryRange(e.target.value)}
-                  className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500/50"
+                  className={`w-full border rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#FF8A00]/50 ${
+                    isInline ? 'bg-white border-slate-200 text-slate-800' : 'bg-zinc-950 border-white/10 text-white'
+                  }`}
                   placeholder="e.g. $80k - $120k"
                 />
                 <button
                   type="button"
                   onClick={handleAutoDetectSalary}
                   disabled={salaryLoading || !location}
-                  className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-[10px] font-bold uppercase tracking-wider text-white transition-all whitespace-nowrap"
+                  className="px-3 py-1.5 rounded-xl bg-[#FF8A00] hover:bg-[#E67A00] disabled:opacity-50 text-[10px] font-bold uppercase tracking-wider text-white transition-all whitespace-nowrap border border-transparent"
                 >
                   {salaryLoading ? 'Detecting...' : 'Auto Detect'}
                 </button>
               </div>
             </div>
             <div>
-              <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">Experience Band</label>
+              <label className={`block text-[10px] font-bold uppercase mb-1 ${isInline ? 'text-slate-400' : 'text-zinc-500'}`}>Experience Band</label>
               <select
                 value={experienceBand}
                 onChange={(e) => setExperienceBand(e.target.value)}
-                className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500/50 font-medium"
+                className={`w-full border rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#FF8A00]/50 font-medium ${
+                  isInline ? 'bg-white border-slate-200 text-slate-800' : 'bg-zinc-950 border-white/10 text-white'
+                }`}
               >
                 <option value="fresher">Fresher</option>
                 <option value="mid">Mid-Level</option>
@@ -1229,40 +1391,46 @@ function JobDraftCard({ item, onConfirm, onCancel }: { item: any; onConfirm: (up
           </div>
 
           <div>
-            <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">Skills (comma-separated)</label>
+            <label className={`block text-[10px] font-bold uppercase mb-1 ${isInline ? 'text-slate-400' : 'text-zinc-500'}`}>Skills (comma-separated)</label>
             <input
               type="text"
               value={skills}
               onChange={(e) => setSkills(e.target.value)}
-              className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500/50"
+              className={`w-full border rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#FF8A00]/50 ${
+                isInline ? 'bg-white border-slate-200 text-slate-800' : 'bg-zinc-950 border-white/10 text-white'
+              }`}
               placeholder="e.g. SaaS, Enterprise Sales, Negotiation"
             />
           </div>
 
           <div>
-            <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">Requirements (one per line)</label>
+            <label className={`block text-[10px] font-bold uppercase mb-1 ${isInline ? 'text-slate-400' : 'text-zinc-500'}`}>Requirements (one per line)</label>
             <textarea
               value={requirements}
               onChange={(e) => setRequirements(e.target.value)}
               rows={3}
-              className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500/50 resize-none"
+              className={`w-full border rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#FF8A00]/50 resize-none ${
+                isInline ? 'bg-white border-slate-200 text-slate-800' : 'bg-zinc-950 border-white/10 text-white'
+              }`}
               placeholder="e.g. 5+ years of B2B sales experience&#10;Track record of quota attainment"
             />
           </div>
 
           <div>
-            <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">Description</label>
+            <label className={`block text-[10px] font-bold uppercase mb-1 ${isInline ? 'text-slate-400' : 'text-zinc-500'}`}>Description</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={4}
-              className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500/50 resize-y"
+              className={`w-full border rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#FF8A00]/50 resize-y ${
+                isInline ? 'bg-white border-slate-200 text-slate-800' : 'bg-zinc-950 border-white/10 text-white'
+              }`}
               placeholder="Provide a description of the company and role..."
             />
           </div>
         </div>
 
-        <div className="mt-4 flex gap-2 justify-end border-t border-white/5 pt-3">
+        <div className={`mt-4 flex gap-2 justify-end border-t pt-3 ${isInline ? 'border-slate-150' : 'border-white/5'}`}>
           <button
             onClick={() => {
               setTitle(item.title || '');
@@ -1275,13 +1443,17 @@ function JobDraftCard({ item, onConfirm, onCancel }: { item: any; onConfirm: (up
               setDescription(item.description || '');
               setIsEditing(false);
             }}
-            className="px-3 py-1.5 rounded-xl border border-white/10 hover:bg-zinc-800 text-xs font-medium text-zinc-400 hover:text-white transition-all"
+            className={`px-3 py-1.5 rounded-xl border transition-all text-xs font-medium ${
+              isInline ? 'bg-white border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-slate-800' : 'border-white/10 hover:bg-zinc-800 text-zinc-400 hover:text-white'
+            }`}
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
-            className="px-4 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-semibold text-white border border-white/10 shadow-lg transition-all"
+            className={`px-4 py-1.5 rounded-xl border transition-all text-xs font-semibold ${
+              isInline ? 'bg-slate-800 border-transparent text-white hover:bg-slate-700 shadow-sm' : 'bg-zinc-800 hover:bg-zinc-700 text-white border-white/10 shadow-lg'
+            }`}
           >
             Save Changes
           </button>
@@ -1291,67 +1463,77 @@ function JobDraftCard({ item, onConfirm, onCancel }: { item: any; onConfirm: (up
   }
 
   return (
-    <div className="mt-3 bg-zinc-900/70 border border-amber-500/20 rounded-2xl p-5 text-left">
+    <div className={`mt-3 border rounded-2xl p-5 text-left transition-all ${
+      isInline ? 'bg-white border-slate-200/80 text-slate-800 shadow-sm' : 'bg-zinc-900/70 border-orange-500/20 text-white'
+    }`}>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-amber-500 animate-pulse" />
-          <p className="text-sm font-semibold text-amber-300">Draft Job Posting</p>
+          <Sparkles className="w-4 h-4 text-amber-500 animate-pulse text-[#FF8A00]" />
+          <p className={`text-sm font-semibold ${isInline ? 'text-[#FF8A00]' : 'text-amber-300'}`}>Draft Job Posting</p>
         </div>
         <button
           onClick={() => setIsEditing(true)}
-          className="text-xs text-amber-400 hover:text-amber-300 font-semibold flex items-center gap-1 bg-amber-500/10 hover:bg-amber-500/20 px-2.5 py-1 rounded-lg transition-all"
+          className={`text-xs font-semibold flex items-center gap-1 px-2.5 py-1 rounded-lg transition-all border ${
+            isInline ? 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200' : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 hover:text-amber-300 border-transparent'
+          }`}
         >
           Edit Draft
         </button>
       </div>
       <div className="space-y-2 text-xs">
-        <p><strong className="text-zinc-400">Title:</strong> <span className="text-white font-medium">{title}</span></p>
-        <p><strong className="text-zinc-400">Location:</strong> <span className="text-zinc-300">{location} ({jobType})</span></p>
-        <p><strong className="text-zinc-400">Salary Range:</strong> <span className="text-zinc-300">{salaryRange}</span></p>
-        <p><strong className="text-zinc-400">Experience Band:</strong> <span className="text-zinc-300">{experienceBand}</span></p>
+        <p><strong className={`font-semibold ${isInline ? 'text-slate-400' : 'text-zinc-500'}`}>Title:</strong> <span className={`font-medium ${isInline ? 'text-slate-800' : 'text-white'}`}>{title}</span></p>
+        <p><strong className={`font-semibold ${isInline ? 'text-slate-400' : 'text-zinc-500'}`}>Location:</strong> <span className={isInline ? 'text-slate-700' : 'text-zinc-300'}>{location} ({jobType})</span></p>
+        <p><strong className={`font-semibold ${isInline ? 'text-slate-400' : 'text-zinc-500'}`}>Salary Range:</strong> <span className={isInline ? 'text-slate-700' : 'text-zinc-300'}>{salaryRange}</span></p>
+        <p><strong className={`font-semibold ${isInline ? 'text-slate-400' : 'text-zinc-500'}`}>Experience Band:</strong> <span className={isInline ? 'text-slate-700' : 'text-zinc-300'}>{experienceBand}</span></p>
         {skills && (
           <p>
-            <strong className="text-zinc-400">Skills Required:</strong>{' '}
-            <span className="text-blue-300 font-mono">{skills}</span>
+            <strong className={`font-semibold ${isInline ? 'text-slate-400' : 'text-zinc-500'}`}>Skills Required:</strong>{' '}
+            <span className="text-[#FF8A00] font-mono">{skills}</span>
           </p>
         )}
         {requirements && (
           <div className="mt-1">
-            <strong className="text-zinc-400">Requirements:</strong>
-            <ul className="list-disc list-inside pl-1 text-zinc-300 space-y-0.5 mt-0.5">
+            <strong className={`font-semibold ${isInline ? 'text-slate-400' : 'text-zinc-500'}`}>Requirements:</strong>
+            <ul className={`list-disc list-inside pl-1 space-y-0.5 mt-0.5 ${isInline ? 'text-slate-700' : 'text-zinc-350'}`}>
               {requirements.split('\n').map((r: string, idx: number) => (
                 <li key={idx} className="truncate">{r}</li>
               ))}
             </ul>
           </div>
         )}
-        <p className="border-t border-white/5 pt-2 mt-2 text-zinc-400 whitespace-pre-wrap text-[11px] leading-relaxed">
+        <p className={`border-t pt-2 mt-2 whitespace-pre-wrap text-[11px] leading-relaxed ${isInline ? 'border-slate-150 text-slate-600' : 'border-white/5 text-zinc-400'}`}>
           {description}
         </p>
       </div>
 
       {matchPotential && (
-        <div className={`mt-4 border-t border-white/5 pt-4 space-y-2 rounded-xl p-3 text-left ${matchPotential.count === 0 ? 'bg-amber-500/5 border border-amber-500/10' : 'bg-emerald-500/5 border border-emerald-500/10'}`}>
+        <div className={`mt-4 border-t pt-4 space-y-2 rounded-xl p-3 text-left border ${
+          matchPotential.count === 0 
+            ? (isInline ? 'bg-amber-50/50 border-amber-200/50' : 'bg-amber-500/5 border-amber-500/10') 
+            : (isInline ? 'bg-emerald-50/50 border-emerald-200/50' : 'bg-emerald-500/5 border-emerald-500/10')
+        }`}>
           <div className="flex items-center justify-between">
-            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+            <p className={`text-[10px] font-bold uppercase tracking-wider ${isInline ? 'text-slate-500' : 'text-zinc-400'}`}>
               Matching Talent Preview
             </p>
             <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${matchPotential.count === 0 ? 'text-amber-400 bg-amber-500/10 border-amber-500/20' : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'}`}>
               {matchPotential.count} candidate{matchPotential.count !== 1 ? 's' : ''}
             </span>
           </div>
-          <p className="text-[11px] text-zinc-300 leading-normal">{matchPotential.message}</p>
+          <p className={`text-[11px] leading-normal ${isInline ? 'text-slate-700' : 'text-zinc-300'}`}>{matchPotential.message}</p>
           
           {matchPotential.data && matchPotential.data.length > 0 && (
             <div className="space-y-1.5 mt-2">
               {matchPotential.data.map((cand: any, idx: number) => (
-                <div key={idx} className="flex items-center justify-between p-2 rounded-lg bg-zinc-950/40 border border-white/[0.03] text-xs">
+                <div key={idx} className={`flex items-center justify-between p-2 rounded-lg border text-xs ${
+                  isInline ? 'bg-white border-slate-150' : 'bg-zinc-950/40 border-white/[0.03]'
+                }`}>
                   <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-white truncate">{cand.full_name}</p>
-                    <p className="text-[10px] text-zinc-500 truncate">{cand.current_role} · {cand.location}</p>
+                    <p className={`font-semibold truncate ${isInline ? 'text-slate-800' : 'text-white'}`}>{cand.full_name}</p>
+                    <p className={`text-[10px] truncate ${isInline ? 'text-slate-400' : 'text-zinc-500'}`}>{cand.current_role} · {cand.location}</p>
                   </div>
                   {cand.match_score !== undefined && (
-                    <span className="text-[9px] font-mono text-blue-300 bg-blue-500/10 border border-blue-500/20 px-1.5 py-0.5 rounded ml-2 flex-shrink-0">
+                    <span className="text-[9px] font-mono text-[#FF8A00] bg-orange-500/10 border border-orange-500/20 px-1.5 py-0.5 rounded ml-2 flex-shrink-0">
                       {Math.round(cand.match_score)}% match
                     </span>
                   )}
@@ -1367,7 +1549,9 @@ function JobDraftCard({ item, onConfirm, onCancel }: { item: any; onConfirm: (up
           type="button"
           onClick={handleCheckMatchPotential}
           disabled={checkingPotential}
-          className="mr-auto px-3 py-1.5 rounded-xl border border-white/10 hover:bg-zinc-800 text-xs font-semibold text-zinc-300 hover:text-white transition-all flex items-center gap-1.5 disabled:opacity-50"
+          className={`mr-auto px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all flex items-center gap-1.5 disabled:opacity-50 ${
+            isInline ? 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700' : 'bg-zinc-900 border-white/10 hover:bg-zinc-800 text-zinc-300 hover:text-white'
+          }`}
         >
           {checkingPotential ? (
             <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -1378,13 +1562,15 @@ function JobDraftCard({ item, onConfirm, onCancel }: { item: any; onConfirm: (up
         </button>
         <button
           onClick={onCancel}
-          className="px-3 py-1.5 rounded-xl border border-white/10 hover:bg-zinc-800 text-xs font-medium text-zinc-400 hover:text-white transition-all"
+          className={`px-3 py-1.5 rounded-xl border text-xs font-medium transition-all ${
+            isInline ? 'bg-white hover:bg-slate-50 border-slate-200 text-slate-500 hover:text-slate-800' : 'bg-zinc-900 border-white/10 hover:bg-zinc-800 text-zinc-400 hover:text-white'
+          }`}
         >
           Cancel
         </button>
         <button
           onClick={handlePublish}
-          className="px-4 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-xs font-semibold text-white shadow-lg transition-all"
+          className="px-4 py-1.5 rounded-xl bg-[#FF8A00] hover:bg-[#E67A00] text-xs font-semibold text-white shadow-lg transition-all border border-transparent"
         >
           Publish Job
         </button>
@@ -1398,21 +1584,30 @@ function JobDraftCard({ item, onConfirm, onCancel }: { item: any; onConfirm: (up
 // ─────────────────────────────────────────────
 
 function ApplicationConfirmCard({ item, onConfirm, onCancel }: { item: any; onConfirm: () => void; onCancel: () => void }) {
+  const { isInline } = React.useContext(ChatThemeContext);
   return (
-    <div className="mt-3 bg-zinc-900/70 border border-blue-500/20 rounded-2xl p-4">
-      <p className="text-xs text-zinc-400 font-medium mb-1">Confirming application for:</p>
-      <p className="text-sm font-semibold text-white">{item.title}</p>
+    <div className={`mt-3 border rounded-2xl p-4 ${
+      isInline 
+        ? 'bg-slate-50 border-orange-200/50' 
+        : 'bg-zinc-900/70 border border-orange-500/20'
+    }`}>
+      <p className={`text-xs font-medium mb-1 ${isInline ? 'text-slate-500' : 'text-zinc-400'}`}>Confirming application for:</p>
+      <p className={`text-sm font-semibold ${isInline ? 'text-slate-800' : 'text-white'}`}>{item.title}</p>
       <p className="text-xs text-zinc-500 mb-3">{item.company_name} · {item.location}</p>
       <div className="flex gap-2 justify-end">
         <button
           onClick={onCancel}
-          className="px-3 py-1.5 rounded-xl border border-white/10 hover:bg-zinc-800 text-xs font-medium text-zinc-400 hover:text-white transition-all"
+          className={`px-3 py-1.5 rounded-xl border transition-all text-xs font-medium ${
+            isInline 
+              ? 'border-slate-200 hover:bg-slate-100 text-slate-600 hover:text-slate-800' 
+              : 'border-white/10 hover:bg-zinc-800 text-zinc-400 hover:text-white'
+          }`}
         >
           Cancel
         </button>
         <button
           onClick={onConfirm}
-          className="px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-semibold text-white shadow-lg transition-all"
+          className="px-4 py-1.5 rounded-xl bg-[#FF8A00] hover:bg-[#E67A00] text-xs font-semibold text-white shadow-lg transition-all"
         >
           Confirm and Apply
         </button>
@@ -1426,32 +1621,45 @@ function ApplicationConfirmCard({ item, onConfirm, onCancel }: { item: any; onCo
 // ─────────────────────────────────────────────
 
 function CompanyCards({ items }: { items: any[] }) {
+  const { isInline } = React.useContext(ChatThemeContext);
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
       {items.map((co, i) => (
-        <div key={i} className="group bg-zinc-900/60 border border-white/[0.06] rounded-2xl p-4 hover:border-indigo-500/30 hover:bg-zinc-800/60 transition-all duration-200">
+        <div key={i} className={`group border rounded-2xl p-4 transition-all duration-200 ${
+          isInline
+            ? 'bg-white border-slate-200/80 hover:border-[#FF8A00]/30 hover:bg-slate-50/50 shadow-sm text-slate-800'
+            : 'bg-zinc-900/60 border-white/[0.06] hover:border-orange-500/35 hover:bg-zinc-800/60 text-white'
+        }`}>
           <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 flex items-center justify-center flex-shrink-0 border border-white/5">
-              <Building2 className="w-4 h-4 text-indigo-400" />
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 border ${
+              isInline
+                ? 'bg-orange-50 border-orange-200/50'
+                : 'bg-gradient-to-br from-orange-500/20 to-amber-500/20 border-white/5'
+            }`}>
+              <Building2 className={`w-4 h-4 ${isInline ? 'text-[#FF8A00]' : 'text-orange-450'}`} />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-white truncate">
+              <p className={`text-sm font-semibold truncate ${isInline ? 'text-slate-800' : 'text-white'}`}>
                 {co.company_name || co.name || 'Company'}
               </p>
-              <p className="text-xs text-zinc-500 truncate">
+              <p className={`text-xs truncate ${isInline ? 'text-slate-500' : 'text-zinc-500'}`}>
                 {co.industry || 'Tech'}{co.location ? ` · ${co.location}` : ''}
               </p>
               {co.size_band && (
-                <p className="text-[11px] text-zinc-600 mt-0.5">{co.size_band}</p>
+                <p className={`text-[11px] mt-0.5 ${isInline ? 'text-slate-500' : 'text-zinc-500'}`}>{co.size_band}</p>
               )}
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 {typeof co.open_jobs === 'number' && co.open_jobs > 0 && (
-                  <span className="text-[10px] font-mono text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                  <span className="text-[10px] font-mono text-emerald-450 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
                     {co.open_jobs} open role{co.open_jobs !== 1 ? 's' : ''}
                   </span>
                 )}
                 {typeof co.match_score === 'number' && (
-                  <span className="text-[10px] font-mono text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full">
+                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
+                    isInline
+                      ? 'text-[#FF8A00] bg-orange-50 border-[#FF8A00]/20'
+                      : 'text-orange-400 bg-orange-500/10 border-orange-500/20'
+                  }`}>
                     {Math.round(co.match_score)}% culture fit
                   </span>
                 )}
@@ -1469,19 +1677,20 @@ function CompanyCards({ items }: { items: any[] }) {
 // ─────────────────────────────────────────────
 
 function MarketData({ items }: { items: any[] }) {
+  const { isInline } = React.useContext(ChatThemeContext);
   const max = Math.max(...items.map(i => i.value), 1);
   return (
     <div className="mt-3 space-y-2.5">
       {items.map((item, i) => (
         <div key={i} className="flex items-center gap-3">
-          <span className="text-[11px] font-mono text-zinc-400 w-40 truncate flex-shrink-0">{item.label}</span>
-          <div className="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+          <span className={`text-[11px] font-mono w-40 truncate flex-shrink-0 ${isInline ? 'text-slate-500' : 'text-zinc-400'}`}>{item.label}</span>
+          <div className={`flex-1 h-1.5 rounded-full overflow-hidden ${isInline ? 'bg-slate-200' : 'bg-zinc-800'}`}>
             <div
-              className="h-full bg-gradient-to-r from-blue-500 to-emerald-500 rounded-full transition-all duration-700"
+              className="h-full bg-gradient-to-r from-[#FF8A00] to-orange-400 rounded-full transition-all duration-700"
               style={{ width: `${(item.value / max) * 100}%` }}
             />
           </div>
-          <span className="text-[11px] font-mono text-emerald-400 w-8 text-right">{item.value}</span>
+          <span className={`text-[11px] font-mono w-8 text-right ${isInline ? 'text-[#FF8A00] font-semibold' : 'text-orange-400'}`}>{item.value}</span>
         </div>
       ))}
     </div>
@@ -1493,31 +1702,34 @@ function MarketData({ items }: { items: any[] }) {
 // ─────────────────────────────────────────────
 
 const STATUS_STYLES: Record<string, string> = {
-  applied:     'text-blue-400 bg-blue-500/10 border-blue-500/20',
+  applied:     'text-[#FF8A00] bg-orange-500/10 border-orange-500/20',
   shortlisted: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
-  interview:   'text-violet-400 bg-violet-500/10 border-violet-500/20',
+  interview:   'text-amber-400 bg-amber-500/10 border-amber-500/20',
   hired:       'text-teal-400 bg-teal-500/10 border-teal-500/20',
   rejected:    'text-red-400 bg-red-500/10 border-red-500/20',
   pending:     'text-amber-400 bg-amber-500/10 border-amber-500/20',
 };
 
 function ApplicationList({ items, role }: { items: any[]; role: string }) {
+  const { isInline } = React.useContext(ChatThemeContext);
   return (
     <div className="mt-3 space-y-2">
       {items.map((app, i) => {
         const statusStyle = STATUS_STYLES[app.status?.toLowerCase()] || STATUS_STYLES.pending;
         return (
-          <div key={i} className="bg-zinc-900/60 border border-white/[0.06] rounded-xl p-3 flex items-center justify-between gap-3">
+          <div key={i} className={`border rounded-xl p-3 flex items-center justify-between gap-3 transition-all ${
+            isInline ? 'bg-white border-slate-200/80 shadow-sm text-slate-800' : 'bg-zinc-900/60 border-white/[0.06] text-white'
+          }`}>
             <div className="min-w-0 flex-1">
               {role === 'recruiter' ? (
                 <>
-                  <p className="text-sm font-semibold text-white truncate">{app.candidate_name || 'Candidate'}</p>
-                  <p className="text-xs text-zinc-500 truncate">{app.job_title || 'Role'}</p>
+                  <p className={`text-sm font-semibold truncate ${isInline ? 'text-slate-800' : 'text-white'}`}>{app.candidate_name || 'Candidate'}</p>
+                  <p className={`text-xs truncate ${isInline ? 'text-slate-500' : 'text-zinc-500'}`}>{app.job_title || 'Role'}</p>
                 </>
               ) : (
                 <>
-                  <p className="text-sm font-semibold text-white truncate">{app.job_title || 'Role'}</p>
-                  <p className="text-xs text-zinc-500 truncate">{app.company_name || 'Company'}</p>
+                  <p className={`text-sm font-semibold truncate ${isInline ? 'text-slate-800' : 'text-white'}`}>{app.job_title || 'Role'}</p>
+                  <p className={`text-xs truncate ${isInline ? 'text-slate-500' : 'text-zinc-500'}`}>{app.company_name || 'Company'}</p>
                 </>
               )}
             </div>
@@ -1536,20 +1748,25 @@ function ApplicationList({ items, role }: { items: any[]; role: string }) {
 // ─────────────────────────────────────────────
 
 function CareerGPSCards({ items }: { items: any[] }) {
+  const { isInline } = React.useContext(ChatThemeContext);
   return (
     <div className="mt-3 space-y-2">
       {items.map((m, i) => (
-        <div key={i} className="bg-zinc-900/60 border border-white/[0.06] rounded-xl p-3 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-teal-500/20 to-emerald-500/20 flex items-center justify-center flex-shrink-0 border border-white/5">
-            <Navigation className="w-4 h-4 text-teal-400" />
+        <div key={i} className={`border rounded-xl p-3 flex items-center gap-3 transition-all ${
+          isInline ? 'bg-white border-slate-200/80 shadow-sm text-slate-800' : 'bg-zinc-900/60 border-white/[0.06] text-white'
+        }`}>
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 border ${
+            isInline ? 'bg-orange-50 border-orange-200/50' : 'bg-gradient-to-br from-orange-500/20 to-amber-500/20 border-white/5'
+          }`}>
+            <Navigation className={`w-4 h-4 ${isInline ? 'text-[#FF8A00]' : 'text-orange-400'}`} />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-white truncate">{m.milestone_title || 'Milestone'}</p>
+            <p className={`text-sm font-semibold truncate ${isInline ? 'text-slate-800' : 'text-white'}`}>{m.milestone_title || 'Milestone'}</p>
           </div>
           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
             m.milestone_status === 'completed'
-              ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
-              : 'text-amber-400 bg-amber-500/10 border-amber-500/20'
+              ? 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20'
+              : 'text-amber-500 bg-amber-500/10 border-amber-500/20'
           }`}>
             {m.milestone_status || 'pending'}
           </span>
@@ -1570,12 +1787,13 @@ function FeaturePrompts({
   prompts: string[];
   onSend: (text: string) => void;
 }) {
+  const { isInline } = React.useContext(ChatThemeContext);
   if (!prompts || prompts.length === 0) return null;
   return (
     <div className="mt-3 flex flex-wrap gap-2">
       <div className="w-full flex items-center gap-1.5 mb-1">
-        <Zap className="w-3 h-3 text-amber-500" />
-        <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
+        <Zap className="w-3 h-3 text-[#FF8A00]" />
+        <span className={`text-[10px] font-bold uppercase tracking-widest ${isInline ? 'text-slate-400' : 'text-zinc-500'}`}>
           Next actions
         </span>
       </div>
@@ -1583,9 +1801,13 @@ function FeaturePrompts({
         <button
           key={i}
           onClick={() => onSend(p)}
-          className="group inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800/60 border border-amber-500/15 hover:border-amber-500/40 hover:bg-amber-500/5 transition-all text-xs text-zinc-400 hover:text-amber-300"
+          className={`group inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-all text-xs border ${
+            isInline
+              ? 'bg-orange-50/50 border-orange-200/50 hover:bg-orange-50 hover:border-[#FF8A00]/40 text-slate-700 hover:text-[#FF8A00]'
+              : 'bg-zinc-800/60 border-orange-500/15 hover:border-orange-500/40 hover:bg-orange-500/5 text-zinc-400 hover:text-orange-300'
+          }`}
         >
-          <Sparkles className="w-3 h-3 text-amber-500/60 group-hover:text-amber-400 flex-shrink-0" />
+          <Sparkles className="w-3 h-3 text-[#FF8A00]/60 group-hover:text-[#FF8A00] flex-shrink-0" />
           {p}
         </button>
       ))}
@@ -1604,6 +1826,7 @@ function ActionCards({
   cards: ActionCard[];
   onNavigate: (url: string) => void;
 }) {
+  const { isInline } = React.useContext(ChatThemeContext);
   if (!cards || cards.length === 0) return null;
   return (
     <div className="mt-3 flex flex-wrap gap-2">
@@ -1611,9 +1834,15 @@ function ActionCards({
         <button
           key={i}
           onClick={() => onNavigate(card.url)}
-          className="group inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-zinc-800/80 border border-white/[0.07] hover:border-blue-500/40 hover:bg-blue-600/10 transition-all duration-200 text-xs font-medium text-zinc-300 hover:text-blue-300"
+          className={`group inline-flex items-center gap-2 px-3 py-2 rounded-xl border transition-all duration-200 text-xs font-medium ${
+            isInline
+              ? 'bg-slate-50 border-slate-200 hover:border-[#FF8A00]/40 hover:bg-orange-50/10 text-slate-700 hover:text-[#FF8A00]'
+              : 'bg-zinc-800/80 border border-white/[0.07] hover:border-orange-500/40 hover:bg-orange-600/10 transition-all duration-200 text-zinc-300 hover:text-orange-355'
+          }`}
         >
-          <CardIcon name={card.icon} className="w-3.5 h-3.5 text-zinc-500 group-hover:text-blue-400 transition-colors flex-shrink-0" />
+          <CardIcon name={card.icon} className={`w-3.5 h-3.5 transition-colors flex-shrink-0 ${
+            isInline ? 'text-slate-400 group-hover:text-[#FF8A00]' : 'text-zinc-400 group-hover:text-orange-400'
+          }`} />
           {card.label}
           <ChevronRight className="w-3 h-3 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all" />
         </button>
@@ -1642,6 +1871,7 @@ function MessageBubble({
   getDisplayName,
   onOpenPdfPreview,
   onOpenInviteModal,
+  onDeleteMessage,
 }: {
   msg: ChatMessage;
   onNavigate: (url: string) => void;
@@ -1658,7 +1888,9 @@ function MessageBubble({
   getDisplayName?: (name: string, id: string) => string;
   onOpenPdfPreview?: (url: string, name: string) => void;
   onOpenInviteModal?: (id: string, name: string) => void;
+  onDeleteMessage?: (index: number) => void;
 }) {
+  const { isInline } = React.useContext(ChatThemeContext);
   const isUser = msg.role === 'user';
   const isEditing = index === editingIndex;
   const [editText, setEditText] = useState(msg.content);
@@ -1725,25 +1957,29 @@ function MessageBubble({
           />
         )}
         {msg.data_type === 'recommendations_locked' && (
-          <div className="mt-3 bg-zinc-900/70 border border-amber-500/20 rounded-2xl p-5 text-left max-w-md">
+          <div className={`mt-3 border rounded-2xl p-5 text-left max-w-md transition-all ${
+            isInline
+              ? 'bg-white border-slate-200/80 text-slate-800 shadow-sm'
+              : 'bg-zinc-900/70 border-amber-500/20 text-white'
+          }`}>
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center flex-shrink-0">
                 <Lock className="w-5 h-5 text-amber-500" />
               </div>
               <div>
-                <p className="text-sm font-bold text-white uppercase tracking-wider">Recommendations Locked</p>
-                <p className="text-xs text-zinc-500">TechSales Axis DNA Assessment Pending</p>
+                <p className={`text-sm font-bold uppercase tracking-wider ${isInline ? 'text-slate-800' : 'text-white'}`}>Recommendations Locked</p>
+                <p className={`text-xs ${isInline ? 'text-slate-500' : 'text-zinc-500'}`}>Axis Profile Evaluation Required</p>
               </div>
             </div>
-            <p className="mt-3 text-xs text-zinc-400 leading-relaxed">
-              This high-impact transmission channel is currently disabled. To unlock Recommended Talent and other advanced recruiter features, your company must complete the TechSales Axis DNA Assessment.
+            <p className={`mt-3 text-xs leading-relaxed ${isInline ? 'text-slate-600' : 'text-zinc-400'}`}>
+              This feature is currently locked. To unlock Recommended Talent and other advanced recruiter tools, please complete the Axis Profile Evaluation.
             </p>
             <div className="mt-4 flex gap-2">
               <button
                 onClick={() => onNavigate('/onboarding/recruiter')}
-                className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                className="flex-1 py-2.5 bg-[#FF8A00] hover:bg-[#E67A00] text-white rounded-xl text-xs font-semibold shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5 border border-transparent"
               >
-                Complete Assessment
+                Complete Evaluation
               </button>
             </div>
           </div>
@@ -1781,16 +2017,22 @@ function MessageBubble({
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} group`}>
       {!isUser && (
-        <div className="w-7 h-7 rounded-lg bg-blue-600/20 border border-blue-500/20 flex items-center justify-center flex-shrink-0 mr-3 mt-1">
-          <Brain className="w-3.5 h-3.5 text-blue-400" />
+        <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mr-3 mt-1 ${
+          isInline 
+            ? 'bg-orange-50 border border-orange-200/50' 
+            : 'bg-orange-500/20 border border-orange-500/20'
+        }`}>
+          <Brain className="w-3.5 h-3.5 text-[#FF8A00]" />
         </div>
       )}
       <div className={`max-w-[85%] ${isUser ? 'order-first' : ''}`}>
         <div
           className={`px-4 py-3 rounded-2xl relative ${
             isUser
-              ? 'bg-blue-600 text-white rounded-tr-sm shadow-lg shadow-blue-900/20'
-              : 'bg-zinc-900/70 border border-white/[0.06] text-zinc-100 rounded-tl-sm backdrop-blur-sm'
+              ? 'bg-[#FF8A00] text-white rounded-tr-sm shadow-md shadow-orange-500/10'
+              : isInline
+                ? 'bg-white border border-slate-200 text-slate-800 rounded-tl-sm shadow-sm'
+                : 'bg-zinc-900/70 border border-white/[0.06] text-zinc-100 rounded-tl-sm backdrop-blur-sm'
           }`}
         >
           {msg.isStreaming ? (
@@ -1799,31 +2041,39 @@ function MessageBubble({
                 {[0, 1, 2].map(i => (
                   <span
                     key={i}
-                    className="w-1.5 h-1.5 rounded-full bg-zinc-500 animate-bounce"
+                    className={`w-1.5 h-1.5 rounded-full animate-bounce ${isInline ? 'bg-slate-400' : 'bg-zinc-500'}`}
                     style={{ animationDelay: `${i * 150}ms` }}
                   />
                 ))}
               </span>
-              <span className="text-sm text-zinc-400">Thinking…</span>
+              <span className={`text-xs ${isInline ? 'text-slate-500' : 'text-zinc-400'}`}>Thinking…</span>
             </div>
           ) : isEditing ? (
             <div className="flex flex-col gap-2 min-w-[250px] sm:min-w-[350px]">
               <textarea
                 value={editText}
                 onChange={e => setEditText(e.target.value)}
-                className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500/50 resize-y"
+                className={`w-full border rounded-xl px-3 py-2 text-xs focus:outline-none resize-y ${
+                  isInline 
+                    ? 'bg-white border-slate-200 text-slate-800 focus:border-[#FF8A00]' 
+                    : 'bg-zinc-950 border-white/10 text-white focus:border-[#FF8A00]'
+                }`}
                 rows={3}
               />
               <div className="flex justify-end gap-2">
                 <button
                   onClick={() => setEditingIndex(null)}
-                  className="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] font-semibold transition-all border border-white/5"
+                  className={`px-2 py-1 rounded text-[10px] font-semibold transition-all border ${
+                    isInline 
+                      ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200' 
+                      : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-white/5'
+                  }`}
                 >
                   Cancel
                 </button>
                 <button
                   onClick={() => onResendMessage(index, editText)}
-                  className="px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-500 text-[10px] font-semibold transition-all shadow-md"
+                  className="px-2.5 py-1 rounded bg-[#FF8A00] hover:bg-[#E67A00] text-white text-[10px] font-semibold transition-all shadow-sm"
                 >
                   Save & Submit
                 </button>
@@ -1838,13 +2088,24 @@ function MessageBubble({
                     : msg.content}
                 </p>
                 {isUser && !msg.content.startsWith('confirm publish_job_draft ') && (
-                  <button
-                    onClick={() => setEditingIndex(index)}
-                    className="opacity-0 group-hover:opacity-100 p-1 hover:bg-white/10 rounded text-zinc-300 transition-all flex-shrink-0"
-                    title="Edit message"
-                  >
-                    <Edit2 className="w-3.5 h-3.5" />
-                  </button>
+                  <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1.5 flex-shrink-0">
+                    <button
+                      onClick={() => setEditingIndex(index)}
+                      className="p-1 hover:bg-white/10 rounded text-zinc-300 transition-all"
+                      title="Edit message"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                    {onDeleteMessage && (
+                      <button
+                        onClick={() => onDeleteMessage(index)}
+                        className="p-1 hover:bg-red-500/20 hover:text-red-400 rounded text-zinc-400 transition-all"
+                        title="Delete message and follow-up"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
               {!isUser && renderData()}
@@ -1863,7 +2124,7 @@ function MessageBubble({
 // Main Component
 // ─────────────────────────────────────────────
 
-export default function GlobalChatInterface() {
+export default function GlobalChatInterface({ isInline = false }: { isInline?: boolean } = {}) {
   const { isChatMode, toggleChatMode } = useChatViewStore();
   const pathname = usePathname();
   const router   = useRouter();
@@ -1880,6 +2141,8 @@ export default function GlobalChatInterface() {
   const [messages,    setMessages]    = useState<ChatMessage[]>([]);
   const [greetingLoaded, setGreetingLoaded] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [sessionLoading, setSessionLoading] = useState(false);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
 
   // Modals state
   const [activeApplicationId, setActiveApplicationId] = useState<string | null>(null);
@@ -1932,30 +2195,17 @@ export default function GlobalChatInterface() {
       setChatThreads(threadsResponse || []);
       setJobs(jobsResponse || []);
 
-      const messagesMap: Record<string, any[]> = {};
-      if (threadsResponse && threadsResponse.length > 0) {
-        await Promise.all(
-          threadsResponse.map(async (t: any) => {
-            try {
-              const msgs = await apiClient.get(`/chat/messages/${t.id}`, token);
-              messagesMap[t.candidate_id] = msgs || [];
-            } catch (err) {
-              console.error("Failed to fetch thread messages:", err);
-            }
-          })
-        );
-      }
-      setThreadMessages(messagesMap);
+      // Removed message history pre-fetch to optimize thread load times drastically
     } catch (err) {
       console.error("Error fetching access control data:", err);
     }
   }, [userRole]);
 
   useEffect(() => {
-    if (isChatMode && userRole === 'recruiter') {
+    if ((isChatMode || isInline) && userRole === 'recruiter') {
       fetchAccessControlData();
     }
-  }, [isChatMode, userRole, fetchAccessControlData]);
+  }, [isChatMode, isInline, userRole, fetchAccessControlData]);
 
   const hasAccessToPersonalInfo = useCallback((candidateId: string): boolean => {
     // Check if the candidate has rejected the invitation (thread is inactive)
@@ -1982,15 +2232,13 @@ export default function GlobalChatInterface() {
 
     if (hasApplicationAccess) return true;
 
-    // Check if the candidate has replied to a chat thread
+    // Check if the candidate has active chat thread (invited)
     if (thread && thread.is_active) {
-      const msgs = threadMessages[candidateId] || [];
-      const hasReplied = msgs.some(m => m.sender_id === candidateId);
-      if (hasReplied) return true;
+      return true;
     }
 
     return false;
-  }, [pipelineData, chatThreads, threadMessages]);
+  }, [pipelineData, chatThreads]);
 
   const getDisplayName = useCallback((fullName: string, candidateId: string): string => {
     if (hasAccessToPersonalInfo(candidateId)) {
@@ -2131,6 +2379,17 @@ export default function GlobalChatInterface() {
   const recognitionRef  = useRef<any>(null);
   const messagesEndRef  = useRef<HTMLDivElement>(null);
   const textareaRef     = useRef<HTMLTextAreaElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = useCallback((behavior: 'smooth' | 'auto' = 'smooth') => {
+    if (scrollContainerRef.current) {
+      const { scrollHeight, clientHeight } = scrollContainerRef.current;
+      scrollContainerRef.current.scrollTo({
+        top: scrollHeight - clientHeight,
+        behavior,
+      });
+    }
+  }, []);
 
   const hints           = userRole === 'recruiter' ? RECRUITER_HINTS : CANDIDATE_HINTS;
   const placeholder     = useRotatingPlaceholder(hints);
@@ -2174,17 +2433,36 @@ export default function GlobalChatInterface() {
 
   // ── Auto-scroll ────────────────────────────
   useEffect(() => {
-    if (isChatMode) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isChatMode]);
+    if (isChatMode || isInline) {
+      // Instant scroll
+      scrollToBottom('auto');
+      
+      // Delayed smooth scroll to account for images or components rendering
+      const t1 = setTimeout(() => scrollToBottom('smooth'), 50);
+      const t2 = setTimeout(() => scrollToBottom('smooth'), 150);
+      const t3 = setTimeout(() => scrollToBottom('smooth'), 400);
+      const t4 = setTimeout(() => scrollToBottom('smooth'), 800);
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+        clearTimeout(t3);
+        clearTimeout(t4);
+      };
+    }
+  }, [messages, isChatMode, isInline, loading, sessionLoading, scrollToBottom]);
 
   // ── Load session history ───────────────────
   const loadSessions = useCallback(async () => {
+    setSessionsLoading(true);
     try {
       const res = await fetch(`${apiBase}/ai/assistant/sessions`, { headers: authHeaders() });
       if (!res.ok) return;
       const data = await res.json();
       setSessions(data.sessions || []);
     } catch { /* silent */ }
+    finally {
+      setSessionsLoading(false);
+    }
   }, [apiBase, authHeaders]);
 
   // ── Fetch personalised greeting on open ───
@@ -2232,7 +2510,7 @@ export default function GlobalChatInterface() {
     } catch {
       setMessages([{
         role:      'assistant',
-        content:   `Hey! I'm your TalentCore AI assistant. What can I help you with?`,
+        content:   `Hey! I'm your TechSalesAxis AI. What can I help you with?`,
         timestamp: new Date(),
         data_type: 'none',
       }]);
@@ -2241,6 +2519,7 @@ export default function GlobalChatInterface() {
 
   // ── Load past session ──────────────────────
   const loadSession = useCallback(async (sid: string) => {
+    setSessionLoading(true);
     try {
       const res = await fetch(`${apiBase}/ai/assistant/sessions/${sid}/messages`, {
         headers: authHeaders(),
@@ -2274,20 +2553,10 @@ export default function GlobalChatInterface() {
       setSessionId(null);
       setGreetingLoaded(false);
       return false;
+    } finally {
+      setSessionLoading(false);
     }
   }, [apiBase, authHeaders, loadSessions]);
-
-  useEffect(() => {
-    if (!isChatMode) return;
-    const saved = localStorage.getItem(SESSION_KEY);
-    if (saved) {
-      loadSession(saved).then(success => {
-        if (!success) fetchGreeting(null);
-      });
-      return;
-    }
-    fetchGreeting(null);
-  }, [isChatMode, fetchGreeting, loadSession]);
 
   // ── Delete session ─────────────────────────
   const deleteSession = useCallback(async (sid: string, e: React.MouseEvent) => {
@@ -2301,6 +2570,9 @@ export default function GlobalChatInterface() {
       if (sessionId === sid) {
         setSessionId(null);
         localStorage.removeItem(SESSION_KEY);
+        setMessages([]);
+        setGreetingLoaded(false);
+        fetchGreeting(null, true);
       }
     } catch { /* silent */ }
   }, [apiBase, authHeaders, sessionId]);
@@ -2337,9 +2609,17 @@ export default function GlobalChatInterface() {
     }
   };
 
-  // ── Send prompt (also used by feature prompt chips) ──
+  // ── Send prompt (also used by feature chip / suggestion chip click) ──
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || loading) return;
+
+    if (isInline) {
+      localStorage.setItem('pending_first_message', text);
+      useChatViewStore.getState().setChatMode(true);
+      setInput('');
+      if (textareaRef.current) textareaRef.current.style.height = 'auto';
+      return;
+    }
 
     const userMsg: ChatMessage = { role: 'user', content: text, timestamp: new Date() };
     const thinkingMsg: ChatMessage = {
@@ -2373,18 +2653,20 @@ export default function GlobalChatInterface() {
 
       setMessages(prev => {
         const next = [...prev];
-        next[next.length - 1] = {
-          role:            'assistant',
-          content:         result.text || 'Processing complete.',
-          timestamp:       new Date(),
-          data_type:       result.data_type    || 'none',
-          data_results:    result.data_results,
-          action_cards:    result.action_cards,
-          feature_prompts: result.feature_prompts,
-          next_steps:      result.next_steps,
-          intent:          result.intent,
-          isStreaming:     false,
-        };
+        if (next.length > 0) {
+          next[next.length - 1] = {
+            role:            'assistant',
+            content:         result.text || 'Processing complete.',
+            timestamp:       new Date(),
+            data_type:       result.data_type    || 'none',
+            data_results:    result.data_results,
+            action_cards:    result.action_cards,
+            feature_prompts: result.feature_prompts,
+            next_steps:      result.next_steps,
+            intent:          result.intent,
+            isStreaming:     false,
+          };
+        }
         return next;
       });
 
@@ -2403,508 +2685,640 @@ export default function GlobalChatInterface() {
     } catch (err: any) {
       setMessages(prev => {
         const next = [...prev];
-        next[next.length - 1] = {
-          role:      'assistant',
-          content:   `Connection error: ${err?.message || 'Please try again.'}`,
-          timestamp: new Date(),
-          data_type: 'error',
-        };
-        return next;
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [loading, apiBase, authHeaders, sessionId, getClientContext, loadSessions]);
-
-  const handleResendMessage = async (index: number, newText: string) => {
-    if (!newText.trim() || loading) return;
-
-    // 1. Truncate client messages array to up to the edited user message
-    const truncatedMessages = messages.slice(0, index);
-
-    // 2. Add the edited user message and a streaming placeholder assistant message
-    const editedUserMsg: ChatMessage = {
-      role: 'user',
-      content: newText,
-      timestamp: new Date()
-    };
-    const thinkingMsg: ChatMessage = {
-      role: 'assistant',
-      content: '',
-      timestamp: new Date(),
-      isStreaming: true
-    };
-    const newMessages = [...truncatedMessages, editedUserMsg, thinkingMsg];
-    setMessages(newMessages);
-    setEditingIndex(null);
-    setLoading(true);
-
-    try {
-      // 3. Sync truncated messages to the backend
-      const syncPayload = [...truncatedMessages].map(m => ({
-        role: m.role,
-        content: m.content,
-        timestamp: m.timestamp.toISOString(),
-        intent: m.intent,
-        data_type: m.data_type,
-        data_results: m.data_results,
-        action_cards: m.action_cards,
-        feature_prompts: m.feature_prompts,
-        next_steps: m.next_steps,
-      }));
-
-      if (sessionId) {
-        await fetch(`${apiBase}/ai/assistant/sessions/${sessionId}/messages`, {
-          method: 'PUT',
-          headers: authHeaders(),
-          body: JSON.stringify({ messages: syncPayload }),
-        });
-      }
-
-      // 4. Send the new prompt to get a response
-      const res = await fetch(`${apiBase}/ai/assistant/chat`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({
-          prompt: newText,
-          session_id: sessionId,
-          client_context: getClientContext('global_chat_resend'),
-        }),
-      });
-
-      if (!res.ok) throw new Error(`API ${res.status}`);
-      const result = await res.json();
-
-      if (result.session_id) {
-        setSessionId(result.session_id);
-        localStorage.setItem(SESSION_KEY, result.session_id);
-        loadSessions();
-      }
-
-      setMessages(prev => {
-        const next = [...prev];
-        next[next.length - 1] = {
-          role: 'assistant',
-          content: result.text || 'Processing complete.',
-          timestamp: new Date(),
-          data_type: result.data_type || 'none',
-          data_results: result.data_results,
-          action_cards: result.action_cards,
-          feature_prompts: result.feature_prompts,
-          next_steps: result.next_steps,
-          intent: result.intent,
-          isStreaming: false,
-        };
-        return next;
-      });
-
-      if (userRole === 'recruiter') {
-        await fetchAccessControlData();
-      }
-
-      if (result.data_type === 'resume_info' && result.data_results && result.data_results[0]?.resume_path) {
-        const item = result.data_results[0];
-        const candId = item.user_id || item.id;
-        if (hasAccessToPersonalInfo(candId)) {
-          handleOpenPdfPreview(item.resume_path, item.full_name || item.name || 'Candidate');
+        if (next.length > 0) {
+          next[next.length - 1] = {
+            role:            'assistant',
+            content:         'Error: ' + (err.message || 'Unable to get response.'),
+            timestamp:       new Date(),
+            data_type:       'error',
+          };
         }
-      }
-
-    } catch (err: any) {
-      setMessages(prev => {
-        const next = [...prev];
-        next[next.length - 1] = {
-          role: 'assistant',
-          content: `Connection error: ${err?.message || 'Please try again.'}`,
-          timestamp: new Date(),
-          data_type: 'error',
-        };
         return next;
       });
     } finally {
       setLoading(false);
     }
+  }, [apiBase, authHeaders, getClientContext, loading, sessionId, userRole, hasAccessToPersonalInfo, isInline]);
+
+  useEffect(() => {
+    if (!isChatMode && !isInline) return;
+
+    // If we are in global drawer mode, check if there is a pending first message to run
+    if (!isInline && isChatMode) {
+      const pending = localStorage.getItem('pending_first_message');
+      if (pending) {
+        localStorage.removeItem('pending_first_message');
+        
+        // Start a new session on the frontend
+        setSessionId(null);
+        localStorage.removeItem(SESSION_KEY);
+        setGreetingLoaded(true);
+        
+        // Send the message immediately
+        sendMessage(pending);
+        return;
+      }
+    }
+
+    // For inline dashboard chat, always start a fresh greeting conversation
+    if (isInline) {
+      fetchGreeting(null, true);
+      return;
+    }
+
+    const saved = localStorage.getItem(SESSION_KEY);
+    if (saved) {
+      loadSession(saved).then(success => {
+        if (!success) fetchGreeting(null);
+      });
+      return;
+    }
+    fetchGreeting(null);
+  }, [isChatMode, isInline, fetchGreeting, loadSession, sendMessage]);
+
+  const handleSend = () => {
+    if (!input.trim() || loading) return;
+    sendMessage(input);
   };
 
-  const handleSend = () => sendMessage(input);
+  const handleDeleteMessage = useCallback(async (idx: number) => {
+    const nextMessages = messages.slice(0, idx);
+    setMessages(nextMessages);
+    
+    if (sessionId) {
+      try {
+        await fetch(`${apiBase}/ai/assistant/sessions/${sessionId}/messages`, {
+          method: 'PUT',
+          headers: {
+            ...authHeaders(),
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ messages: nextMessages.map(m => ({
+            role: m.role,
+            content: m.content,
+            timestamp: m.timestamp,
+            intent: m.intent,
+            data_type: m.data_type,
+            data_results: m.data_results,
+            action_cards: m.action_cards,
+            feature_prompts: m.feature_prompts,
+            next_steps: m.next_steps,
+          })) }),
+        });
+      } catch (err) {
+        console.error("Failed to sync deleted message history with backend:", err);
+      }
+    }
+    
+    if (nextMessages.length === 0) {
+      newSession();
+    }
+  }, [apiBase, authHeaders, sessionId, messages]);
 
-  if (!isChatMode) return null;
+  const handleUndoLast = useCallback(() => {
+    if (messages.length < 2) return;
+    const lastUserMsg = messages[messages.length - 2];
+    if (lastUserMsg && lastUserMsg.role === 'user') {
+      setInput(lastUserMsg.content);
+    }
+    handleDeleteMessage(messages.length - 2);
+  }, [messages, handleDeleteMessage]);
 
-  // ─────────────────────────────────────────────
-  // Render
-  // ─────────────────────────────────────────────
+  const handleResendMessage = async (idx: number, newText: string) => {
+    const slicedMessages = messages.slice(0, idx);
+    setMessages(slicedMessages);
+    setEditingIndex(null);
+    
+    if (sessionId) {
+      try {
+        await fetch(`${apiBase}/ai/assistant/sessions/${sessionId}/messages`, {
+          method: 'PUT',
+          headers: {
+            ...authHeaders(),
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ messages: slicedMessages.map(m => ({
+            role: m.role,
+            content: m.content,
+            timestamp: m.timestamp,
+            intent: m.intent,
+            data_type: m.data_type,
+            data_results: m.data_results,
+            action_cards: m.action_cards,
+            feature_prompts: m.feature_prompts,
+            next_steps: m.next_steps,
+          })) }),
+        });
+      } catch (err) {
+        console.error("Failed to sync edited message history with backend:", err);
+      }
+    }
+    
+    sendMessage(newText);
+  };
+
+  if (!isInline && !isChatMode) return null;
+
+  const showStartup = messages.length === 0 || (messages.length === 1 && !messages[0].isStreaming && !loading);
+  const welcomeText = messages[0]?.content || "How can I support your sales pipeline today?";
 
   return (
-    <div className="fixed inset-0 z-[100] flex bg-[#09090b] text-zinc-100 overflow-hidden">
-
-      {/* ── Sidebar ─────────────────────────── */}
-      <aside className="w-72 flex-shrink-0 bg-zinc-950/60 border-r border-white/[0.05] flex flex-col">
-
-        {/* Logo */}
-        <div className="px-5 py-5 border-b border-white/[0.05]">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-900/40">
-              <Brain className="w-5 h-5 text-white" />
+    <ChatThemeContext.Provider value={{ isInline }}>
+      <div className={isInline 
+        ? "w-full h-full flex bg-[#F8FAFC] text-slate-800 overflow-hidden relative border border-slate-200/80 rounded-2xl shadow-sm" 
+        : "fixed inset-0 z-[100] flex bg-[#09090b] text-zinc-100 overflow-hidden font-sans"
+      }>
+        
+        {/* Sidebar */}
+        {!isInline && (
+          <aside className="w-72 flex-shrink-0 bg-zinc-950/60 border-r border-white/[0.05] flex flex-col">
+            {/* Logo */}
+            <div className="px-5 py-5 border-b border-white/[0.05]">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 bg-[#FF8A00] rounded-xl flex items-center justify-center shadow-lg shadow-orange-950/30">
+                  <Brain className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold tracking-tight text-white">TechSalesAxis AI</p>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <p className="text-[9.5px] text-zinc-400 font-sans font-semibold tracking-wider uppercase">AI Assistant</p>
+                    <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded font-mono ${
+                      userRole === 'recruiter'
+                        ? 'bg-orange-500/15 text-orange-400 border border-orange-500/20'
+                        : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
+                    }`}>
+                      {userRole?.toUpperCase() || '—'}
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div>
-              <p className="text-sm font-bold tracking-tight">TalentCore AI</p>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <p className="text-[10px] text-zinc-500 font-mono tracking-widest">GLOBAL ASSISTANT</p>
-                <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded font-mono ${
-                  userRole === 'recruiter'
-                    ? 'bg-violet-500/15 text-violet-400 border border-violet-500/20'
-                    : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
-                }`}>
-                  {userRole?.toUpperCase() || '—'}
+
+            {/* New session */}
+            <div className="px-4 pt-4">
+              <button
+                onClick={newSession}
+                className="flex items-center gap-2.5 w-full px-3 py-2.5 bg-white/[0.04] hover:bg-white/[0.07] border border-white/[0.06] hover:border-orange-500/30 rounded-xl transition-all text-sm font-medium text-zinc-300 hover:text-white"
+              >
+                <Plus className="w-4 h-4 text-[#FF8A00]" />
+                New Conversation
+              </button>
+            </div>
+
+            {/* Quick Actions */}
+            <div className="px-4 pt-4">
+              <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2 px-1">
+                Quick Actions
+              </p>
+              <div className="space-y-1">
+                {userRole === 'recruiter' ? (
+                  <>
+                    <button
+                      onClick={() => sendMessage('Show me all candidates')}
+                      className="w-full text-left flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] transition-all"
+                    >
+                      <Users className="w-3.5 h-3.5 text-[#FF8A00] flex-shrink-0" />
+                      Browse candidates
+                    </button>
+                    <button
+                      onClick={() => sendMessage('What roles are in high demand right now?')}
+                      className="w-full text-left flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] transition-all"
+                    >
+                      <TrendingUp className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+                      Market insights
+                    </button>
+                    <button
+                      onClick={() => sendMessage('Show pending applications')}
+                      className="w-full text-left flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] transition-all"
+                    >
+                      <ClipboardList className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                      Pending reviews
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => sendMessage('Find jobs matching my skills')}
+                      className="w-full text-left flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] transition-all"
+                    >
+                      <Search className="w-3.5 h-3.5 text-[#FF8A00] flex-shrink-0" />
+                      Jobs for my skills
+                    </button>
+                    <button
+                      onClick={() => sendMessage('Show my Career GPS milestones')}
+                      className="w-full text-left flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] transition-all"
+                    >
+                      <Navigation className="w-3.5 h-3.5 text-teal-500 flex-shrink-0" />
+                      Career GPS
+                    </button>
+                    <button
+                      onClick={() => sendMessage('What are the trending roles in the market?')}
+                      className="w-full text-left flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] transition-all"
+                    >
+                      <TrendingUp className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+                      Market trends
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Session History */}
+            <div className="flex-1 overflow-y-auto px-4 pt-5 pb-3 space-y-1">
+              <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-3 px-1">
+                Recent Chats
+              </p>
+              {sessionsLoading && sessions.length === 0 ? (
+                <div className="space-y-2 px-1">
+                  {[1, 2, 3].map(i => (
+                    <div key={i} className="h-10 w-full rounded-xl bg-white/[0.03] animate-pulse" />
+                  ))}
+                </div>
+              ) : sessions.length === 0 ? (
+                <p className="text-xs text-zinc-600 px-1">No sessions yet.</p>
+              ) : (
+                sessions.map(s => (
+                <div
+                  key={s.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => loadSession(s.id)}
+                  onKeyDown={e => e.key === 'Enter' && loadSession(s.id)}
+                  className={`group w-full flex items-start gap-2.5 px-3 py-2.5 rounded-xl text-left transition-all hover:bg-white/[0.05] cursor-pointer ${
+                    sessionId === s.id
+                      ? 'bg-orange-500/10 border border-orange-500/20'
+                      : 'border border-transparent'
+                  }`}
+                >
+                  <Clock className="w-3.5 h-3.5 text-zinc-500 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-zinc-300 truncate leading-tight">
+                      {s.session_title || s.last_intent || 'Session'}
+                    </p>
+                    <p className="text-[10px] text-zinc-500 mt-0.5 font-mono">
+                      {timeAgo(s.updated_at)}
+                      {s.message_count ? ` · ${s.message_count} msgs` : ''}
+                    </p>
+                  </div>
+                  <button
+                    onClick={e => deleteSession(s.id, e)}
+                    className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-red-400 text-zinc-500 transition-all flex-shrink-0"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))
+              )}
+            </div>
+
+            {/* Return to dashboard */}
+            <div className="px-4 pb-4 border-t border-white/[0.05] pt-4">
+              <button
+                onClick={toggleChatMode}
+                className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm font-medium text-zinc-400 hover:text-white hover:bg-white/[0.05] rounded-xl transition-all border border-transparent hover:border-white/[0.06]"
+              >
+                <LayoutDashboard className="w-4 h-4" />
+                Back to Dashboard
+              </button>
+            </div>
+          </aside>
+        )}
+
+        {/* ── Main ──────────────────────────────── */}
+        <main className={`flex-1 flex flex-col min-w-0 relative ${isInline ? 'bg-[#F8FAFC]' : ''}`}>
+
+          {/* Header bar */}
+          {isInline ? (
+            <header className="h-12 flex-shrink-0 flex items-center justify-between px-4 border-b border-slate-200/50 bg-white">
+              <div className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wider">
+                  TechSalesAxis AI
                 </span>
               </div>
-            </div>
-          </div>
-        </div>
-
-        {/* New session */}
-        <div className="px-4 pt-4">
-          <button
-            onClick={newSession}
-            className="flex items-center gap-2.5 w-full px-3 py-2.5 bg-white/[0.04] hover:bg-white/[0.07] border border-white/[0.06] hover:border-blue-500/30 rounded-xl transition-all text-sm font-medium text-zinc-300 hover:text-white"
-          >
-            <Plus className="w-4 h-4 text-blue-500" />
-            New Session
-          </button>
-        </div>
-
-        {/* Role-aware quick actions */}
-        <div className="px-4 pt-4">
-          <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest mb-2 px-1">
-            Quick Actions
-          </p>
-          <div className="space-y-1">
-            {userRole === 'recruiter' ? (
-              <>
+              <div className="flex items-center gap-2">
+                {messages.length > 1 && (
+                  <button
+                    onClick={handleUndoLast}
+                    className="px-2.5 py-1 text-[10.5px] font-bold text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200/60 rounded-lg transition-all flex items-center gap-1"
+                    title="Undo last message and response"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    Undo Last
+                  </button>
+                )}
                 <button
-                  onClick={() => sendMessage('Show me all candidates including passive talent')}
-                  className="w-full text-left flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] transition-all"
+                  onClick={newSession}
+                  className="px-2.5 py-1 text-[10.5px] font-bold text-[#FF8A00] hover:text-[#E67A00] bg-orange-50 hover:bg-orange-100/50 rounded-lg transition-all flex items-center gap-1"
                 >
-                  <Users className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
-                  Browse all candidates
+                  <Plus className="w-3.5 h-3.5" />
+                  New Chat
                 </button>
-                <button
-                  onClick={() => sendMessage('What roles are in high demand right now?')}
-                  className="w-full text-left flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] transition-all"
-                >
-                  <TrendingUp className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
-                  Market insights
-                </button>
-                <button
-                  onClick={() => sendMessage('Show pending applications')}
-                  className="w-full text-left flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] transition-all"
-                >
-                  <ClipboardList className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-                  Pending reviews
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  onClick={() => sendMessage('Find jobs matching my skills')}
-                  className="w-full text-left flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] transition-all"
-                >
-                  <Search className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
-                  Jobs for my skills
-                </button>
-                <button
-                  onClick={() => sendMessage('Show my Career GPS milestones')}
-                  className="w-full text-left flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] transition-all"
-                >
-                  <Navigation className="w-3.5 h-3.5 text-teal-500 flex-shrink-0" />
-                  My Career GPS
-                </button>
-                <button
-                  onClick={() => sendMessage('What are the trending roles in the market?')}
-                  className="w-full text-left flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] transition-all"
-                >
-                  <TrendingUp className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
-                  Market trends
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Session History */}
-        <div className="flex-1 overflow-y-auto px-4 pt-5 pb-3 space-y-1">
-          <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest mb-3 px-1">
-            Recent Sessions
-          </p>
-          {sessions.length === 0 && (
-            <p className="text-xs text-zinc-600 px-1">No sessions yet.</p>
-          )}
-          {sessions.map(s => (
-            <div
-              key={s.id}
-              role="button"
-              tabIndex={0}
-              onClick={() => loadSession(s.id)}
-              onKeyDown={e => e.key === 'Enter' && loadSession(s.id)}
-              className={`group w-full flex items-start gap-2.5 px-3 py-2.5 rounded-xl text-left transition-all hover:bg-white/[0.05] cursor-pointer ${
-                sessionId === s.id
-                  ? 'bg-blue-600/10 border border-blue-500/20'
-                  : 'border border-transparent'
-              }`}
-            >
-              <Clock className="w-3.5 h-3.5 text-zinc-600 flex-shrink-0 mt-0.5" />
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-zinc-300 truncate leading-tight">
-                  {s.session_title || s.last_intent || 'Session'}
-                </p>
-                <p className="text-[10px] text-zinc-600 mt-0.5 font-mono">
-                  {timeAgo(s.updated_at)}
-                  {s.message_count ? ` · ${s.message_count} msgs` : ''}
-                </p>
               </div>
-              <button
-                onClick={e => deleteSession(s.id, e)}
-                className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-red-400 text-zinc-600 transition-all flex-shrink-0"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          ))}
-        </div>
-
-        {/* Return to dashboard */}
-        <div className="px-4 pb-4 border-t border-white/[0.05] pt-4">
-          <button
-            onClick={toggleChatMode}
-            className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm font-medium text-zinc-400 hover:text-white hover:bg-white/[0.05] rounded-xl transition-all border border-transparent hover:border-white/[0.06]"
-          >
-            <LayoutDashboard className="w-4 h-4" />
-            Back to Dashboard
-          </button>
-        </div>
-      </aside>
-
-      {/* ── Main ──────────────────────────────── */}
-      <main className="flex-1 flex flex-col min-w-0 relative">
-
-        {/* Header bar */}
-        <header className="h-14 flex-shrink-0 flex items-center justify-between px-8 border-b border-white/[0.04] bg-zinc-950/30 backdrop-blur-sm">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse [animation-delay:200ms]" />
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse [animation-delay:400ms]" />
-            </div>
-            <span className="text-[10px] font-mono text-zinc-500 tracking-wider">
-              SECURE · ROLE: {userRole?.toUpperCase() || '—'} · {sessionId ? 'SESSION ACTIVE' : 'NEW SESSION'}
-            </span>
-          </div>
-          <button
-            onClick={toggleChatMode}
-            className="p-1.5 text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.05] rounded-lg transition-all"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </header>
-
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-6 md:px-16 lg:px-32 xl:px-48 pt-8 pb-40 space-y-6">
-          {messages.map((m, i) => (
-            <MessageBubble
-              key={i}
-              msg={m}
-              onNavigate={handleNavigate}
-              onSendPrompt={sendMessage}
-              userRole={userRole}
-              index={i}
-              editingIndex={editingIndex}
-              setEditingIndex={setEditingIndex}
-              onResendMessage={handleResendMessage}
-              onOpenRejectionModal={handleOpenRejectionModal}
-              onOpenInterviewModal={handleOpenInterviewModal}
-              onOpenProfileModal={handleOpenProfileModal}
-              hasAccessToPersonalInfo={hasAccessToPersonalInfo}
-              getDisplayName={getDisplayName}
-              onOpenPdfPreview={handleOpenPdfPreview}
-              onOpenInviteModal={handleOpenInviteModal}
-            />
-          ))}
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Input bar */}
-        <div className="absolute bottom-0 inset-x-0 px-6 md:px-16 lg:px-32 xl:px-48 pb-6 pt-4 bg-gradient-to-t from-[#09090b] via-[#09090b]/95 to-transparent">
-          <div className="relative">
-            {/* Focus glow */}
-            <div className="absolute -inset-px rounded-2xl bg-gradient-to-r from-blue-600/20 via-violet-600/10 to-blue-600/20 opacity-0 focus-within:opacity-100 transition-opacity duration-500 blur-sm pointer-events-none" />
-
-            <div className="relative flex items-end gap-2 bg-zinc-900/90 backdrop-blur-xl border border-white/[0.08] focus-within:border-blue-500/30 rounded-2xl p-3 transition-all duration-300 shadow-2xl">
-
-              {/* Mic */}
-              <button
-                onClick={toggleListening}
-                className={`flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-xl transition-all ${
-                  isListening
-                    ? 'bg-red-500 text-white animate-pulse'
-                    : 'text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.06]'
-                }`}
-              >
-                {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-              </button>
-
-              {/* Textarea */}
-              <textarea
-                ref={textareaRef}
-                value={input}
-                onChange={handleTextareaChange}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
-                }}
-                placeholder={isListening ? 'Listening…' : placeholder}
-                rows={1}
-                className="flex-1 bg-transparent text-[14px] text-zinc-100 placeholder:text-zinc-600 resize-none outline-none py-1.5 px-1 min-h-[36px] max-h-[160px] leading-relaxed font-[450]"
-              />
-
-              {/* Send */}
-              <button
-                onClick={handleSend}
-                disabled={!input.trim() || loading}
-                className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-xl bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95 shadow-lg shadow-blue-900/30"
-              >
-                {loading
-                  ? <Loader2 className="w-4 h-4 animate-spin" />
-                  : <Send    className="w-4 h-4" />
-                }
-              </button>
-            </div>
-
-            {/* Hint line */}
-            <p className="text-center text-[10px] text-zinc-700 mt-2 font-mono">
-              Enter to send · Shift+Enter for new line ·{' '}
-              {userRole === 'recruiter'
-                ? 'Search candidates, post jobs, view applications'
-                : 'Search jobs, companies, explore Career GPS'}
-            </p>
-          </div>
-        </div>
-      </main>
-
-      {isRejectionModalOpen && activeApplicationId && (
-        <RejectionModal
-          isOpen={isRejectionModalOpen}
-          onClose={() => {
-            setIsRejectionModalOpen(false);
-            setActiveApplicationId(null);
-          }}
-          onConfirm={handleRejectionConfirm}
-          count={1}
-        />
-      )}
-
-      {isInterviewModalOpen && activeApplicationId && (
-        <InterviewScheduler
-          candidateName={
-            messages
-              .flatMap((m) => m.data_results || [])
-              .find((app) => app.id === activeApplicationId)?.candidate_name || "Candidate"
-          }
-          applicationId={activeApplicationId}
-          jobTitle={
-            messages
-              .flatMap((m) => m.data_results || [])
-              .find((app) => app.id === activeApplicationId)?.job_title
-          }
-          initialRoundNumber={
-            (messages
-              .flatMap((m) => m.data_results || [])
-              .find((app) => app.id === activeApplicationId)?.interviews?.length || 0) + 1
-          }
-          onClose={() => {
-            setIsInterviewModalOpen(false);
-            setActiveApplicationId(null);
-          }}
-          onSuccess={() => {
-            setIsInterviewModalOpen(false);
-            setActiveApplicationId(null);
-            sendMessage("Show applications");
-          }}
-        />
-      )}
-
-      {profileModal.isOpen && profileModal.candidate && (
-        <CandidateProfileModal
-          isOpen={profileModal.isOpen}
-          onClose={() => setProfileModal(prev => ({ ...prev, isOpen: false }))}
-          candidate={profileModal.candidate}
-          resumeData={profileModal.resumeData}
-          jobTitle={profileModal.jobTitle}
-          appliedDate={profileModal.appliedDate}
-          score={profileModal.score}
-          status={profileModal.status}
-          initialTab={profileModal.initialTab}
-          applicationId={profileModal.applicationId}
-          isDiscovery={profileModal.isDiscovery}
-          interviews={profileModal.interviews}
-          initialFeedbackOpen={profileModal.initialFeedbackOpen}
-          onRefresh={() => {
-            sendMessage("Show applications");
-            setProfileModal(prev => ({ ...prev, isOpen: false }));
-          }}
-        />
-      )}
-
-      {pdfModal.isOpen && pdfModal.url && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md transition-all duration-300 text-left">
-          <div className="relative w-full max-w-5xl h-[90vh] bg-zinc-900/90 border border-white/10 rounded-2xl flex flex-col shadow-2xl overflow-hidden glassmorphism">
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 bg-zinc-950/40">
-              <div>
-                <h3 className="text-sm font-bold text-zinc-100 flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-violet-400" />
-                  {pdfModal.candidateName}'s Resume Preview
-                </h3>
-                <p className="text-[10px] text-zinc-400 mt-0.5">Secure Platform View</p>
-              </div>
+            </header>
+          ) : (
+            <header className="h-14 flex-shrink-0 flex items-center justify-between px-8 border-b border-white/[0.04] bg-zinc-950/30 backdrop-blur-sm">
               <div className="flex items-center gap-3">
-                <a
-                  href={pdfModal.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[10px] font-semibold border border-white/5 flex items-center gap-1.5 transition-all"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  Open in New Tab
-                </a>
+                <div className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse [animation-delay:200ms]" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse [animation-delay:400ms]" />
+                </div>
+                <span className="text-[10px] font-mono text-zinc-400 tracking-wider">
+                  TECHSALESAXIS AI · CONNECTED · {sessionId ? 'ACTIVE' : 'NEW SESSION'}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                {messages.length > 1 && (
+                  <button
+                    onClick={handleUndoLast}
+                    className="px-2.5 py-1.5 text-xs font-semibold text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.05] rounded-xl transition-all flex items-center gap-1"
+                    title="Undo last message and response"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    Undo Last
+                  </button>
+                )}
                 <button
-                  onClick={() => setPdfModal({ isOpen: false, url: null, candidateName: '' })}
-                  className="p-1.5 rounded-lg bg-zinc-800/50 hover:bg-zinc-850 text-zinc-400 hover:text-white transition-all border border-white/5"
+                  onClick={toggleChatMode}
+                  className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.05] rounded-lg transition-all"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
-            </div>
+            </header>
+          )}
 
-            {/* Viewer Body */}
-            <div className="flex-1 bg-zinc-950 p-4 flex items-center justify-center relative overflow-hidden">
-              <iframe
-                src={pdfModal.url}
-                className="w-full h-full rounded-xl border border-white/5 bg-zinc-900"
-                title={`${pdfModal.candidateName}'s Resume PDF`}
-              />
+          {/* Messages */}
+          <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 md:px-8 py-6 space-y-6 scrollbar-thin">
+            {sessionLoading ? (
+              <div className="w-full space-y-6 animate-pulse">
+                {/* User message skeleton */}
+                <div className="flex justify-end">
+                  <div className={`max-w-[70%] w-48 h-10 rounded-2xl rounded-tr-sm ${
+                    isInline ? 'bg-slate-200' : 'bg-zinc-800/50 border border-white/[0.04]'
+                  }`} />
+                </div>
+                {/* AI response skeleton */}
+                <div className="flex justify-start">
+                  <div className={`w-7 h-7 rounded-lg mr-3 mt-1 ${
+                    isInline ? 'bg-slate-200' : 'bg-zinc-800/50'
+                  }`} />
+                  <div className="flex-1 max-w-[80%] space-y-3">
+                    <div className={`w-full h-16 rounded-2xl rounded-tl-sm ${
+                      isInline ? 'bg-slate-100 border border-slate-200' : 'bg-zinc-900/50 border border-white/[0.04]'
+                    }`} />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className={`h-32 rounded-2xl ${
+                        isInline ? 'bg-slate-100/70 border border-slate-200' : 'bg-zinc-900/40 border border-white/[0.04]'
+                      }`} />
+                      <div className={`h-32 rounded-2xl ${
+                        isInline ? 'bg-slate-100/70 border border-slate-200' : 'bg-zinc-900/40 border border-white/[0.04]'
+                      }`} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : showStartup ? (
+              <div className="h-full flex flex-col justify-center items-center max-w-md mx-auto text-center py-6">
+                <div className="w-11 h-11 bg-gradient-to-tr from-[#FF8A00] to-[#FF6B00] rounded-2xl flex items-center justify-center shadow-lg shadow-orange-500/20 mb-4 animate-pulse">
+                  <Brain className="w-5.5 h-5.5 text-white" />
+                </div>
+                <h2 className={`text-xl md:text-2xl font-serif font-semibold mb-2 leading-snug ${isInline ? 'text-slate-800' : 'text-white'}`}>
+                  {welcomeText}
+                </h2>
+                <p className={`text-xs mb-6 max-w-xs ${isInline ? 'text-slate-500' : 'text-zinc-400'}`}>
+                  Ask me to search candidates, check market updates, or draft job postings.
+                </p>
+                <div className="w-full grid grid-cols-1 gap-2">
+                  {hints.slice(0, 1).map((hint, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => sendMessage(hint)}
+                      className={`w-full text-left p-3 border rounded-2xl text-xs transition-all duration-200 shadow-sm flex items-center justify-between group ${
+                        isInline
+                          ? "bg-white border-slate-200 hover:border-orange-300 text-slate-700 hover:bg-orange-50/10"
+                          : "bg-zinc-900 border-white/[0.08] hover:border-orange-500/30 text-zinc-350 hover:bg-white/[0.02]"
+                      }`}
+                    >
+                      <span className="truncate pr-2 font-medium">{hint}</span>
+                      <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-[#FF8A00] transition-colors flex-shrink-0" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <>
+                {messages.map((m, i) => (
+                  <MessageBubble
+                    key={i}
+                    msg={m}
+                    onNavigate={handleNavigate}
+                    onSendPrompt={sendMessage}
+                    userRole={userRole}
+                    index={i}
+                    editingIndex={editingIndex}
+                    setEditingIndex={setEditingIndex}
+                    onResendMessage={handleResendMessage}
+                    onOpenRejectionModal={handleOpenRejectionModal}
+                    onOpenInterviewModal={handleOpenInterviewModal}
+                    onOpenProfileModal={handleOpenProfileModal}
+                    hasAccessToPersonalInfo={hasAccessToPersonalInfo}
+                    getDisplayName={getDisplayName}
+                    onOpenPdfPreview={handleOpenPdfPreview}
+                    onOpenInviteModal={handleOpenInviteModal}
+                    onDeleteMessage={handleDeleteMessage}
+                  />
+                ))}
+                <div ref={messagesEndRef} />
+              </>
+            )}
+          </div>
+
+          {/* Input bar */}
+          <div className={isInline 
+            ? "px-4 pb-4 pt-3 bg-white border-t border-slate-100" 
+            : "px-6 pb-6 pt-4 bg-gradient-to-t from-[#09090b] via-[#09090b]/95 to-transparent"
+          }>
+            <div className="relative max-w-3xl mx-auto">
+              <div className={`absolute -inset-px rounded-2xl opacity-0 focus-within:opacity-100 transition-opacity duration-350 blur-sm pointer-events-none ${
+                isInline ? "bg-[#FF8A00]/10" : "bg-[#FF8A00]/25"
+              }`} />
+
+              <div className={`relative flex items-end gap-2 border rounded-2xl p-2.5 transition-all duration-200 shadow-sm ${
+                isInline 
+                  ? "bg-slate-50 border-slate-200 focus-within:border-[#FF8A00] focus-within:bg-white" 
+                  : "bg-zinc-900/90 backdrop-blur-xl border-white/[0.08] focus-within:border-[#FF8A00]"
+              }`}>
+                {/* Mic */}
+                <button
+                  onClick={toggleListening}
+                  className={`flex-shrink-0 w-8.5 h-8.5 flex items-center justify-center rounded-xl transition-all ${
+                    isListening
+                      ? 'bg-red-500 text-white animate-pulse'
+                      : isInline
+                        ? 'text-slate-400 hover:text-slate-650 hover:bg-slate-200/50'
+                        : 'text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.06]'
+                  }`}
+                >
+                  {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                </button>
+
+                {/* Textarea */}
+                <textarea
+                  ref={textareaRef}
+                  value={input}
+                  onChange={handleTextareaChange}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+                  }}
+                  placeholder={isListening ? 'Listening…' : placeholder}
+                  rows={1}
+                  className={`flex-1 bg-transparent text-[13.5px] resize-none outline-none py-1.5 px-1 min-h-[36px] max-h-[120px] leading-relaxed font-sans ${
+                    isInline ? 'text-slate-800 placeholder:text-slate-400' : 'text-zinc-100 placeholder:text-zinc-500'
+                  }`}
+                />
+
+                {/* Send */}
+                <button
+                  onClick={handleSend}
+                  disabled={!input.trim() || loading}
+                  className="flex-shrink-0 w-8.5 h-8.5 flex items-center justify-center rounded-xl bg-[#FF8A00] hover:bg-[#E67A00] text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95 shadow-md shadow-orange-900/10"
+                >
+                  {loading
+                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    : <Send    className="w-3.5 h-3.5" />
+                  }
+                </button>
+              </div>
+
+              {/* Hint line */}
+              <p className={`text-center text-[9px] mt-1.5 font-sans ${
+                isInline ? "text-slate-400" : "text-zinc-500"
+              }`}>
+                Enter to send · Shift+Enter for new line
+              </p>
             </div>
           </div>
-        </div>
-      )}
+        </main>
 
-      {inviteModal.isOpen && (
-        <JobInviteModal
-          candidateId={inviteModal.candidateId}
-          candidateName={inviteModal.candidateName}
-          jobs={jobs}
-          onClose={() => setInviteModal({ isOpen: false, candidateId: '', candidateName: '' })}
-          onInvite={handleInviteFromModal}
-        />
-      )}
-    </div>
+        {isRejectionModalOpen && activeApplicationId && (
+          <RejectionModal
+            isOpen={isRejectionModalOpen}
+            onClose={() => {
+              setIsRejectionModalOpen(false);
+              setActiveApplicationId(null);
+            }}
+            onConfirm={handleRejectionConfirm}
+            count={1}
+          />
+        )}
+
+        {isInterviewModalOpen && activeApplicationId && (
+          <InterviewScheduler
+            candidateName={
+              messages
+                .flatMap((m) => m.data_results || [])
+                .find((app) => app.id === activeApplicationId)?.candidate_name || "Candidate"
+            }
+            applicationId={activeApplicationId}
+            jobTitle={
+              messages
+                .flatMap((m) => m.data_results || [])
+                .find((app) => app.id === activeApplicationId)?.job_title
+            }
+            initialRoundNumber={
+              (messages
+                .flatMap((m) => m.data_results || [])
+                .find((app) => app.id === activeApplicationId)?.interviews?.length || 0) + 1
+            }
+            onClose={() => {
+              setIsInterviewModalOpen(false);
+              setActiveApplicationId(null);
+            }}
+            onSuccess={() => {
+              setIsInterviewModalOpen(false);
+              setActiveApplicationId(null);
+              sendMessage("Show applications");
+            }}
+          />
+        )}
+
+        {profileModal.isOpen && profileModal.candidate && (
+          <CandidateProfileModal
+            isOpen={profileModal.isOpen}
+            onClose={() => setProfileModal(prev => ({ ...prev, isOpen: false }))}
+            candidate={profileModal.candidate}
+            resumeData={profileModal.resumeData}
+            jobTitle={profileModal.jobTitle}
+            appliedDate={profileModal.appliedDate}
+            score={profileModal.score}
+            status={profileModal.status}
+            initialTab={profileModal.initialTab}
+            applicationId={profileModal.applicationId}
+            isDiscovery={profileModal.isDiscovery}
+            interviews={profileModal.interviews}
+            initialFeedbackOpen={profileModal.initialFeedbackOpen}
+            onRefresh={() => {
+              sendMessage("Show applications");
+              setProfileModal(prev => ({ ...prev, isOpen: false }));
+            }}
+          />
+        )}
+
+        {pdfModal.isOpen && pdfModal.url && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md transition-all duration-300 text-left">
+            <div className="relative w-full max-w-5xl h-[90vh] bg-zinc-900/90 border border-white/10 rounded-2xl flex flex-col shadow-2xl overflow-hidden glassmorphism">
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 bg-zinc-950/40">
+                <div>
+                  <h3 className="text-sm font-bold text-zinc-100 flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-violet-400" />
+                    {pdfModal.candidateName}'s Resume Preview
+                  </h3>
+                  <p className="text-[10px] text-zinc-400 mt-0.5">Platform View</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <a
+                    href={pdfModal.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[10px] font-semibold border border-white/5 flex items-center gap-1.5 transition-all"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    Open in New Tab
+                  </a>
+                  <button
+                    onClick={() => setPdfModal({ isOpen: false, url: null, candidateName: '' })}
+                    className="p-1.5 rounded-lg bg-zinc-800/50 hover:bg-zinc-850 text-zinc-400 hover:text-white transition-all border border-white/5"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Viewer Body */}
+              <div className="flex-1 bg-zinc-950 p-4 flex items-center justify-center relative overflow-hidden">
+                <iframe
+                  src={pdfModal.url}
+                  className="w-full h-full rounded-xl border border-white/5 bg-zinc-900"
+                  title={`${pdfModal.candidateName}'s Resume PDF`}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {inviteModal.isOpen && (
+          <JobInviteModal
+            candidateId={inviteModal.candidateId}
+            candidateName={inviteModal.candidateName}
+            jobs={jobs}
+            onClose={() => setInviteModal({ isOpen: false, candidateId: '', candidateName: '' })}
+            onInvite={handleInviteFromModal}
+          />
+        )}
+      </div>
+    </ChatThemeContext.Provider>
   );
 }

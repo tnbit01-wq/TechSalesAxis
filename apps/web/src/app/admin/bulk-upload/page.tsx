@@ -62,7 +62,7 @@ export default function AdminBulkUploadPage() {
                 <li><strong>Parse:</strong> Automatically extract name, email, skills, experience</li>
                 <li><strong>Duplicate Detection:</strong> Identify matches with existing candidates (70-100% confidence)</li>
                 <li><strong>Review:</strong> Admin reviews flagged duplicates and approves merges</li>
-                <li><strong>Create Accounts:</strong> New resumes become "shadow profiles" - candidates verify via email</li>
+                <li><strong>Create Accounts:</strong> New resumes become "passive profiles" - candidates verify via email</li>
                 <li><strong>Verification:</strong> Candidates register device and email to activate profiles</li>
               </ul>
             </div>

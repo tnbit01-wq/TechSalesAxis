@@ -238,7 +238,7 @@ async def get_company_status(user: dict = Depends(get_current_user), db: Session
 
 @router.get("/recommended-candidates")
 async def get_recommended_candidates(
-    filter_type: str = "culture_fit",
+    filter_type: str = "skill_match",
     location: Optional[str] = None,
     max_salary: Optional[str] = None,
     skills: Optional[str] = None,
@@ -246,6 +246,8 @@ async def get_recommended_candidates(
     sales_model: Optional[str] = None,
     target_market: Optional[str] = None,
     experience_band: Optional[str] = None,
+    min_culture_score: Optional[str] = None,
+    candidate_types: Optional[str] = None,
     user: dict = Depends(get_current_user)
 ):
     params = {
@@ -255,7 +257,9 @@ async def get_recommended_candidates(
         "career_readiness": career_readiness,
         "sales_model": sales_model,
         "target_market": target_market,
-        "experience_band": experience_band
+        "experience_band": experience_band,
+        "min_culture_score": min_culture_score,
+        "candidate_types": candidate_types.split(",") if candidate_types else []
     }
     return await recruiter_service.get_recommended_candidates(user["sub"], filter_type, params)
 
@@ -263,7 +267,7 @@ async def get_recommended_candidates(
 @router.get("/jobs/{job_id}/recommended-candidates")
 async def get_recommended_candidates_for_job(
     job_id: str,
-    filter_type: str = "culture_fit",
+    filter_type: str = "skill_match",
     location: Optional[str] = None,
     max_salary: Optional[str] = None,
     skills: Optional[str] = None,
@@ -271,6 +275,8 @@ async def get_recommended_candidates_for_job(
     sales_model: Optional[str] = None,
     target_market: Optional[str] = None,
     experience_band: Optional[str] = None,
+    min_culture_score: Optional[str] = None,
+    candidate_types: Optional[str] = None,
     user: dict = Depends(get_current_user)
 ):
     """Backward-compatible route: recommendations scoped to a specific job id.
@@ -288,6 +294,8 @@ async def get_recommended_candidates_for_job(
         "target_market": target_market,
         "experience_band": experience_band,
         "job_id": job_id,
+        "min_culture_score": min_culture_score,
+        "candidate_types": candidate_types.split(",") if candidate_types else []
     }
     return await recruiter_service.get_recommended_candidates(user["sub"], filter_type, params)
 
@@ -584,26 +592,46 @@ async def verify_id_post(data: Dict[str, Any], user: dict = Depends(get_current_
 
 @router.get("/jobs")
 async def get_jobs(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    from src.core.models import Job
+    from src.core.models import Job, CandidateProfile
     profile = db.query(RecruiterProfile).filter(RecruiterProfile.user_id == user["sub"]).first()
     if not profile or not profile.company_id:
         return []
     jobs = db.query(Job).filter(Job.company_id == profile.company_id).order_by(Job.created_at.desc()).all()
-    return [{
-        "id": str(job.id),
-        "company_id": str(job.company_id) if job.company_id else None,
-        "title": job.title,
-        "description": job.description,
-        "experience_band": job.experience_band or "mid",
-        "job_type": job.job_type or "onsite",
-        "location": job.location,
-        "salary_range": job.salary_range,
-        "status": job.status or "active",
-        "metadata": getattr(job, "metadata_", {}) or {},
-        "created_at": job.created_at,
-        "updated_at": getattr(job, "created_at", None),
-        "is_ai_generated": bool((getattr(job, "metadata_", {}) or {}).get("is_ai_generated", False)),
-    } for job in jobs]
+    
+    # Pre-load all candidates and cache normalized skills for fast matching
+    all_candidates = db.query(CandidateProfile).all()
+    candidate_skills_cache = []
+    for c in all_candidates:
+        c_skills = recruiter_service._canonicalize_skill_terms(c.skills or [])
+        candidate_skills_cache.append(c_skills)
+        
+    results = []
+    for job in jobs:
+        # Calculate matching candidate count
+        job_skills = recruiter_service._canonicalize_skill_terms(job.skills_required or [])
+        matching_count = 0
+        if job_skills:
+            for c_skills in candidate_skills_cache:
+                if c_skills & job_skills:
+                    matching_count += 1
+                    
+        results.append({
+            "id": str(job.id),
+            "company_id": str(job.company_id) if job.company_id else None,
+            "title": job.title,
+            "description": job.description,
+            "experience_band": job.experience_band or "mid",
+            "job_type": job.job_type or "onsite",
+            "location": job.location,
+            "salary_range": job.salary_range,
+            "status": job.status or "active",
+            "metadata": getattr(job, "metadata_", {}) or {},
+            "created_at": job.created_at,
+            "updated_at": getattr(job, "created_at", None),
+            "is_ai_generated": bool((getattr(job, "metadata_", {}) or {}).get("is_ai_generated", False)),
+            "matching_candidates_count": matching_count,
+        })
+    return results
 
 @router.post("/jobs")
 async def create_job(data: JobCreate, user: dict = Depends(get_current_user)):
@@ -1093,7 +1121,7 @@ async def get_candidate(candidate_id: str, db: Session = Depends(get_db)):
 @router.get("/candidate/{candidate_id}/match-scores")
 async def get_candidate_match_scores(candidate_id: str, db: Session = Depends(get_db), user: dict = Depends(get_current_user)):
     from src.core.models import CandidateProfile, Job, RecruiterProfile
-    from src.services.recommendation_service import RecommendationService
+    from src.services.candidate_service import CandidateService
     import uuid
     
     # Verify candidate_id
@@ -1115,12 +1143,22 @@ async def get_candidate_match_scores(candidate_id: str, db: Session = Depends(ge
     
     results = []
     for job in jobs:
-        match_result = RecommendationService.calculate_match_score(candidate, job)
+        score, explanation = CandidateService._score_job_skill_overlap(
+            candidate.skills or [], job.skills_required or []
+        )
+        
+        # Calculate missing skills list (preserve original casing)
+        candidate_skills_norm = CandidateService._normalize_skills(candidate.skills or [])
+        missing_skills = []
+        for skill in (job.skills_required or []):
+            if skill and CandidateService._normalize_skill_token(skill) not in candidate_skills_norm:
+                missing_skills.append(skill)
+                
         results.append({
             "job_id": str(job.id),
-            "match_score": float(match_result["overall_match_score"]),
-            "explanation": match_result["explanation"],
-            "missing_skills": match_result["missing_critical_skills"]
+            "match_score": float(score),
+            "explanation": explanation,
+            "missing_skills": missing_skills
         })
         
     # Sort results: highest match score first

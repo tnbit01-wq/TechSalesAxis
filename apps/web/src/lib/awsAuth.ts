@@ -144,6 +144,7 @@ export const awsAuth = {
     if (typeof window !== "undefined") {
       localStorage.removeItem("tf_token");
       localStorage.removeItem("tf_user_email");
+      localStorage.removeItem("ai_chat_session_id");
       window.location.href = "/login";
     }
   }
