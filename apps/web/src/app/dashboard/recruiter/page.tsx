@@ -1,10 +1,11 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import LoadingScreen from "@/components/LoadingScreen";
 import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import { useRouter } from "next/navigation";
-import { Briefcase, Users, Building2, Zap, Target, UserCheck, MessageSquare, ArrowRight, Plus, MapPin, CheckCircle, Eye, TrendingUp, ChevronRight, Sparkles, Award, FileText } from "lucide-react";
+import { Briefcase, Users, Building2, Zap, Target, UserCheck, MessageSquare, ArrowRight, Plus, MapPin, CheckCircle, Eye, TrendingUp, ChevronRight, Sparkles, Award, FileText, Brain } from "lucide-react";
 import GlobalChatInterface from "@/components/GlobalChatInterface";
 
 interface Company { id: string; name: string; profile_score: number; logo_url?: string; }
@@ -26,6 +27,7 @@ export default function RecruiterDashboard() {
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState("there");
   const [jobAppCounts, setJobAppCounts] = useState<Record<string, number>>({});
+  const [feedTab, setFeedTab] = useState<"applications" | "jobs" | "brand">("applications");
 
   const loadData = useCallback(async () => {
     try {
@@ -88,182 +90,182 @@ export default function RecruiterDashboard() {
 
   useEffect(() => { loadData(); const iv = setInterval(loadData, 30000); return () => clearInterval(iv); }, [loadData]);
 
-  if (loading) return <div className="h-[calc(100vh-64px)] flex items-center justify-center bg-[#F8F9FC]"><div className="flex flex-col items-center gap-3"><div className="h-9 w-9 rounded-full border-[2.5px] border-slate-200 border-t-[#FF8A00] animate-spin" /><p className="text-[11px] text-slate-400 font-medium tracking-widest uppercase">Loading…</p></div></div>;
+  if (loading) return <LoadingScreen label="Loading…" />;
   if (!profile) return <div className="h-[calc(100vh-64px)] flex items-center justify-center bg-[#F8F9FC]"><div className="text-center"><p className="text-sm text-slate-600 mb-4">Could not load dashboard</p><button onClick={() => window.location.reload()} className="px-5 py-2.5 bg-[#FF8A00] text-white rounded-xl text-[13px] font-semibold">Retry</button></div></div>;
 
   const companyScore = profile.companies?.profile_score ?? 0;
   const totalApps = stats?.pending_applications_count ?? 0;
   const funnel = stats?.funnel_data || { applied: totalApps, shortlisted: 0, interviewed: 0, offered: 0, hired: 0 };
   const conversionRate = totalApps > 0 ? (((funnel.hired || stats?.total_hires_count || 0) / totalApps) * 100).toFixed(1) : "0.0";
-
   return (
-    <div className="w-full min-h-[calc(100vh-64px)] bg-[#F8F9FC] flex flex-col p-4 md:p-6 space-y-6 overflow-y-auto">
-      {/* ── TOP SECTION ── */}
-      <div className="flex flex-col md:flex-row gap-6 items-stretch">
-        {/* Left: 60% Width - Embedded AI Assistant Chat */}
-        <div className="w-full md:w-[60%] h-[520px] flex flex-col shrink-0">
-          <GlobalChatInterface isInline={true} />
-        </div>
+    <div className="w-full max-w-none px-6 md:px-8 py-5 h-auto lg:h-[calc(100vh-64px)] flex flex-col lg:flex-row gap-6 overflow-hidden bg-[#FAFBFC]">
+      
+      {/* ── LEFT PANEL: AI ASSISTANT (Point of Attraction) ── */}
+      <div className="w-full lg:w-[58%] h-full flex flex-col bg-white border border-slate-200/80 rounded-[28px] shadow-sm overflow-hidden flex-shrink-0">
+        <GlobalChatInterface isInline={true} />
+      </div>
 
-        {/* Right: 40% Width - Welcome Header & KPIs */}
-        <div className="w-full md:w-[40%] flex flex-col gap-6 justify-between">
-          {/* Welcome Card */}
-          <div className="relative overflow-hidden bg-gradient-to-r from-[#0F172A] to-[#1E293B] rounded-2xl p-5 shadow-sm text-left flex-shrink-0 flex-1 flex flex-col justify-between">
-            <div>
-              <p className="text-[10px] font-bold text-orange-400 uppercase tracking-widest mb-1">RECRUITER WORKSPACE</p>
-              <h1 className="text-xl md:text-2xl font-serif font-semibold text-white leading-tight">
-                Welcome back, {userName}
-              </h1>
-              <p className="text-xs text-slate-400 mt-1">
-                You have {totalApps} active applications pending review.
+      {/* ── RIGHT PANEL: ANALYTICS FEED & METRICS ── */}
+      <div className="flex-1 flex flex-col gap-5 h-full overflow-hidden min-w-0">
+        {/* Welcome & Stats Grid */}
+        <div className="flex-shrink-0 flex flex-col gap-4">
+          {/* Welcome Banner */}
+          <div className="relative overflow-hidden bg-gradient-to-br from-[#0F172A] via-[#1E293B] to-[#0F172A] rounded-3xl p-5 shadow-lg border border-slate-800 text-left flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="absolute right-0 bottom-0 opacity-5 pointer-events-none transform translate-x-6 translate-y-6">
+              <Brain className="h-36 w-36 text-white" />
+            </div>
+            <div className="relative z-10 min-w-0 flex-1">
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-800 text-[9px] font-bold text-orange-400 uppercase tracking-widest mb-2 border border-slate-700/50">
+                <Sparkles className="w-3 h-3 text-orange-400" /> Command Center
+              </span>
+              <h1 className="text-lg font-black text-white leading-tight tracking-tight">Welcome, {userName}</h1>
+              <p className="text-[11.5px] text-slate-400 mt-1 leading-relaxed">
+                You have <span className="text-white font-bold">{totalApps}</span> candidate reviews pending.
               </p>
             </div>
-            <div className="mt-4 flex gap-2">
+            <div className="relative z-10 shrink-0 self-start sm:self-center">
               <Link href="/dashboard/recruiter/hiring/jobs/new">
-                <button className="flex items-center gap-1.5 px-4 py-2 bg-[#FF8A00] hover:bg-[#E67A00] text-white rounded-xl text-xs font-bold transition-all active:scale-95 shadow-md shadow-orange-900/10">
+                <button className="flex items-center gap-1.5 px-4.5 py-2.5 bg-[#FF8A00] hover:bg-[#E67A00] text-white rounded-xl text-xs font-bold transition-all hover:shadow-lg hover:shadow-orange-500/10 active:scale-[0.97]">
                   <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
-                  Create Job
+                  Post a Job
                 </button>
               </Link>
             </div>
           </div>
 
-          {/* Hiring Performance & Funnel Chart */}
-          <div className="bg-white rounded-2xl border border-slate-200/65 shadow-sm p-5 flex flex-col gap-4 flex-shrink-0 text-left">
-            <div className="flex items-center justify-between">
-              <h2 className="text-[13px] font-bold text-[#0F172A] tracking-tight">Hiring Performance</h2>
-              <span className="text-[10px] font-semibold text-[#FF8A00] bg-orange-50 px-2 py-0.5 rounded-full">Live Stats</span>
-            </div>
-            
-            {/* 4 KPIs in mini grid */}
-            <div className="grid grid-cols-2 gap-2.5">
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 flex flex-col">
-                <span className="text-[10px] text-slate-400 font-medium leading-none mb-1">New Applicants</span>
-                <span className="text-[17px] font-extrabold text-[#0F172A]">{totalApps}</span>
-              </div>
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 flex flex-col">
-                <span className="text-[10px] text-slate-400 font-medium leading-none mb-1">Active Postings</span>
-                <span className="text-[17px] font-extrabold text-[#0F172A]">{stats?.active_jobs_count ?? 0}</span>
-              </div>
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 flex flex-col">
-                <span className="text-[10px] text-slate-400 font-medium leading-none mb-1">Interviews</span>
-                <span className="text-[17px] font-extrabold text-[#0F172A]">{funnel.interviewed}</span>
-              </div>
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 flex flex-col">
-                <span className="text-[10px] text-slate-400 font-medium leading-none mb-1">Hired Candidates</span>
-                <span className="text-[17px] font-extrabold text-[#0F172A]">{stats?.total_hires_count ?? funnel.hired}</span>
-              </div>
-            </div>
-
-            {/* Funnel distribution chart */}
-            <div className="space-y-3 pt-3.5 border-t border-slate-100">
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-[11px] font-bold text-slate-500">Pipeline Funnel</span>
-                <span className="text-[10px] font-semibold text-[#FF8A00] bg-orange-50 px-2 py-0.5 rounded-full">{conversionRate}% Conversion</span>
-              </div>
-              
-              <div className="space-y-2 text-xs">
-                <FunnelBar label="Applied" count={funnel.applied} pct={100} color="from-orange-500 to-amber-500" />
-                <FunnelBar label="Shortlisted" count={funnel.shortlisted} pct={funnel.applied > 0 ? Math.round((funnel.shortlisted / funnel.applied) * 100) : 0} color="from-orange-400 to-amber-400" />
-                <FunnelBar label="Interviewing" count={funnel.interviewed} pct={funnel.applied > 0 ? Math.round((funnel.interviewed / funnel.applied) * 100) : 0} color="from-amber-500 to-yellow-500" />
-                <FunnelBar label="Hired" count={funnel.hired} pct={funnel.applied > 0 ? Math.round((funnel.hired / funnel.applied) * 100) : 0} color="from-emerald-500 to-teal-500" />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── BOTTOM SECTION ── */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pb-6">
-        {/* Card 1: Active Job Postings */}
-        <div className="bg-white rounded-2xl border border-slate-200/65 shadow-sm flex flex-col h-[320px] min-h-0 overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3.5 border-b border-slate-100 flex-shrink-0 bg-slate-50/50">
-            <h2 className="text-[13px] font-bold text-[#0F172A] tracking-tight">Active Job Postings</h2>
-            <Link href="/dashboard/recruiter/hiring/jobs" className="text-[11px] font-semibold text-[#FF8A00] hover:text-[#E67A00] flex items-center gap-1">View all <ArrowRight className="h-3 w-3" /></Link>
-          </div>
-          <div className="flex-1 overflow-y-auto p-1.5">
-            {jobs.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center py-4">
-                <Briefcase className="h-5 w-5 text-slate-300 mb-1" strokeWidth={1.5} />
-                <p className="text-[12px] font-bold text-[#0F172A]">No active postings</p>
-                <Link href="/dashboard/recruiter/hiring/jobs/new" className="text-[10px] text-[#FF8A00] hover:underline mt-1">Create one</Link>
-              </div>
-            ) : jobs.map((job, i) => (
-              <div key={job.id} className={`flex items-center gap-3 px-3 py-2.5 hover:bg-[#FAFBFC] transition-all group rounded-xl ${i < jobs.length - 1 ? "border-b border-slate-100/60" : ""}`}>
-                <Link href={`/dashboard/recruiter/hiring/jobs/${job.id}/edit`} className="flex-1 min-w-0">
-                  <h3 className="text-[11.5px] font-semibold text-[#0F172A] truncate group-hover:text-[#FF8A00] transition-colors">{job.title}</h3>
-                  <p className="text-[9.5px] text-slate-400 mt-0.5">{job.location || "Remote"} · {job.job_type || "Full-time"}</p>
-                </Link>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <div className="text-right"><p className="text-[13px] font-bold text-[#0F172A]">{jobAppCounts[job.id] ?? 0}</p></div>
-                  <Link href={`/dashboard/recruiter/hiring/jobs/${job.id}/edit`}>
-                    <span className="px-2 py-1 bg-slate-100 hover:bg-slate-200/80 text-[#0F172A] text-[9.5px] font-semibold rounded-md transition-colors">Manage</span>
-                  </Link>
-                </div>
-              </div>
-            ))}
+          {/* Compact 4 KPIs Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4 gap-3">
+            <KpiItem label="New Applicants" value={totalApps} icon={Users} color="orange" />
+            <KpiItem label="Active Postings" value={stats?.active_jobs_count ?? 0} icon={Briefcase} color="indigo" />
+            <KpiItem label="Interviews" value={funnel.interviewed} icon={Zap} color="amber" />
+            <KpiItem label="Total Hires" value={stats?.total_hires_count ?? funnel.hired} icon={Target} color="emerald" />
           </div>
         </div>
 
-        {/* Card 2: Recent Applications Queue */}
-        <div className="bg-white rounded-2xl border border-slate-200/65 shadow-sm flex flex-col h-[320px] min-h-0 overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3.5 border-b border-slate-100 flex-shrink-0 bg-slate-50/50">
-            <h2 className="text-[13px] font-bold text-[#0F172A] tracking-tight">Recent Applications</h2>
-            <Link href="/dashboard/recruiter/hiring/applications" className="text-[11px] font-semibold text-[#FF8A00] hover:text-[#E67A00] flex items-center gap-1 transition-colors">View all <ArrowRight className="h-3 w-3" /></Link>
-          </div>
-          <div className="flex-1 overflow-y-auto p-1.5 space-y-1">
-            {applications.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center py-6 text-center">
-                <Users className="h-5 w-5 text-slate-350 mb-1" strokeWidth={1.5} />
-                <p className="text-[12px] font-bold text-[#0F172A]">No applications yet</p>
-                <p className="text-[10px] text-slate-400 mt-0.5">Pending applications show up here.</p>
-              </div>
-            ) : applications.slice(0, 4).map((app, i) => (
-              <div key={app.id || i} className={`flex items-center gap-3 px-3 py-2.5 hover:bg-[#FAFBFC] transition-all group rounded-xl ${i < applications.length - 1 ? "border-b border-slate-100/60" : ""}`}>
-                <div className="h-7 w-7 rounded-lg bg-orange-50 text-[#FF8A00] flex items-center justify-center font-bold text-[11px] shrink-0">
-                  {app.candidate_name ? app.candidate_name.charAt(0).toUpperCase() : "C"}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h4 className="text-[11.5px] font-semibold text-[#0F172A] truncate group-hover:text-[#FF8A00] transition-colors">{app.candidate_name || "Sales Candidate"}</h4>
-                  <p className="text-[9.5px] text-slate-400 truncate mt-0.5">{app.job_title || "Sales Professional"}</p>
-                </div>
-                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${
-                  app.status === 'shortlisted' ? 'text-emerald-600 bg-emerald-50 border-emerald-250/50' :
-                  app.status === 'interviewing' || app.status === 'interview_scheduled' ? 'text-amber-600 bg-amber-50 border-amber-255/50' :
-                  app.status === 'rejected' ? 'text-rose-650 bg-rose-50 border-rose-250/50' :
-                  'text-[#FF8A00] bg-orange-50 border-orange-250/50'
-                }`}>
-                  {app.status ? app.status.charAt(0).toUpperCase() + app.status.slice(1) : 'Applied'}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Card 3: Employer Brand overview */}
-        <div className="bg-white rounded-2xl border border-slate-200/65 shadow-sm flex flex-col h-[320px] min-h-0 overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-100 flex-shrink-0 bg-slate-50/50">
-            <h2 className="text-[13px] font-bold text-[#0F172A] tracking-tight">Employer Brand</h2>
-          </div>
-          <div className="flex-1 overflow-y-auto p-3.5 flex flex-col justify-between gap-3">
-            {/* Score progress */}
-            <div className="bg-[#0F172A] rounded-xl p-3.5 flex-shrink-0">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[8.5px] font-bold text-white/50 uppercase tracking-widest">Brand Strength</span>
-                <span className="text-[14px] font-bold text-white">{companyScore}/100</span>
-              </div>
-              <div className="h-1.5 w-full bg-white/[0.08] rounded-full overflow-hidden">
-                <div className="h-full bg-gradient-to-r from-[#FF8A00] to-[#FFB800] rounded-full" style={{ width: `${companyScore}%` }} />
-              </div>
+        {/* Feed & Analytics Tab Panel */}
+        <div className="flex-1 bg-white border border-slate-200/80 rounded-[28px] shadow-sm flex flex-col overflow-hidden min-h-0">
+          {/* Tabs Header */}
+          <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2 flex-shrink-0 bg-slate-50/20">
+            <div className="flex gap-1.5">
+              <FeedTabButton active={feedTab === "applications"} onClick={() => setFeedTab("applications")} label="Applicants" count={applications.length} />
+              <FeedTabButton active={feedTab === "jobs"} onClick={() => setFeedTab("jobs")} label="Jobs" count={jobs.length} />
+              <FeedTabButton active={feedTab === "brand"} onClick={() => setFeedTab("brand")} label="Brand Analytics" />
             </div>
+          </div>
 
-            <div className="flex-grow flex flex-col gap-1.5">
-              <BrandRow icon={Eye} label="Job Views" sub="All time views" value={`${stats?.total_views ?? 0}`} />
-              <BrandRow icon={TrendingUp} label="Conversion Rate" sub="Apps → Hires" value={`${conversionRate}%`} />
-            </div>
-            {profile.completion_score < 100 && (
-              <div className="flex-shrink-0 pt-2 border-t border-slate-100/80">
-                <Link href="/onboarding/recruiter"><span className="text-[10px] font-bold text-[#FF8A00] hover:underline flex items-center gap-0.5">Complete assessment ({profile.completion_score}%) <ChevronRight className="h-2.5 w-2.5" /></span></Link>
+          {/* Tabs Body */}
+          <div className="flex-1 overflow-y-auto p-4 min-h-0">
+            {feedTab === "applications" && (
+              <div className="space-y-2.5">
+                {applications.length === 0 ? (
+                  <div className="py-10 text-center flex flex-col items-center justify-center">
+                    <Users className="h-6 w-6 text-slate-350 mb-2" strokeWidth={1.5} />
+                    <p className="text-xs font-bold text-slate-800">No applications yet</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Pending applications show up here.</p>
+                  </div>
+                ) : applications.slice(0, 5).map((app, i) => (
+                  <div key={app.id || i} className="flex items-center gap-3 p-3 hover:bg-[#FAFBFC] transition-all group rounded-2xl border border-slate-100 bg-white shadow-[0_2px_4px_rgba(0,0,0,0.01)]">
+                    <div className="h-9 w-9 rounded-full bg-gradient-to-br from-[#FFF3E8] to-[#FFE3BF] text-[#FF8A00] flex items-center justify-center font-bold text-[12px] shrink-0 border border-orange-100/30">
+                      {app.candidate_name ? app.candidate_name.charAt(0).toUpperCase() : "C"}
+                    </div>
+                    <div className="flex-1 min-w-0 mr-2 text-left">
+                      <h4 className="text-[12px] font-bold text-[#0F172A] truncate group-hover:text-[#FF8A00] transition-colors">{app.candidate_name || "Sales Candidate"}</h4>
+                      <p className="text-[10px] text-slate-400 truncate mt-0.5">{app.job_title || "Sales Professional"}</p>
+                    </div>
+                    <span className={`text-[9.5px] font-bold px-2.5 py-1 rounded-lg border shrink-0 uppercase tracking-wider ${
+                      app.status === 'shortlisted' ? 'text-emerald-600 bg-emerald-50 border-emerald-150/40' :
+                      app.status === 'interviewing' || app.status === 'interview_scheduled' ? 'text-amber-600 bg-amber-50 border-amber-150/40' :
+                      app.status === 'rejected' ? 'text-rose-600 bg-rose-50 border-rose-150/40' :
+                      'text-[#FF8A00] bg-orange-50 border-orange-150/40'
+                    }`}>
+                      {app.status ? app.status.replace(/_/g, " ") : 'Applied'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {feedTab === "jobs" && (
+              <div className="space-y-2.5">
+                {jobs.length === 0 ? (
+                  <div className="py-10 text-center flex flex-col items-center justify-center">
+                    <Briefcase className="h-6 w-6 text-slate-350 mb-2" strokeWidth={1.5} />
+                    <p className="text-xs font-bold text-slate-800">No active postings</p>
+                    <Link href="/dashboard/recruiter/hiring/jobs/new" className="text-[10px] text-[#FF8A00] hover:underline mt-1">Create one</Link>
+                  </div>
+                ) : jobs.map((job) => (
+                  <div key={job.id} className="flex items-center justify-between p-3.5 hover:bg-[#FAFBFC] transition-all group rounded-2xl border border-slate-100 bg-white shadow-[0_2px_4px_rgba(0,0,0,0.01)]">
+                    <Link href={`/dashboard/recruiter/hiring/jobs/${job.id}/edit`} className="flex-1 min-w-0 mr-3 text-left">
+                      <h3 className="text-[13px] font-bold text-[#0F172A] truncate group-hover:text-[#FF8A00] transition-colors leading-snug">{job.title}</h3>
+                      <div className="flex items-center gap-2 mt-1.5 text-[10px] text-slate-400 font-medium">
+                        <span className="inline-flex items-center gap-0.5"><MapPin className="h-3 w-3 text-slate-400" />{job.location || "Remote"}</span>
+                        <span className="text-slate-300">•</span>
+                        <span>{job.job_type || "Full-time"}</span>
+                      </div>
+                    </Link>
+                    <div className="flex items-center gap-4 flex-shrink-0">
+                      <div className="text-center bg-slate-50 border border-slate-100 px-3 py-1 rounded-xl min-w-[50px]">
+                        <p className="text-[13px] font-black text-[#0F172A] leading-none">{jobAppCounts[job.id] ?? 0}</p>
+                        <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-1">Apps</p>
+                      </div>
+                      <Link href={`/dashboard/recruiter/hiring/jobs/${job.id}/edit`}>
+                        <span className="px-3.5 py-1.5 bg-slate-50 hover:bg-[#FF8A00] hover:text-white border border-slate-200/50 hover:border-transparent text-[#0F172A] text-[10.5px] font-bold rounded-xl transition-all duration-150 active:scale-95 shadow-sm">Manage</span>
+                      </Link>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {feedTab === "brand" && (
+              <div className="space-y-4">
+                {/* Brand Strength card */}
+                <div className="bg-gradient-to-br from-[#0F172A] to-[#1E293B] rounded-2xl p-4.5 shadow-sm border border-slate-800 text-left">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <span className="text-[9.5px] font-bold text-slate-400 uppercase tracking-widest leading-none">Employer Brand Health</span>
+                      <p className="text-[11px] text-slate-500 mt-1">Sourcing strength score</p>
+                    </div>
+                    <span className="text-[18px] font-black text-white leading-none font-mono">{companyScore}<span className="text-slate-500 text-xs font-semibold">/100</span></span>
+                  </div>
+                  <div className="h-2 w-full bg-white/[0.08] rounded-full overflow-hidden">
+                    <div className="h-full bg-gradient-to-r from-[#FF8A00] via-[#FFA233] to-[#FFBF66] rounded-full transition-all duration-700" style={{ width: `${companyScore}%` }} />
+                  </div>
+                </div>
+
+                {/* Dynamic rows */}
+                <div className="space-y-2.5">
+                  <BrandItem icon={Eye} label="Job Views" sub="Cumulative exposure" value={`${stats?.total_views ?? 0}`} color="orange" />
+                  <BrandItem icon={TrendingUp} label="Conversion Rate" sub="Applications to hires" value={`${conversionRate}%`} color="emerald" />
+                  {profile.completion_score < 100 && (
+                    <div className="pt-2 border-t border-slate-100 mt-3 flex items-center justify-between">
+                      <span className="text-[10px] font-semibold text-slate-400">Onboarding Status</span>
+                      <Link href="/onboarding/recruiter">
+                        <span className="text-[10px] font-bold text-[#FF8A00] hover:underline flex items-center gap-0.5">
+                          Complete assessment ({profile.completion_score}%) <ChevronRight className="h-2.5 w-2.5" />
+                        </span>
+                      </Link>
+                    </div>
+                  )}
+                </div>
+
+                {/* Funnel chart inside analytics */}
+                <div className="space-y-3 pt-3.5 border-t border-slate-100 text-left">
+                  <div className="flex justify-between items-center mb-1">
+                    <div>
+                      <h4 className="text-[11.5px] font-black text-slate-500 uppercase tracking-wider">Hiring Funnel Progression</h4>
+                      <p className="text-[9.5px] text-slate-400 mt-0.5">Applicant pipeline conversion</p>
+                    </div>
+                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-150 px-3 py-1 rounded-full">{conversionRate}% Conversion</span>
+                  </div>
+                  
+                  <div className="space-y-3 text-xs">
+                    <FunnelBar label="Applied" count={funnel.applied} pct={100} color="from-[#FF8A00] to-[#FFA233]" />
+                    <FunnelBar label="Shortlisted" count={funnel.shortlisted} pct={funnel.applied > 0 ? Math.round((funnel.shortlisted / funnel.applied) * 100) : 0} color="from-[#FFA233] to-[#FFB850]" />
+                    <FunnelBar label="Interviewing" count={funnel.interviewed} pct={funnel.applied > 0 ? Math.round((funnel.interviewed / funnel.applied) * 100) : 0} color="from-[#FFB850] to-[#FFCE8C]" />
+                    <FunnelBar label="Hired" count={funnel.hired} pct={funnel.applied > 0 ? Math.round((funnel.hired / funnel.applied) * 100) : 0} color="from-emerald-500 to-teal-500" />
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -273,61 +275,86 @@ export default function RecruiterDashboard() {
   );
 }
 
-function KpiCard({ icon: Icon, value, label, accent }: { icon: React.ElementType; value: number; label: string; accent: string }) {
-  const c: Record<string, { bg: string; ic: string; ring: string }> = {
-    blue: { bg: "bg-blue-50", ic: "text-blue-500", ring: "ring-blue-100" },
-    violet: { bg: "bg-violet-50", ic: "text-violet-500", ring: "ring-violet-100" },
-    emerald: { bg: "bg-emerald-50", ic: "text-emerald-500", ring: "ring-emerald-100" },
-    amber: { bg: "bg-amber-50", ic: "text-amber-500", ring: "ring-amber-100" },
+function KpiItem({ label, value, icon: Icon, color }: { label: string; value: number | string; icon: any; color: string }) {
+  const colorMap: Record<string, { bg: string; text: string; border: string; glow: string }> = {
+    orange: { bg: "bg-orange-50 text-[#FF8A00] border-orange-100/60", text: "text-[#FF8A00]", border: "border-orange-100", glow: "shadow-orange-500/5" },
+    indigo: { bg: "bg-indigo-50 text-indigo-600 border-indigo-100/60", text: "text-indigo-600", border: "border-indigo-100", glow: "shadow-indigo-500/5" },
+    amber: { bg: "bg-amber-50 text-amber-600 border-amber-100/60", text: "text-amber-600", border: "border-amber-100", glow: "shadow-amber-500/5" },
+    emerald: { bg: "bg-emerald-50 text-emerald-600 border-emerald-100/60", text: "text-emerald-600", border: "border-emerald-100", glow: "shadow-emerald-500/5" }
   };
-  const s = c[accent] || c.blue;
+  const c = colorMap[color] || colorMap.orange;
+
   return (
-    <div className="bg-white rounded-2xl border border-slate-200/60 p-3 shadow-sm flex items-center gap-3">
-      <div className={`h-8.5 w-8.5 rounded-xl ${s.bg} ${s.ic} ring-1 ${s.ring} flex items-center justify-center flex-shrink-0`}><Icon className="h-4 w-4" strokeWidth={1.8} /></div>
-      <div>
-        <p className="text-[18px] font-extrabold text-[#0F172A] leading-none">{value}</p>
-        <p className="text-[10px] font-medium text-slate-400 mt-1 leading-none">{label}</p>
+    <div className={`bg-white border border-slate-200/70 rounded-2xl p-3 flex items-center gap-3 shadow-[0_2px_8px_rgba(0,0,0,0.02)] ${c.glow} hover:-translate-y-0.5 hover:shadow-md hover:border-slate-300/40 transition-all duration-200 text-left`}>
+      <div className={`h-9 w-9 rounded-xl ${c.bg} border flex items-center justify-center shrink-0 shadow-sm`}>
+        <Icon className="h-4.5 w-4.5" strokeWidth={2.2} />
+      </div>
+      <div className="min-w-0">
+        <p className="text-[17px] font-black text-[#0F172A] leading-none tracking-tight">{value}</p>
+        <p className="text-[9.5px] font-bold text-slate-400 uppercase tracking-widest mt-1.5 truncate">{label}</p>
       </div>
     </div>
   );
 }
 
-function PipeStage({ label, value, icon: Icon, accent }: { label: string; value: number; icon: React.ElementType; accent: string }) {
-  const c: Record<string, { bg: string; ic: string }> = { blue: { bg: "bg-blue-50", ic: "text-blue-500" }, amber: { bg: "bg-amber-50", ic: "text-amber-500" }, purple: { bg: "bg-purple-50", ic: "text-purple-500" }, emerald: { bg: "bg-emerald-50", ic: "text-emerald-500" } };
-  const s = c[accent] || c.blue;
+function FeedTabButton({ active, onClick, label, count }: { active: boolean; onClick: () => void; label: string; count?: number }) {
   return (
-    <div className={`flex items-center gap-2 ${s.bg} rounded-xl px-2.5 py-1.5`}>
-      <div className={`h-6 w-6 rounded-lg bg-white/80 ${s.ic} flex items-center justify-center shadow-sm flex-shrink-0`}><Icon className="h-3 w-3" strokeWidth={1.8} /></div>
-      <div>
-        <span className="text-[13px] font-extrabold text-[#0F172A] leading-none block">{value}</span>
-        <span className="text-[8.5px] font-semibold text-slate-400 leading-none">{label}</span>
-      </div>
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`relative px-3.5 py-2 text-xs font-bold transition-all duration-200 flex items-center gap-2 rounded-xl ${
+        active 
+          ? "bg-[#FFF3E8] text-[#FF8A00]" 
+          : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"
+      }`}
+    >
+      <span>{label}</span>
+      {count !== undefined && (
+        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md ${
+          active ? "bg-[#FF8A00] text-white" : "bg-slate-100 text-slate-500"
+        } transition-all duration-200`}>
+          {count}
+        </span>
+      )}
+    </button>
   );
 }
 
-function BrandRow({ icon: Icon, label, sub, value }: { icon: React.ElementType; label: string; sub: string; value: string }) {
+function BrandItem({ icon: Icon, label, sub, value, color }: { icon: any; label: string; sub: string; value: string; color: string }) {
+  const colorMap: Record<string, string> = {
+    orange: "text-[#FF8A00] bg-orange-50 border-orange-100/60",
+    emerald: "text-emerald-600 bg-emerald-50 border-emerald-100/60",
+    indigo: "text-indigo-600 bg-indigo-50 border-indigo-100/60"
+  };
+  const col = colorMap[color] || colorMap.orange;
+
   return (
-    <div className="flex items-center justify-between py-1.5 px-2 rounded-xl hover:bg-slate-50/70 transition-colors">
-      <div className="flex items-center gap-2">
-        <Icon className="h-4 w-4 text-slate-400 flex-shrink-0" strokeWidth={1.8} />
-        <div><p className="text-[11.5px] font-semibold text-[#0F172A] leading-none">{label}</p><p className="text-[8.5px] text-slate-400 mt-0.5 leading-none">{sub}</p></div>
+    <div className="flex items-center justify-between p-3.5 rounded-xl border border-slate-100/70 hover:bg-[#FAFBFC] hover:border-slate-200 transition-all bg-white shadow-sm shadow-slate-100/50">
+      <div className="flex items-center gap-3 min-w-0">
+        <div className={`h-8.5 w-8.5 rounded-xl ${col} border flex items-center justify-center shrink-0 shadow-sm`}>
+          <Icon className="h-4 w-4" strokeWidth={2.2} />
+        </div>
+        <div className="min-w-0">
+          <p className="text-[12px] font-bold text-[#0F172A] leading-none">{label}</p>
+          <p className="text-[9.5px] text-slate-400 mt-1.5 leading-none truncate">{sub}</p>
+        </div>
       </div>
-      <span className="text-[13px] font-bold text-[#0F172A]">{value}</span>
+      <span className="text-[12.5px] font-black text-[#0F172A] shrink-0 font-mono leading-none">{value}</span>
     </div>
   );
 }
 
 function FunnelBar({ label, count, pct, color }: { label: string; count: number; pct: number; color: string }) {
   return (
-    <div className="space-y-1">
-      <div className="flex justify-between text-[10.5px] font-medium text-slate-600">
-        <span>{label}</span>
-        <span className="font-bold text-[#0F172A]">{count} <span className="text-slate-400 font-normal">({pct}%)</span></span>
+    <div className="space-y-1.5">
+      <div className="flex justify-between text-[11px] font-semibold text-slate-700">
+        <span className="font-medium text-slate-500">{label}</span>
+        <span className="font-bold text-[#0F172A]">{count} <span className="text-slate-400 font-normal ml-0.5">({pct}%)</span></span>
       </div>
-      <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+      <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden border border-slate-50 shadow-inner">
         <div className={`h-full bg-gradient-to-r ${color} rounded-full transition-all duration-500`} style={{ width: `${pct}%` }} />
       </div>
     </div>
   );
 }
+

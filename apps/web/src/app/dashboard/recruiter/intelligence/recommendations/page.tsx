@@ -23,7 +23,6 @@ import {
 } from "lucide-react";
 import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
-import RecruiterSidebar from "@/components/RecruiterSidebar";
 import LockedView from "@/components/dashboard/LockedView";
 import CandidateProfileModal from "@/components/CandidateProfileModal";
 import JobInviteModal from "@/components/JobInviteModal";
@@ -850,7 +849,7 @@ function RecommendedCard({
       <div className="flex flex-col gap-3">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-100 bg-[#FFF6ED] text-[#FF8A00] shadow-sm">
+            <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-100 bg-[#FFF6ED] text-[#FF8A00] shadow-sm">
               {candidate.profile_photo_url ? (
                 <img
                   src={candidate.profile_photo_url}

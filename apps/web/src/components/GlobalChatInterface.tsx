@@ -2825,7 +2825,7 @@ export default function GlobalChatInterface({ isInline = false }: { isInline?: b
   return (
     <ChatThemeContext.Provider value={{ isInline }}>
       <div className={isInline 
-        ? "w-full h-full flex bg-[#F8FAFC] text-slate-800 overflow-hidden relative border border-slate-200/80 rounded-2xl shadow-sm" 
+        ? "w-full h-full flex bg-[#F8FAFC] text-slate-800 overflow-hidden relative" 
         : "fixed inset-0 z-[100] flex bg-[#09090b] text-zinc-100 overflow-hidden font-sans"
       }>
         
@@ -2989,14 +2989,18 @@ export default function GlobalChatInterface({ isInline = false }: { isInline?: b
 
           {/* Header bar */}
           {isInline ? (
-            <header className="h-12 flex-shrink-0 flex items-center justify-between px-4 border-b border-slate-200/50 bg-white">
-              <div className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wider">
-                  TechSalesAxis AI
-                </span>
+            <header className="px-5 py-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0 bg-white">
+              <div className="flex items-center gap-3">
+                <div className="w-8.5 h-8.5 bg-gradient-to-tr from-[#FF8A00] to-[#FFB800] rounded-xl flex items-center justify-center shadow-md shadow-orange-500/10 flex-shrink-0">
+                  <Sparkles className="w-4.5 h-4.5 text-white" />
+                </div>
+                <div className="min-w-0 text-left">
+                  <h2 className="text-sm font-black text-slate-900 leading-none">AI Assistant</h2>
+                  <p className="text-[10px] text-slate-400 font-semibold mt-1 truncate">Sourcing, Screening & Intelligent Recommendations</p>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
+              
+              <div className="flex items-center gap-2 flex-shrink-0">
                 {messages.length > 1 && (
                   <button
                     onClick={handleUndoLast}
@@ -3004,16 +3008,17 @@ export default function GlobalChatInterface({ isInline = false }: { isInline?: b
                     title="Undo last message and response"
                   >
                     <RotateCcw className="w-3 h-3" />
-                    Undo Last
+                    <span className="hidden sm:inline">Undo</span>
                   </button>
                 )}
                 <button
                   onClick={newSession}
-                  className="px-2.5 py-1 text-[10.5px] font-bold text-[#FF8A00] hover:text-[#E67A00] bg-orange-50 hover:bg-orange-100/50 rounded-lg transition-all flex items-center gap-1"
+                  className="px-2.5 py-1 text-[10.5px] font-bold text-[#FF8A00] hover:text-[#E67A00] bg-orange-50 hover:bg-orange-100/50 rounded-lg transition-all flex items-center gap-1 mr-1"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  New Chat
+                  <span className="hidden sm:inline">New Chat</span>
                 </button>
+                <span className="hidden sm:inline-block text-[9px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-2.5 py-0.5 rounded-full uppercase tracking-wider">Agent Online</span>
               </div>
             </header>
           ) : (

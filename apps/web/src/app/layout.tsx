@@ -14,7 +14,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body>
         {children}
         <GlobalChatInterface />
-        <Toaster position="top-right" richColors />
+        <Toaster position="bottom-right" closeButton richColors toastOptions={{ style: { borderRadius: "16px", fontSize: "13px" } }} />
       </body>
     </html>
   );

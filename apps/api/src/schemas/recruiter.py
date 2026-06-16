@@ -11,6 +11,9 @@ class RecruiterProfileUpdate(BaseModel):
     professional_persona: Optional[Dict[str, Any]] = None
     onboarding_step: Optional[str] = None
     team_role: Optional[str] = None
+    department: Optional[str] = None
+    location: Optional[str] = None
+    profile_photo_url: Optional[str] = None
 
 class CompanyProfileUpdate(BaseModel):
     name: Optional[str] = None
@@ -66,6 +69,11 @@ class JobCreate(BaseModel):
     job_type: str = "onsite"
     location: Optional[str] = None
     salary_range: Optional[str] = None
+    min_salary: Optional[float] = None
+    max_salary: Optional[float] = None
+    currency: Optional[str] = None
+    salary_frequency: Optional[str] = None
+    assessment_template_id: Optional[str] = None
     number_of_positions: int = 1
     metadata: Dict[str, Any] = {}
     is_ai_generated: bool = False
@@ -79,6 +87,11 @@ class JobUpdate(BaseModel):
     job_type: Optional[str] = None
     location: Optional[str] = None
     salary_range: Optional[str] = None
+    min_salary: Optional[float] = None
+    max_salary: Optional[float] = None
+    currency: Optional[str] = None
+    salary_frequency: Optional[str] = None
+    assessment_template_id: Optional[str] = None
     number_of_positions: Optional[int] = None
     status: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
