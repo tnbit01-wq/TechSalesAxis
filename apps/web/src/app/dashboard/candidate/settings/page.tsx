@@ -20,7 +20,6 @@ import {
   ChevronRight
 } from "lucide-react";
 import Image from "next/image";
-import { toast } from "sonner";
 
 interface ProfileData {
   full_name: string;
@@ -52,6 +51,7 @@ export default function CandidateSettingsPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showOldPassword, setShowOldPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [activeTab, setActiveTab] = useState<"profile" | "security" | "notifications" | "privacy">("profile");
 
   useEffect(() => {
@@ -87,15 +87,17 @@ export default function CandidateSettingsPage() {
 
   const syncData = async (endpoint: string, payload: any, successMsg: string) => {
     setSaving(true);
+    setMessage(null);
     try {
       const token = awsAuth.getToken();
       if (token) {
         await apiClient.patch(endpoint, payload, token);
-        toast.success(successMsg);
+        setMessage({ type: "success", text: successMsg });
+        setTimeout(() => setMessage(null), 3000);
       }
     } catch (err) {
       console.error(err);
-      toast.error("Failed to sync settings with server.");
+      setMessage({ type: "error", text: "Signal Interrupted. Retry." });
     } finally {
       setSaving(false);
     }
@@ -109,11 +111,11 @@ export default function CandidateSettingsPage() {
 
   const handleUpdatePassword = async () => {
     if (!oldPassword || !newPassword || newPassword.length < 8) {
-      toast.error("Password must be at least 8 characters");
+      setMessage({ type: "error", text: "Password must be at least 8 characters" });
       return;
     }
     if (newPassword !== confirmPassword) {
-      toast.error("New passwords do not match");
+      setMessage({ type: "error", text: "New passwords do not match" });
       return;
     }
     setSaving(true);
@@ -125,7 +127,7 @@ export default function CandidateSettingsPage() {
           new_password: newPassword 
         }, token);
         
-        toast.success("Security credentials updated.");
+        setMessage({ type: "success", text: "Security credentials updated." });
         setOldPassword("");
         setNewPassword("");
         setConfirmPassword("");
@@ -141,7 +143,7 @@ export default function CandidateSettingsPage() {
         userFriendlyMsg = messageText;
       }
       
-      toast.error(userFriendlyMsg);
+      setMessage({ type: "error", text: userFriendlyMsg });
     } finally {
       setSaving(false);
     }
@@ -159,7 +161,7 @@ export default function CandidateSettingsPage() {
         window.location.href = "/";
       }
     } catch (err) {
-      toast.error("Failed to delete account");
+      setMessage({ type: "error", text: "Failed to delete account" });
       setSaving(false);
     }
   };
@@ -174,28 +176,28 @@ export default function CandidateSettingsPage() {
     if (!file) return;
 
     setSaving(true);
-    toast.info("Uploading credential for verification...");
- 
+    setMessage(null);
+
     try {
       const token = awsAuth.getToken();
       if (!token) throw new Error("Not authenticated");
- 
+
       // Verify ID using the automated extraction endpoint which uses Gemini Vision
       const formData = new FormData();
       formData.append("file", file);
- 
+
       // Using the generic upload helper logic
       const response = await apiClient.post("/candidate/verify-id", formData, token ?? undefined);
- 
+
       if (response.verified) {
         setProfile(prev => prev ? { ...prev, identity_verified: true } : null);
-        toast.success("Identity Verified. Professional Badge Active.");
+        setMessage({ type: "success", text: "Identity Verified. Professional Badge Active." });
       } else {
-        toast.error(response.reason || "Validation failed. Ensure clear ID document.");
+        setMessage({ type: "error", text: response.reason || "Validation failed. Ensure clear ID document." });
       }
     } catch (err: any) {
       console.error("ID verification error:", err);
-      toast.error("Verification process interrupted. Try again.");
+      setMessage({ type: "error", text: "Verification process interrupted. Try again." });
     } finally {
       setSaving(false);
       // Reset the file input
@@ -218,6 +220,16 @@ export default function CandidateSettingsPage() {
     <div className="h-full bg-slate-50/50">
       <CandidateHeader profile={profile} />
       <div className="mx-auto flex h-[calc(100vh-5rem)] max-w-7xl flex-col px-4 py-6">
+        {message && (
+          <div className={`mb-6 p-4 rounded-2xl border shadow-sm transition-all animate-in fade-in slide-in-from-top-4 flex items-center gap-3 ${
+            message.type === "success"
+              ? "bg-emerald-50 border-emerald-100 text-emerald-800"
+              : "bg-rose-50 border-rose-100 text-rose-800"
+          }`}>
+            {message.type === "success" ? <CheckCircle2 className="h-5 w-5 flex-shrink-0" /> : <AlertCircle className="h-5 w-5 flex-shrink-0" />}
+            <span className="text-sm font-medium">{message.text}</span>
+          </div>
+        )}
 
         <div className="flex-1 min-h-0 overflow-y-auto pr-1">
           {/* Main Layout: Sidebar + Content */}

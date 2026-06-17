@@ -148,10 +148,6 @@ def _profile_to_dict(profile: RecruiterProfile | None, company: Company | None =
         "team_role": profile.team_role,
         "professional_persona": profile.professional_persona,
         "assessment_status": profile.assessment_status,
-        "department": profile.department,
-        "location": profile.location,
-        "credits": profile.credits or 0,
-        "profile_photo_url": get_s3_url_with_fallback(profile.profile_photo_url) if profile.profile_photo_url else f"https://api.dicebear.com/7.x/avataaars/svg?seed={(profile.full_name or 'User').replace(' ', '%20')}",
     }
     if company:
         payload["companies"] = {
@@ -596,7 +592,7 @@ async def verify_id_post(data: Dict[str, Any], user: dict = Depends(get_current_
 
 @router.get("/jobs")
 async def get_jobs(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    from src.core.models import Job, CandidateProfile, JobApplication, JobView
+    from src.core.models import Job, CandidateProfile
     profile = db.query(RecruiterProfile).filter(RecruiterProfile.user_id == user["sub"]).first()
     if not profile or not profile.company_id:
         return []
@@ -619,14 +615,9 @@ async def get_jobs(user: dict = Depends(get_current_user), db: Session = Depends
                 if c_skills & job_skills:
                     matching_count += 1
                     
-        # Calculate applications count and views count
-        applications_count = db.query(JobApplication).filter(JobApplication.job_id == job.id).count()
-        views_count = db.query(JobView).filter(JobView.job_id == job.id).count()
-
         results.append({
             "id": str(job.id),
             "company_id": str(job.company_id) if job.company_id else None,
-            "recruiter_id": str(job.recruiter_id) if job.recruiter_id else None,
             "title": job.title,
             "description": job.description,
             "experience_band": job.experience_band or "mid",
@@ -634,10 +625,6 @@ async def get_jobs(user: dict = Depends(get_current_user), db: Session = Depends
             "location": job.location,
             "salary_range": job.salary_range,
             "status": job.status or "active",
-            "number_of_positions": job.number_of_positions or 1,
-            "applications_count": applications_count,
-            "views_count": views_count,
-            "skills_required": job.skills_required or [],
             "metadata": getattr(job, "metadata_", {}) or {},
             "created_at": job.created_at,
             "updated_at": getattr(job, "created_at", None),
@@ -645,7 +632,6 @@ async def get_jobs(user: dict = Depends(get_current_user), db: Session = Depends
             "matching_candidates_count": matching_count,
         })
     return results
-
 
 @router.post("/jobs")
 async def create_job(data: JobCreate, user: dict = Depends(get_current_user)):
@@ -658,29 +644,11 @@ async def update_job(job_id: str, data: JobUpdate, user: dict = Depends(get_curr
     job = db.query(Job).filter(Job.id == job_id).first()
     if not profile or not job or job.company_id != profile.company_id:
         raise HTTPException(status_code=404, detail="Job not found")
-    
-    update_data = data.model_dump(exclude_unset=True)
-    
-    # Handle virtual metadata fields
-    virtual_fields = ["min_salary", "max_salary", "currency", "salary_frequency", "assessment_template_id"]
-    current_metadata = getattr(job, "metadata_", {}) or {}
-    updated_metadata = False
-    
-    for vf in virtual_fields:
-        if vf in update_data:
-            current_metadata[vf] = update_data.pop(vf)
-            updated_metadata = True
-            
-    if updated_metadata:
-        setattr(job, "metadata_", current_metadata)
-        
-    for k, v in update_data.items():
+    for k, v in data.model_dump(exclude_unset=True).items():
         if k == "metadata":
-            merged = {**(getattr(job, "metadata_", {}) or {}), **(v or {})}
-            setattr(job, "metadata_", merged)
+            setattr(job, "metadata_", v)
         else:
             setattr(job, k, v)
-            
     db.commit()
     return {"status": "updated", "id": str(job.id)}
 
@@ -818,7 +786,7 @@ async def get_recruiter_application_detail(application_id: str, user: dict = Dep
 async def bulk_application_status(data: BulkApplicationStatusUpdate, db: Session = Depends(get_db)):
     from src.core.models import JobApplication, Job, ChatThread, User, CandidateProfile
     from src.services.notification_service import NotificationService
-    from src.services.email_service import send_shortlist_email, send_rejection_email, send_offer_email
+    from src.services.email_service import send_shortlist_email, send_rejection_email
     
     updated_count = 0
     for application_id in data.application_ids:
@@ -905,47 +873,6 @@ async def bulk_application_status(data: BulkApplicationStatusUpdate, db: Session
                         send_rejection_email(candidate_email, candidate_name, job_title, data.feedback, company_name=company_name)
                     except Exception as e:
                         print(f"Error sending rejection email: {e}")
-
-                # Logic for offered
-                elif data.status == "offered" and old_status != "offered":
-                    # 1. Send Notification to Candidate
-                    NotificationService.create_notification(
-                        user_id=app.candidate_id,
-                        type="APPLICATION_OFFERED",
-                        title="Good news! You have received a job offer",
-                        message=f"You have been offered the {job.title} position. Please check your dashboard to review the offer details.",
-                        metadata={
-                            "application_id": str(app.id),
-                            "job_id": str(job.id),
-                            "job_title": job.title
-                        },
-                        db=db
-                    )
-                    
-                    # 2. Send Email Notification
-                    try:
-                        from src.core.models import Company
-                        company = db.query(Company).filter(Company.id == job.company_id).first()
-                        company_name = company.name if (company and company.name) else "TechSales Axis"
-                        send_offer_email(candidate_email, candidate_name, job_title, data.feedback, company_name=company_name)
-                    except Exception as e:
-                        print(f"Error sending offer email: {e}")
-
-                # Logic for closed/hired
-                elif data.status in ["closed", "hired"] and old_status not in ["closed", "hired"]:
-                    # 1. Send Notification to Candidate
-                    NotificationService.create_notification(
-                        user_id=app.candidate_id,
-                        type="APPLICATION_HIRED",
-                        title="Congratulations! You have been hired",
-                        message=f"Your application status for the {job.title} position has been updated to Hired. Welcome aboard!",
-                        metadata={
-                            "application_id": str(app.id),
-                            "job_id": str(job.id),
-                            "job_title": job.title
-                        },
-                        db=db
-                    )
                 
     db.commit()
     return {"status": "updated", "count": updated_count}

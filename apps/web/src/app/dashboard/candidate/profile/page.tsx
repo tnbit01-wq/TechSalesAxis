@@ -1,13 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import LoadingScreen from "@/components/LoadingScreen";
 import { useRouter } from "next/navigation";
 import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import CandidateHeader from "@/components/CandidateHeader";
 import Image from "next/image";
-import { toast } from "sonner";
 import {
   ArrowLeft,
   Briefcase,
@@ -90,6 +88,7 @@ export default function CandidateProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
     async function loadProfile() {
@@ -156,6 +155,7 @@ export default function CandidateProfilePage() {
     if (!file) return;
 
     setUploading(true);
+    setMessage(null);
 
     try {
       const token = awsAuth.getToken();
@@ -169,10 +169,10 @@ export default function CandidateProfilePage() {
 
       setProfile((prev) => (prev ? { ...prev, profile_photo_url: publicUrl } : null));
       await apiClient.patch("/candidate/profile", { profile_photo_url: publicUrl }, token);
-      toast.success("Profile photo updated.");
+      setMessage({ type: "success", text: "Profile photo updated." });
     } catch (error: any) {
       console.error("Upload error:", error);
-      toast.error(error.message || "Failed to upload photo");
+      setMessage({ type: "error", text: error.message || "Failed to upload photo" });
     } finally {
       setUploading(false);
     }
@@ -181,14 +181,16 @@ export default function CandidateProfilePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setMessage(null);
+
     try {
       const token = awsAuth.getToken() || undefined;
       const result = await apiClient.patch("/candidate/profile", profile, token);
       setProfile((prev) => (prev ? { ...prev, completion_score: result.completion_score } : null));
-      toast.success("Profile settings saved successfully.");
+      setMessage({ type: "success", text: "Profile settings saved successfully." });
     } catch (error: any) {
       console.error("Save error:", error);
-      toast.error(error.message || "Failed to save profile");
+      setMessage({ type: "error", text: error.message || "Failed to save profile" });
     } finally {
       setSaving(false);
     }
@@ -218,19 +220,36 @@ export default function CandidateProfilePage() {
     <TextInput type="number" name="years_of_experience" value={profile?.years_of_experience || 0} onChange={handleInputChange} />
   );
 
-  if (loading) return <LoadingScreen label="Loading Profile..." className="min-h-screen flex items-center justify-center bg-[#F8FAFC]" />;
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-10 w-10 animate-spin rounded-full border-b-2 border-[#FF8A00]" />
+          <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Loading Profile...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full bg-slate-50/50">
       <CandidateHeader profile={profile} />
       <main className="h-[calc(100vh-5rem)] min-h-0 overflow-y-auto">
         <div className="mx-auto flex min-h-full max-w-7xl flex-col gap-6 px-4 py-6 lg:px-6">
+          {message && (
+            <div className={`rounded-2xl border p-4 shadow-sm ${message.type === "success" ? "border-emerald-100 bg-emerald-50 text-emerald-800" : "border-rose-100 bg-rose-50 text-rose-800"}`}>
+              <div className="flex items-center gap-3">
+                <CheckCircle2 className={`h-5 w-5 ${message.type === "success" ? "text-emerald-500" : "text-rose-500"}`} />
+                <p className="text-sm font-bold">{message.text}</p>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_minmax(0,1fr)] lg:min-h-0">
             <aside className="space-y-6 lg:sticky lg:top-6 lg:self-start">
               <div className="rounded-[28px] border border-orange-100/80 bg-white p-6 shadow-[0_8px_24px_rgba(255,138,0,0.06)]">
                 <div className="flex items-center gap-4">
-                  <div className="relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-[#FF8A00] to-[#FFB366] text-white shadow-lg shadow-orange-200">
+                  <div className="relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-[#FF8A00] to-[#FFB366] text-white shadow-lg shadow-orange-200">
                     {profile?.profile_photo_url ? <Image src={profile.profile_photo_url} alt="Profile" fill sizes="64px" className="object-cover" /> : <User className="h-8 w-8" />}
                     {uploading && <div className="absolute inset-0 flex items-center justify-center bg-white/70"><div className="h-5 w-5 animate-spin rounded-full border-2 border-[#FF8A00] border-t-transparent" /></div>}
                   </div>
@@ -262,7 +281,7 @@ export default function CandidateProfilePage() {
               <form onSubmit={handleSubmit} className="space-y-8">
                 <Section title="Personal details" description="Your identity and contact information" icon={User}>
                   <div className="flex flex-col gap-10 md:flex-row md:items-start">
-                    <button type="button" onClick={() => fileInputRef.current?.click()} className="relative flex h-32 w-32 items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-slate-200 bg-slate-100 transition-all hover:border-[#FF8A00] hover:bg-white">
+                    <button type="button" onClick={() => fileInputRef.current?.click()} className="relative flex h-32 w-32 items-center justify-center overflow-hidden rounded-3xl border-2 border-dashed border-slate-200 bg-slate-100 transition-all hover:border-[#FF8A00] hover:bg-white">
                       {profile?.profile_photo_url ? <Image src={profile.profile_photo_url} alt="Profile" fill sizes="128px" className="object-cover" /> : <PlusCircle className="h-8 w-8 text-slate-300" />}
                     </button>
                     <div className="grid w-full grid-cols-1 gap-8 md:grid-cols-2">

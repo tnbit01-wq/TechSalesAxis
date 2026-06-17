@@ -524,7 +524,7 @@ function CandidateCard({
     <div className="bg-white rounded-4xl border border-slate-100 shadow-sm hover:shadow-2xl hover:shadow-primary/10 transition-all duration-500 group relative flex flex-col p-5 h-full">
       <div className="flex items-start justify-between mb-4">
         <div className="relative">
-          <div className="h-14 w-14 rounded-full border border-slate-50 bg-slate-100 overflow-hidden shadow-inner group-hover:border-primary-light transition-colors flex items-center justify-center">
+          <div className="h-14 w-14 rounded-2xl border border-slate-50 bg-slate-100 overflow-hidden shadow-inner group-hover:border-primary-light transition-colors flex items-center justify-center">
             {candidate.profile_photo_url ? (
               <img
                 src={candidate.profile_photo_url}

@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import LoadingScreen from "@/components/LoadingScreen";
 import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import { useRouter } from "next/navigation";
@@ -207,10 +206,10 @@ export default function CandidateJobsPage() {
 
   if (loading) {
     return (
-      <LoadingScreen 
-        label="Loading jobs..." 
-        className="min-h-[60vh] flex items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(255,138,0,0.08),_transparent_40%),linear-gradient(180deg,#FFFCF8_0%,#FFFFFF_100%)]" 
-      />
+      <div className="min-h-[60vh] flex flex-col items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(255,138,0,0.08),_transparent_40%),linear-gradient(180deg,#FFFCF8_0%,#FFFFFF_100%)]">
+        <div className="animate-spin rounded-full h-10 w-10 border-[3px] border-[#FFE3BF] border-t-[#FF8A00] mb-4"></div>
+        <p className="text-[#C96B00] font-black text-xs uppercase tracking-[0.18em]">Loading jobs...</p>
+      </div>
     );
   }
 

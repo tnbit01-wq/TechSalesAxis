@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import LoadingScreen from "@/components/LoadingScreen";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -21,8 +20,6 @@ import {
   ClipboardList,
   Activity,
   Share2,
-  Target,
-  Copy,
 } from "lucide-react";
 import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
@@ -40,10 +37,6 @@ interface Job {
   number_of_positions: number;
   created_at: string;
   recruiter_id: string;
-  applications_count?: number;
-  views_count?: number;
-  matching_candidates_count?: number;
-  skills_required?: string[];
   recruiter_profiles?: {
     full_name: string;
     user_id: string;
@@ -67,7 +60,6 @@ export default function JobsManagement() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [ownershipFilter, setOwnershipFilter] = useState<"all" | "mine">("all");
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [sharingJob, setSharingJob] = useState<Job | null>(null);
   const [profile, setProfile] = useState<{
@@ -177,11 +169,9 @@ export default function JobsManagement() {
         job.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
         job.location.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesStatus = statusFilter === "all" || job.status === statusFilter;
-      const matchesOwnership =
-        ownershipFilter === "all" || job.recruiter_id === profile?.user_id;
-      return matchesSearch && matchesStatus && matchesOwnership;
+      return matchesSearch && matchesStatus;
     });
-  }, [jobs, searchTerm, statusFilter, ownershipFilter, profile]);
+  }, [jobs, searchTerm, statusFilter]);
 
   const getJobViewCount = (jobId: string): number => {
     return recentJobViews.filter((view) => view.job_id === jobId).length;
@@ -191,15 +181,14 @@ export default function JobsManagement() {
     const active = jobs.filter((job) => job.status === "active").length;
     const paused = jobs.filter((job) => job.status === "paused").length;
     const closed = jobs.filter((job) => job.status === "closed").length;
-    const totalViews = jobs.reduce((sum, job) => sum + (job.views_count || 0), 0);
     return {
       total: jobs.length,
       active,
       paused,
       closed,
-      views: totalViews,
+      views: recentJobViews.length,
     };
-  }, [jobs]);
+  }, [jobs, recentJobViews]);
 
   const getStatusClasses = (status: Job["status"]) => {
     switch (status) {
@@ -223,7 +212,16 @@ export default function JobsManagement() {
     }
   };
 
-  if (loading) return <LoadingScreen label="Loading hiring roles..." className="min-h-screen flex items-center justify-center bg-[#F8FAFC]" />;
+  if (loading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#F8FAFC]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-10 w-10 border-[3px] border-[#FFE3BF] border-t-[#FF8A00]"></div>
+          <p className="text-[#C96B00] font-black text-xs uppercase tracking-[0.18em]">Loading hiring roles...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(255,138,0,0.08),_transparent_42%),linear-gradient(180deg,#FFFCF8_0%,#FFFFFF_100%)] text-slate-900">
@@ -307,28 +305,6 @@ export default function JobsManagement() {
                         }`}>
                           {status.count}
                         </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="hidden lg:block">
-                  <h3 className="mb-2 text-[10px] font-black uppercase tracking-wider text-slate-500">Posted By</h3>
-                  <div className="flex flex-col space-y-1">
-                    {[
-                      { value: "all", label: "Company Roles" },
-                      { value: "mine", label: "My Roles Only" },
-                    ].map((opt) => (
-                      <button
-                        key={opt.value}
-                        onClick={() => setOwnershipFilter(opt.value as "all" | "mine")}
-                        className={`flex items-center justify-between w-full rounded-xl px-3 py-2 text-xs font-bold transition-all ${
-                          ownershipFilter === opt.value
-                            ? "bg-[#FF8A00] text-white shadow-md shadow-orange-100"
-                            : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                        }`}
-                      >
-                        <span>{opt.label}</span>
                       </button>
                     ))}
                   </div>
@@ -489,16 +465,6 @@ export default function JobsManagement() {
                                       <Edit3 className="h-3.5 w-3.5" />
                                       Edit Role
                                     </button>
-                                    <button
-                                      onClick={() => {
-                                        router.push(`/dashboard/recruiter/hiring/jobs/new?clone=${job.id}`);
-                                        setActiveMenu(null);
-                                      }}
-                                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-[11px] font-bold text-slate-700 transition hover:bg-orange-50 hover:text-[#FF8A00]"
-                                    >
-                                      <Copy className="h-3.5 w-3.5" />
-                                      Duplicate Role
-                                    </button>
                                     <div className="my-1 h-px bg-slate-100" />
                                     <button
                                       onClick={() => deleteJob(job.id)}
@@ -524,30 +490,12 @@ export default function JobsManagement() {
                             </span>
                             <span className="inline-flex items-center gap-1 rounded-lg bg-slate-50 border border-slate-100 px-2 py-0.5 text-slate-500" title="Positions">
                               <Users className="h-3 w-3 text-slate-400" />
-                              {job.number_of_positions || 1} pos
+                              {job.number_of_positions} pos
                             </span>
                             <span className="inline-flex items-center gap-1 rounded-lg bg-[#FFF7EE] border border-orange-100 px-2 py-0.5 text-[#C96B00]" title="Views">
                               <Activity className="h-3 w-3 text-[#FF8A00]" />
-                              {job.views_count || 0} views
+                              {getJobViewCount(job.id)} views
                             </span>
-                            <Link
-                              href={`/dashboard/recruiter/hiring/applications?job=${job.id}`}
-                              className="inline-flex items-center gap-1 rounded-lg bg-[#EEF2FF] border border-blue-100 px-2 py-0.5 text-[#4F46E5] hover:bg-blue-100 hover:border-blue-200 transition-colors"
-                              title="Applications"
-                            >
-                              <ClipboardList className="h-3 w-3 text-[#6366F1]" />
-                              {job.applications_count || 0} applicants
-                            </Link>
-                            {(job.matching_candidates_count ?? 0) > 0 && (
-                              <Link
-                                href={`/dashboard/recruiter/talent-pool?filter=skill_match&skills=${encodeURIComponent(job.skills_required?.join(",") || "")}&location=${encodeURIComponent(job.location || "")}`}
-                                className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 border border-emerald-100 px-2 py-0.5 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-200 transition-colors"
-                                title="Matching Candidates"
-                              >
-                                <Target className="h-3 w-3 text-emerald-500" />
-                                {job.matching_candidates_count} matches
-                              </Link>
-                            )}
                           </div>
 
                           <p className="mt-2 text-xs leading-relaxed text-slate-500 line-clamp-2">
@@ -602,3 +550,4 @@ export default function JobsManagement() {
     </div>
   );
 }
+

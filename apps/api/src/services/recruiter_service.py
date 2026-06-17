@@ -1778,13 +1778,6 @@ Rate ICP alignment on 0-100. Output format: SCORE: [number] | REASON: [one sente
                     return [val]
                 return list(val)
 
-            metadata = job_data.get("metadata", {}) or {}
-            metadata["min_salary"] = job_data.get("min_salary")
-            metadata["max_salary"] = job_data.get("max_salary")
-            metadata["currency"] = job_data.get("currency")
-            metadata["salary_frequency"] = job_data.get("salary_frequency")
-            metadata["assessment_template_id"] = job_data.get("assessment_template_id")
-
             new_job = Job(
                 company_id=profile.company_id,
                 recruiter_id=user_id,
@@ -1798,8 +1791,8 @@ Rate ICP alignment on 0-100. Output format: SCORE: [number] | REASON: [one sente
                 is_ai_generated=job_data.get("is_ai_generated", False),
                 requirements=sanitize_array(job_data.get("requirements")),
                 skills_required=sanitize_array(job_data.get("skills_required")),
-                metadata_=metadata,
-                status=job_data.get("status", "active") or "active"
+                metadata_=job_data.get("metadata", {}),
+                status="active"
             )
             db.add(new_job)
             db.commit()

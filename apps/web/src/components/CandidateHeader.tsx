@@ -136,8 +136,8 @@ export default function CandidateHeader({ profile: initialProfile }: { profile?:
           </div>
           <div className="relative" ref={profileRef}>
             <button onClick={() => setIsProfileOpen(!isProfileOpen)} className="flex items-center gap-2 hover:bg-slate-100/80 rounded-xl px-2 py-2 transition-all">
-              {profile?.profile_photo_url ? <img src={profile.profile_photo_url} alt="" className="h-9 w-9 rounded-full object-cover ring-2 ring-slate-100" />
-              : <div className="h-9 w-9 rounded-full bg-gradient-to-br from-[#FF8A00] to-[#e67a00] flex items-center justify-center ring-2 ring-orange-100"><User className="h-4 w-4 text-white" /></div>}
+              {profile?.profile_photo_url ? <img src={profile.profile_photo_url} alt="" className="h-9 w-9 rounded-xl object-cover ring-2 ring-slate-100" />
+              : <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-[#FF8A00] to-[#e67a00] flex items-center justify-center ring-2 ring-orange-100"><User className="h-4 w-4 text-white" /></div>}
               <ChevronDown className="h-3.5 w-3.5 text-slate-400 hidden sm:block" />
             </button>
             {isProfileOpen && (

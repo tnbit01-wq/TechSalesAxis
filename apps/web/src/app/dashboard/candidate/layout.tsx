@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import LoadingScreen from "@/components/LoadingScreen";
 import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import { useRouter } from "next/navigation";
@@ -45,7 +44,18 @@ export default function CandidateDashboardLayout({
     init();
   }, [router]);
 
-  if (loading) return <LoadingScreen label="Loading Dashboard..." className="min-h-screen flex items-center justify-center bg-[#F8FAFC]" />;
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#ff9800]"></div>
+          <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">
+            Loading Dashboard...
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <SidebarProvider>
@@ -62,3 +72,4 @@ export default function CandidateDashboardLayout({
     </SidebarProvider>
   );
 }
+

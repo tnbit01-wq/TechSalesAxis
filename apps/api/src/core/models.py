@@ -200,10 +200,6 @@ class RecruiterProfile(Base):
     team_role = Column(Text)
     professional_persona = Column(JSONB)
     assessment_status = Column(Text, default='not_started')
-    department = Column(Text)
-    location = Column(Text)
-    credits = Column(Integer, default=0)
-    profile_photo_url = Column(Text)
     created_at = Column(DateTime)
     updated_at = Column(DateTime)
     user = relationship('User', foreign_keys=[user_id], primaryjoin='RecruiterProfile.user_id == User.id', uselist=False)
@@ -424,7 +420,6 @@ class RecruiterSetting(Base):
     profile_visibility = Column(Text, default='public')
     language = Column(Text, default='en')
     timezone = Column(Text, default='UTC')
-    ghost_mode = Column(Boolean, default=False)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 

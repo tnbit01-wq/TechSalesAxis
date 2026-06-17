@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useState, useCallback, useRef } from "react";
-import LoadingScreen from "@/components/LoadingScreen";
 import Link from "next/link";
 import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
@@ -82,7 +81,7 @@ export default function CandidateDashboard() {
     return () => clearInterval(iv);
   }, [loadData]);
 
-  if (loading) return <LoadingScreen label="Loading..." />;
+  if (loading) return <div className="h-[calc(100vh-64px)] flex items-center justify-center bg-[#F8F9FC]"><div className="flex flex-col items-center gap-3"><div className="h-9 w-9 rounded-full border-[2.5px] border-slate-200 border-t-[#FF8A00] animate-spin" /><p className="text-[11px] text-slate-400 font-medium tracking-widest uppercase">Loading…</p></div></div>;
   if (!stats) return <div className="h-[calc(100vh-64px)] flex items-center justify-center bg-[#F8F9FC]"><div className="text-center"><p className="text-sm text-slate-600 mb-4">Could not load dashboard</p><button onClick={() => window.location.reload()} className="px-5 py-2.5 bg-[#FF8A00] text-white rounded-xl text-[13px] font-semibold">Retry</button></div></div>;
 
   const score = stats.profile_score ?? 0;
