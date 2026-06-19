@@ -361,8 +361,7 @@ export default function CandidateApplicationsPage() {
                           const start = new Date(confirmedSlot.start_time);
                           const end = new Date(confirmedSlot.end_time);
                           const allowedStart = new Date(start.getTime() - 15 * 60 * 1000);
-                          const fiveAfterStart = new Date(start.getTime() + 5 * 60 * 1000);
-                          const allowedEnd = fiveAfterStart < end ? fiveAfterStart : end;
+                          const allowedEnd = end;
                           const isActive = now >= allowedStart && now <= allowedEnd;
 
                           return (
@@ -394,9 +393,7 @@ export default function CandidateApplicationsPage() {
                                 ? "Join Interview" 
                                 : now < allowedStart 
                                   ? `Locked: In ${Math.round((allowedStart.getTime() - now.getTime()) / 60000)}m`
-                                  : now > end
-                                    ? "Expired"
-                                    : "Window Closed"}
+                                  : "Expired"}
                             </button>
                           );
                         })()}

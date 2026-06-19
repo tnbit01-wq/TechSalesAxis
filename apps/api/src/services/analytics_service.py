@@ -23,6 +23,23 @@ class AnalyticsService:
         user_agent: Optional[str] = None
     ) -> JobView:
         """Log a job view event."""
+        # Prevent recording duplicate job views
+        if candidate_id:
+            existing = db.query(JobView).filter(
+                JobView.job_id == job_id,
+                JobView.candidate_id == candidate_id
+            ).first()
+            if existing:
+                return existing
+        elif viewer_ip and user_agent:
+            existing = db.query(JobView).filter(
+                JobView.job_id == job_id,
+                JobView.viewer_ip == viewer_ip,
+                JobView.user_agent == user_agent
+            ).first()
+            if existing:
+                return existing
+
         job_view = JobView(
             job_id=job_id,
             candidate_id=candidate_id,
@@ -110,11 +127,17 @@ class AnalyticsService:
                 
                 print(f"[SERVICE] Existing view found: {existing_view is not None}")
                 
+                should_trigger_notification = False
                 if existing_view:
+                    # Check if the last view was on a previous day
+                    last_view_date = existing_view.created_at.date()
+                    current_date = datetime.utcnow().date()
+                    if last_view_date < current_date:
+                        should_trigger_notification = True
+                        
                     # Update the timestamp of existing view (track most recent view time)
-                    print(f"[SERVICE] ✓ View already exists - ID: {existing_view.id}")
+                    print(f"[SERVICE] [OK] View already exists - ID: {existing_view.id}")
                     print(f"[SERVICE]   Previous timestamp: {existing_view.created_at}")
-                    old_timestamp = existing_view.created_at
                     
                     existing_view.created_at = datetime.utcnow()
                     if metadata:
@@ -124,7 +147,13 @@ class AnalyticsService:
                     
                     print(f"[SERVICE]   Updated timestamp: {existing_view.created_at}")
                     print(f"[SERVICE]   Reusing existing entry (no new record created)")
+                    
+                    if should_trigger_notification:
+                        _trigger_profile_view_notification(db, candidate_id, recruiter_id)
+                        
                     return existing_view
+                else:
+                    should_trigger_notification = True
             
             # Create new profile event if this recruiter hasn't viewed this candidate before
             print(f"[SERVICE] Creating NEW entry...")
@@ -146,13 +175,17 @@ class AnalyticsService:
             print(f"[SERVICE] Refreshing object from DB...")
             db.refresh(profile_event)
             
-            print(f"[SERVICE] ✓ NEW entry created - ID: {profile_event.id}")
+            print(f"[SERVICE] [OK] NEW entry created - ID: {profile_event.id}")
             print(f"[SERVICE]   Timestamp: {profile_event.created_at}")
             print(f"[SERVICE] ===== log_profile_analytics END =====\n")
+            
+            if event_type == "profile_view" and should_trigger_notification:
+                _trigger_profile_view_notification(db, candidate_id, recruiter_id)
+                
             return profile_event
             
         except Exception as e:
-            print(f"[SERVICE] ✗ EXCEPTION during save")
+            print(f"[SERVICE] [ERROR] EXCEPTION during save")
             print(f"[SERVICE] Error: {str(e)}")
             print(f"[SERVICE] Error type: {type(e).__name__}")
             db.rollback()
@@ -351,3 +384,35 @@ class AnalyticsService:
         except Exception as e:
             db.rollback()
             raise Exception(f"Batch sync failed: {str(e)}")
+
+
+def _trigger_profile_view_notification(db: Session, candidate_id: UUID, recruiter_id: UUID):
+    try:
+        from src.services.notification_service import NotificationService
+        from src.core.models import RecruiterProfile, Company
+        
+        # Get recruiter full name and company name
+        recruiter = db.query(RecruiterProfile).filter(RecruiterProfile.user_id == recruiter_id).first()
+        recruiter_name = recruiter.full_name if recruiter and recruiter.full_name else "A recruiter"
+        company_name = ""
+        if recruiter and recruiter.company_id:
+            company = db.query(Company).filter(Company.id == recruiter.company_id).first()
+            if company:
+                company_name = company.name
+        
+        if company_name:
+            msg = f"{recruiter_name} from {company_name} viewed your profile."
+        else:
+            msg = f"{recruiter_name} viewed your profile."
+            
+        NotificationService.create_notification(
+            user_id=str(candidate_id),
+            type="PROFILE_VIEW",
+            title="Profile Viewed",
+            message=msg,
+            db=db
+        )
+        print(f"[NOTIFICATION] Sent profile view notification to candidate {candidate_id}")
+    except Exception as n_err:
+        print(f"[NOTIFICATION] Failed to send profile view notification: {n_err}")
+

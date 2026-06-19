@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import { useRouter } from "next/navigation";
-import RecruiterSidebar from "@/components/RecruiterSidebar";
 import RecruiterHeader from "@/components/RecruiterHeader";
 import { SidebarProvider } from "@/context/SidebarContext";
 import RecruiterLayoutClient from "@/components/RecruiterLayoutClient";
@@ -63,11 +62,6 @@ export default function RecruiterDashboardLayout({
   return (
     <SidebarProvider>
       <div className="flex h-screen overflow-hidden bg-[#F8FAFC]">
-        <RecruiterSidebar
-          assessmentStatus={profile?.assessment_status}
-          teamRole={profile?.team_role}
-          profileScore={profile?.companies?.profile_score ?? 0}
-        />
         <RecruiterLayoutClient>
           <RecruiterHeader />
           <main className="w-full flex-1 min-h-0 pt-16 overflow-y-auto overflow-x-hidden">{children}</main>

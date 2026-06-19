@@ -373,6 +373,50 @@ def send_rejection_email(recipient, candidate_name, job_title, custom_message=No
     return send_templated_email(recipient, ZEPTO_REJECTION_TEMPLATE_ID, merge_info, subject, html)
 
 
+def send_round_cleared_email(recipient, candidate_name, job_title, round_name, round_number, next_round_number, feedback=None, company_name="TechSales Axis"):
+    print(f"[ROUND_CLEARED_EMAIL] Called for {recipient} regarding {job_title} at {company_name}")
+    subject = f"Congratulations! You cleared Round {round_number} ({round_name}) for {job_title} at {company_name}"
+    
+    feedback_section = ""
+    if feedback:
+        feedback_section = f"""
+        <div style="background: #ebf8ff; padding: 20px; border-left: 4px solid #3182ce; border-radius: 6px; margin: 20px 0;">
+            <strong style="color: #2b6cb0; display: block; margin-bottom: 5px;">Recruiter Evaluation Notes:</strong>
+            "{feedback}"
+        </div>
+        """
+        
+    html = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; padding: 20px; background-color: #f7fafc; color: #2d3748;">
+        <div style="max-width: 600px; margin: 0 auto; background: white; padding: 40px; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+            <h2 style="color: #38a169; margin-top: 0;">Congratulations, {candidate_name}!</h2>
+            <p>Great news! The hiring team has logged positive feedback for your <strong>{round_name}</strong> (Round {round_number}) for the <strong>{job_title}</strong> position at <strong>{company_name}</strong>.</p>
+            <p>You have successfully <strong>cleared this round</strong> and advanced to the next stage of the hiring process!</p>
+            {feedback_section}
+            <p><strong>Next Step:</strong> You are now qualified for <strong>Round {next_round_number}</strong>. Please log in to your dashboard to review proposed interview slots or coordinate with the hiring team.</p>
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="{FRONTEND_URL}/dashboard/candidate/applications" style="background-color: #38a169; color: white; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Go to Dashboard</a>
+            </div>
+            <p style="color: #718096; font-size: 12px; border-top: 1px solid #edf2f7; padding-top: 20px;">This email was sent on behalf of {company_name}.</p>
+        </div>
+    </body>
+    </html>
+    """
+    
+    merge_info = {
+        "candidate_name": candidate_name,
+        "job_title": job_title,
+        "round_name": round_name,
+        "round_number": round_number,
+        "next_round_number": next_round_number,
+        "feedback": feedback or "",
+        "message": f"Congratulations! You cleared Round {round_number} ({round_name}) and advanced to Round {next_round_number}.",
+        "company_name": company_name
+    }
+    return send_templated_email(recipient, ZEPTO_SHORTLIST_TEMPLATE_ID, merge_info, subject, html)
+
+
 def send_interview_proposed_email(recipient, candidate_name, job_title, round_name, slots_details, company_name="TechSales Axis"):
     print(f"[INTERVIEW_PROPOSED_EMAIL] Called for {recipient} regarding {job_title} at {company_name}")
     subject = f"Interview Scheduling: {round_name} for {job_title} at {company_name}"

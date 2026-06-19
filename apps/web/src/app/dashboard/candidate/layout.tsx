@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import { useRouter } from "next/navigation";
-import CandidateSidebar from "@/components/CandidateSidebar";
 import CandidateHeader from "@/components/CandidateHeader";
 import { SidebarProvider } from "@/context/SidebarContext";
 import CandidateLayoutClient from "@/components/CandidateLayoutClient";
@@ -60,10 +59,6 @@ export default function CandidateDashboardLayout({
   return (
     <SidebarProvider>
       <div className="flex h-screen overflow-hidden bg-[#F8FAFC]">
-        <CandidateSidebar
-          assessmentStatus={profile?.assessment_status}
-          profileScore={profile?.profile_score ?? 0}
-        />
         <CandidateLayoutClient>
           <CandidateHeader />
           <main className="w-full pt-16 flex-1 min-h-0 overflow-y-auto overflow-x-hidden">{children}</main>

@@ -667,6 +667,11 @@ async def delete_job(job_id: str, user: dict = Depends(get_current_user), db: Se
 async def applications_pipeline(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     from src.core.models import JobApplication, Job, CandidateProfile, ResumeData, ProfileScore
     from sqlalchemy import text
+    from src.services.interview_service import interview_service
+    
+    # Run dynamic expiration check
+    interview_service.check_and_update_expired_interviews(db)
+    
     profile = db.query(RecruiterProfile).filter(RecruiterProfile.user_id == user["sub"]).first()
     if not profile or not profile.company_id:
         return []
@@ -698,11 +703,13 @@ async def applications_pipeline(user: dict = Depends(get_current_user), db: Sess
             """), {"iid": i_dict["id"]}).fetchall()
             
             i_dict["interview_slots"] = []
+            i_dict["slots"] = []
             for sr in slots_raw:
                 s_dict = dict(sr._mapping)
                 s_dict["id"] = str(s_dict["id"])
                 s_dict["is_selected"] = bool(s_dict["is_selected"])
                 i_dict["interview_slots"].append(s_dict)
+                i_dict["slots"].append(s_dict)
                 
             interviews.append(i_dict)
 

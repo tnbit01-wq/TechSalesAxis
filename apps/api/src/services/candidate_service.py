@@ -496,6 +496,8 @@ class CandidateService:
         """Fetch all jobs the candidate has applied to."""
         db = SessionLocal()
         try:
+            from src.services.interview_service import interview_service
+            interview_service.check_and_update_expired_interviews(db)
             apps_query = db.query(JobApplication).filter(JobApplication.candidate_id == user_id).order_by(JobApplication.created_at.desc()).all()
             
             results = []
@@ -560,6 +562,8 @@ class CandidateService:
         from uuid import UUID
         db = SessionLocal()
         try:
+            from src.services.interview_service import interview_service
+            interview_service.check_and_update_expired_interviews(db)
             # 1. Fetch Application
             a = db.query(JobApplication).filter(
                 JobApplication.id == application_id,

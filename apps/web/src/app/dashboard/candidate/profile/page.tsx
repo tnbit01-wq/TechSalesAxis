@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
-import CandidateHeader from "@/components/CandidateHeader";
 import Image from "next/image";
 import {
   ArrowLeft,
@@ -233,7 +232,6 @@ export default function CandidateProfilePage() {
 
   return (
     <div className="h-full bg-slate-50/50">
-      <CandidateHeader profile={profile} />
       <main className="h-[calc(100vh-5rem)] min-h-0 overflow-y-auto">
         <div className="mx-auto flex min-h-full max-w-7xl flex-col gap-6 px-4 py-6 lg:px-6">
           {message && (

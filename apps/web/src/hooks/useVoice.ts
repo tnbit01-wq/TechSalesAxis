@@ -119,6 +119,7 @@ export const useVoice = () => {
       recognitionRef.current = rec;
     }
   }, []);
+  
 
   const startListening = useCallback(() => {
     if (recognitionRef.current) {

@@ -109,8 +109,9 @@ export default function CandidateProfileModal({
   const activeInterview = (interviews || []).find(i => 
     i.status === "scheduled" || i.status === "pending_confirmation"
   );
-  const completedInterviews = (interviews || []).filter(i => i.status === "completed")
-    .sort((a, b) => b.round_number - a.round_number);
+  const completedInterviews = (interviews || []).filter(i => 
+    i.status === "completed" || i.status === "not_conducted" || i.status === "no_show"
+  ).sort((a, b) => b.round_number - a.round_number);
   
   const confirmedSlot = activeInterview?.interview_slots?.find((s: any) => s.is_selected) || 
                         activeInterview?.slots?.find((s: any) => s.is_selected);
@@ -789,8 +790,7 @@ export default function CandidateProfileModal({
                             const end = new Date(confirmedSlot?.end_time || "");
                             
                             const allowedStart = new Date(start.getTime() - 15 * 60000);
-                            const fiveAfterStart = new Date(start.getTime() + 5 * 60000);
-                            const allowedEnd = fiveAfterStart < end ? fiveAfterStart : end;
+                            const allowedEnd = end;
                             
                             const isActive = nowInBrowser >= allowedStart && nowInBrowser <= allowedEnd;
 
@@ -831,9 +831,7 @@ export default function CandidateProfileModal({
                                     ? activeInterview.recruiter_joined_at ? "Return to Live Session" : "Join Video Call"
                                     : nowInBrowser < allowedStart 
                                       ? `Locked: Opens ${Math.round((allowedStart.getTime() - nowInBrowser.getTime()) / 60000)}m Early` 
-                                      : nowInBrowser > end
-                                        ? "Meeting Link Expired"
-                                        : "Late: Window Closed (5m Limit)"}
+                                      : "Meeting Link Expired"}
                                 </button>
                               </div>
                             );
@@ -879,9 +877,20 @@ export default function CandidateProfileModal({
                               className="p-4 bg-white border border-slate-200/60 rounded-xl relative overflow-hidden hover:border-orange-100/50 transition-all shadow-xs"
                             >
                               <div className="flex items-center justify-between mb-2">
-                                <span className="text-[8px] font-black text-[#FF8A00] bg-orange-50 px-2 py-0.5 rounded-full uppercase tracking-wider border border-orange-100/30">
-                                  Round {int.round_number}
-                                </span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[8px] font-black text-[#FF8A00] bg-orange-50 px-2 py-0.5 rounded-full uppercase tracking-wider border border-orange-100/30">
+                                    Round {int.round_number}
+                                  </span>
+                                  {int.status !== "completed" && (
+                                    <span className={`text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider border ${
+                                      int.status === "no_show" 
+                                        ? "text-amber-600 bg-amber-50 border-amber-100" 
+                                        : "text-purple-600 bg-purple-50 border-purple-100"
+                                    }`}>
+                                      {int.status === "no_show" ? "No Show" : "Not Conducted"}
+                                    </span>
+                                  )}
+                                </div>
                                 <span className="text-[8px] font-bold text-slate-400 uppercase">
                                   {format(new Date(int.updated_at), "MMM dd, yyyy")}
                                 </span>

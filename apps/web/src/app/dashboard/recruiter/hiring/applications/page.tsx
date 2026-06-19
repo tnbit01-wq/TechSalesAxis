@@ -726,27 +726,42 @@ export default function ApplicationsPipelinePage() {
                               </button>
                             )}
 
-                            {app.status === "interview_scheduled" && hasScheduledInterview && activeInterview && (
-                              <>
-                                {activeInterview.meeting_link && (
-                                  <button
-                                    onClick={async () => {
-                                      try {
-                                        const token = awsAuth.getToken();
-                                        if (token) {
-                                          apiClient.post(`/interviews/${activeInterview.id}/join-event`, { role: "recruiter" }, token);
+                            {app.status === "interview_scheduled" && hasScheduledInterview && activeInterview && (() => {
+                              const confirmedSlot = activeInterview.interview_slots?.find((s: any) => s.is_selected) || activeInterview.slots?.find((s: any) => s.is_selected);
+                              const now = new Date();
+                              const start = confirmedSlot ? new Date(confirmedSlot.start_time) : new Date();
+                              const end = confirmedSlot ? new Date(confirmedSlot.end_time) : new Date();
+                              const allowedStart = new Date(start.getTime() - 15 * 60 * 1000);
+                              const allowedEnd = end;
+                              const isActive = now >= allowedStart && now <= allowedEnd;
+                              const isLocked = now < allowedStart;
+
+                              return (
+                                <>
+                                  {activeInterview.meeting_link && (
+                                    <button
+                                      disabled={!isActive}
+                                      onClick={async () => {
+                                        try {
+                                          const token = awsAuth.getToken();
+                                          if (token) {
+                                            apiClient.post(`/interviews/${activeInterview.id}/join-event`, { role: "recruiter" }, token);
+                                          }
+                                        } catch (err) {
+                                          console.error("Failed to signal join:", err);
                                         }
-                                      } catch (err) {
-                                        console.error("Failed to signal join:", err);
-                                      }
-                                      window.open(activeInterview.meeting_link, "_blank");
-                                    }}
-                                    className="inline-flex h-8 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-1 text-[10px] font-black uppercase tracking-wider text-white transition hover:bg-emerald-700 active:scale-95 shadow-md shadow-emerald-600/10"
-                                  >
-                                    <Video className="h-3.5 w-3.5" />
-                                    Join Call
-                                  </button>
-                                )}
+                                        window.open(activeInterview.meeting_link, "_blank");
+                                      }}
+                                      className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-xl px-3.5 py-1 text-[10px] font-black uppercase tracking-wider transition active:scale-95 ${
+                                        isActive
+                                          ? "bg-emerald-600 text-white hover:bg-emerald-700 shadow-md shadow-emerald-600/10 cursor-pointer"
+                                          : "bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200"
+                                      }`}
+                                    >
+                                      <Video className="h-3.5 w-3.5" />
+                                      {isActive ? "Join Call" : isLocked ? "Locked" : "Expired"}
+                                    </button>
+                                  )}
 
                                 <button
                                   onClick={() => {
@@ -789,7 +804,8 @@ export default function ApplicationsPipelinePage() {
                                   Log Feedback
                                 </button>
                               </>
-                            )}
+                            );
+                          })()}
 
                             <button
                               onClick={() => {

@@ -106,6 +106,7 @@ ZEPTO_OFFER_TEMPLATE_ID = os.getenv("ZEPTO_OFFER_TEMPLATE_ID", "").strip()
 # Frontend URLs for email links
 FRONTEND_URL = os.getenv("FRONTEND_URL", "https://www.techsalesaxis.com").strip()
 RESET_PASSWORD_URL = os.getenv("RESET_PASSWORD_URL", f"{FRONTEND_URL}/reset-password").strip()
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000").strip()
 
 if not DATABASE_URL:
     print("WARNING: DATABASE_URL not set. AWS RDS features will be unavailable.")

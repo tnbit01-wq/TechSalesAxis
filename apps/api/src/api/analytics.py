@@ -173,6 +173,106 @@ def get_candidate_profile_analytics(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/candidate/profile-views")
+def get_candidate_profile_views(
+    user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get detailed profile views for the logged-in candidate."""
+    candidate_id = user.get("sub")
+    if not candidate_id:
+        raise HTTPException(status_code=400, detail="Invalid user token")
+        
+    try:
+        from src.core.models import ProfileAnalytics, RecruiterProfile, Company
+        views = db.query(ProfileAnalytics).filter(
+            ProfileAnalytics.candidate_id == candidate_id,
+            ProfileAnalytics.event_type == 'profile_view'
+        ).order_by(ProfileAnalytics.created_at.desc()).all()
+
+        profile_views = []
+        for view in views:
+            recruiter = db.query(RecruiterProfile).filter(RecruiterProfile.user_id == view.recruiter_id).first()
+            recruiter_name = recruiter.full_name if recruiter and recruiter.full_name else "A Recruiter"
+            company_name = "TechSalesAxis Client"
+            if recruiter and recruiter.company_id:
+                company = db.query(Company).filter(Company.id == recruiter.company_id).first()
+                if company:
+                    company_name = company.name
+                    
+            profile_views.append({
+                "id": str(view.id),
+                "recruiter_id": str(view.recruiter_id),
+                "recruiter_name": recruiter_name,
+                "company_name": company_name,
+                "viewed_at": view.created_at.isoformat() if view.created_at else None
+            })
+            
+        return {"profile_views": profile_views}
+    except Exception as e:
+        print(f"Error getting candidate profile views: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/profile/{candidate_id}/stats")
+def get_candidate_profile_stats(
+    candidate_id: UUID,
+    user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get profile view stats for a specific candidate."""
+    # Verify authorization
+    if str(candidate_id) != user.get("sub") and user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Unauthorized")
+        
+    try:
+        from src.core.models import ProfileAnalytics, CandidateProfile
+        from sqlalchemy import func
+        
+        # Get unique recruiters who viewed profile
+        unique_recruiters = db.query(func.count(func.distinct(ProfileAnalytics.recruiter_id))).filter(
+            ProfileAnalytics.candidate_id == candidate_id,
+            ProfileAnalytics.event_type == 'profile_view'
+        ).scalar()
+        
+        # Total views
+        total_views = db.query(func.count(ProfileAnalytics.id)).filter(
+            ProfileAnalytics.candidate_id == candidate_id,
+            ProfileAnalytics.event_type == 'profile_view'
+        ).scalar()
+        
+        # Get view trends (last 7 days breakdown)
+        views_by_day_raw = db.query(
+            func.date(ProfileAnalytics.created_at).label('date'),
+            func.count(ProfileAnalytics.id).label('count')
+        ).filter(
+            ProfileAnalytics.candidate_id == candidate_id,
+            ProfileAnalytics.event_type == 'profile_view'
+        ).group_by(
+            func.date(ProfileAnalytics.created_at)
+        ).order_by(
+            func.date(ProfileAnalytics.created_at).desc()
+        ).limit(7).all()
+        
+        # Check if shadow profile
+        candidate = db.query(CandidateProfile).filter(CandidateProfile.user_id == candidate_id).first()
+        is_shadow = candidate.is_shadow_profile if candidate else False
+        
+        return {
+            "total_views": total_views or 0,
+            "unique_recruiters": unique_recruiters or 0,
+            "views_by_day": [
+                {"date": str(row[0]), "count": row[1]} 
+                for row in views_by_day_raw
+            ],
+            "is_shadow_profile": is_shadow
+        }
+    except Exception as e:
+        print(f"Error getting candidate profile stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
 @router.get("/recruiter/activities")
 def get_recruiter_analytics(
     days: int = 30,

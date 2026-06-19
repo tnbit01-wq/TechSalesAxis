@@ -78,10 +78,15 @@ class InterviewService:
             if candidate_user:
                 c_name = candidate_profile.full_name if (candidate_profile and candidate_profile.full_name) else (candidate_user.full_name or "Candidate")
                 
-                # Format slots details
+                # Format slots details in IST
+                ist = pytz.timezone('Asia/Kolkata')
                 slots_list = []
                 for s in request.slots:
-                    start_str = s.start_time.strftime('%d %b %Y, %I:%M %p')
+                    start_time = s.start_time
+                    if start_time.tzinfo is None:
+                        start_time = pytz.utc.localize(start_time)
+                    start_ist = start_time.astimezone(ist)
+                    start_str = start_ist.strftime('%d %b %Y, %I:%M %p') + " IST"
                     slots_list.append(start_str)
                 slots_details = ", ".join(slots_list)
                 
@@ -136,7 +141,7 @@ class InterviewService:
         }
 
     @staticmethod
-    async def confirm_slot(user_id: str, slot_id: str, db: Session):
+    async def confirm_slot(user_id: str, slot_id: str, db: Session, base_url: str = None):
         # 1. Get slot
         slot = db.query(InterviewSlot).filter(InterviewSlot.id == slot_id).first()
         if not slot:
@@ -148,25 +153,19 @@ class InterviewService:
         
         # Verify ownership (candidate must be the one confirming)
         if str(interview.candidate_id) != str(user_id):
-            raise ValueError("Unauthorized: This interview is not assigned to you")
-        
-        # 2. Update Slot selection
+            raise ValueError("Unauthorized to confirm this slot")
+            
+        # 2. Mark slot as selected and update status
         slot.is_selected = True
-        slot.status = "selected" 
-        print(f"DEBUG CONFIRM: Slot {slot_id} marked as is_selected=True")
+        slot.status = "confirmed"
         
-        # Mark other slots as NOT selected (available/rejected)
+        # De-select all other slots for this interview
         db.query(InterviewSlot).filter(
-            InterviewSlot.interview_id == slot.interview_id, 
+            InterviewSlot.interview_id == interview.id,
             InterviewSlot.id != slot_id
-        ).update({"is_selected": False, "status": "not_selected"})
-
-        # Update ALL slots to be selected=False first for this interview to be absolutely sure
-        db.execute(text("UPDATE interview_slots SET is_selected = False, status = 'not_selected' WHERE interview_id = :iid"), {"iid": slot.interview_id})
-        # Then set the correct one
-        db.execute(text("UPDATE interview_slots SET is_selected = True, status = 'selected' WHERE id = :sid"), {"sid": slot_id})
-
-        # 3. Update Interview Status
+        ).update({"is_selected": False, "status": "rejected"})
+        
+        # 3. Update Interview Status to SCHEDULED
         interview.status = InterviewStatus.SCHEDULED
         print(f"DEBUG CONFIRM: Interview {interview.id} status set to {interview.status}")
         
@@ -207,9 +206,12 @@ class InterviewService:
 
             print(f"DEBUG: Notifying recruiter {interview.recruiter_id} about confirmation from {candidate_name}")
 
-            # Convert UTC slot time to IST (Asia/Kolkata)
+            # Convert UTC slot time to IST (Asia/Kolkata) safely
             ist = pytz.timezone('Asia/Kolkata')
-            start_ist = slot.start_time.replace(tzinfo=pytz.UTC).astimezone(ist)
+            start_time = slot.start_time
+            if start_time.tzinfo is None:
+                start_time = pytz.utc.localize(start_time)
+            start_ist = start_time.astimezone(ist)
             time_str = f"{start_ist.strftime('%d/%m/%Y, %I:%M %p')} IST"
             
             notif = NotificationService.create_notification(
@@ -229,8 +231,12 @@ class InterviewService:
             
             # Send email to Recruiter
             from src.core.models import Company
+            from src.core.config import BACKEND_URL, FRONTEND_URL
             company = db.query(Company).filter(Company.id == job.company_id).first() if job else None
             company_name = company.name if (company and company.name) else "TechSales Axis"
+
+            recruiter_link = f"{FRONTEND_URL}/interviews/{interview.id}/join?role=recruiter"
+            candidate_link = f"{FRONTEND_URL}/interviews/{interview.id}/join?role=candidate"
 
             if recruiter_user:
                 send_interview_confirmed_email(
@@ -240,10 +246,39 @@ class InterviewService:
                     job_title=job_title,
                     round_name=interview.round_name,
                     time_str=time_str,
-                    meeting_link=interview.meeting_link,
+                    meeting_link=recruiter_link,
                     is_recruiter=True,
                     company_name=company_name
                 )
+
+            # Send emails to additional interviewers (team members / external)
+            if interview.interviewer_names:
+                import re
+                for interviewer in interview.interviewer_names:
+                    match = re.match(r"^(.*?)\s*<(.*?)>$", interviewer)
+                    if match:
+                        int_name = match.group(1).strip()
+                        int_email = match.group(2).strip()
+                    else:
+                        int_name = interviewer.strip()
+                        int_email = interviewer.strip()
+                        
+                    if "@" in int_email:
+                        try:
+                            send_interview_confirmed_email(
+                                recipient=int_email,
+                                recipient_name=int_name,
+                                other_name=candidate_name,
+                                job_title=job_title,
+                                round_name=interview.round_name,
+                                time_str=time_str,
+                                meeting_link=recruiter_link,
+                                is_recruiter=True,
+                                company_name=company_name
+                            )
+                            print(f"[EMAIL_SERVICE] Sent join call email to additional interviewer: {int_name} ({int_email})")
+                        except Exception as e:
+                            print(f"Error sending email to additional interviewer {interviewer}: {e}")
                 
             # Send email to Candidate
             if candidate:
@@ -254,7 +289,7 @@ class InterviewService:
                     job_title=job_title,
                     round_name=interview.round_name,
                     time_str=time_str,
-                    meeting_link=interview.meeting_link,
+                    meeting_link=candidate_link,
                     is_recruiter=False,
                     company_name=company_name
                 )
@@ -272,6 +307,7 @@ class InterviewService:
 
     @staticmethod
     async def get_user_interviews(user_id: str, role: str, db: Session):
+        InterviewService.check_and_update_expired_interviews(db)
         if role == "recruiter":
             interviews = db.query(Interview).filter(Interview.recruiter_id == user_id).all()
         else:
@@ -412,8 +448,9 @@ class InterviewService:
         
         # Send Email Notification to Candidate based on the decision
         try:
-            from src.services.email_service import send_offer_email, send_rejection_email, send_shortlist_email, send_templated_email
+            from src.services.email_service import send_offer_email, send_rejection_email, send_shortlist_email, send_templated_email, send_round_cleared_email
             from src.core.models import User, CandidateProfile, Job, Company
+            from src.core.config import FRONTEND_URL
             candidate_user = db.query(User).filter(User.id == interview.candidate_id).first()
             candidate_profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == interview.candidate_id).first()
             job = db.query(Job).filter(Job.id == interview.job_id).first()
@@ -430,7 +467,27 @@ class InterviewService:
                 elif next_status in ["rejected", "no_show"]:
                     send_rejection_email(c_email, c_name, j_title, feedback, company_name=company_name)
                 elif next_status == "shortlisted":
-                    send_shortlist_email(c_email, c_name, j_title, f"You have cleared the {interview.round_name}! Feedback: {feedback}", company_name=company_name)
+                    # Calculate completed interview count
+                    completed_count = db.query(Interview).filter(
+                        Interview.application_id == interview.application_id,
+                        Interview.status == "completed"
+                    ).count()
+                    
+                    round_number = interview.round_number or 1
+                    next_round_number = completed_count + 1
+                    if next_round_number <= round_number:
+                        next_round_number = round_number + 1
+                        
+                    send_round_cleared_email(
+                        recipient=c_email,
+                        candidate_name=c_name,
+                        job_title=j_title,
+                        round_name=interview.round_name or "Interview",
+                        round_number=round_number,
+                        next_round_number=next_round_number,
+                        feedback=feedback,
+                        company_name=company_name
+                    )
                 elif next_status == "not_conducted":
                     cancel_subj = f"Interview Update: {interview.round_name} rescheduled at {company_name}"
                     cancel_html = f"""
@@ -457,9 +514,14 @@ class InterviewService:
 
     @staticmethod
     async def register_join_event(user_id: str, interview_id: str, role: str, db: Session):
+        InterviewService.check_and_update_expired_interviews(db)
+        
         interview = db.query(Interview).filter(Interview.id == interview_id).first()
         if not interview:
             raise ValueError("Interview not found")
+            
+        if interview.status in ["completed", "cancelled", "not_conducted", "no_show"]:
+            raise ValueError(f"This interview is no longer active (Status: {interview.status.replace('_', ' ').title()}).")
         
         # --- Timezone Integrity Check ---
         ist = pytz.timezone('Asia/Kolkata')
@@ -498,10 +560,8 @@ class InterviewService:
             # The constraint is on the "Join" action itself.
             
             allowed_start_utc = slot_start_utc - timedelta(minutes=15)
-            # Join remains open until 5m after start OR until the official end time
-            # Whichever is earlier? No, user said "cannot join after end time"
-            # So: min(start + 5m, end_time)
-            allowed_end_utc = min(slot_start_utc + timedelta(minutes=5), slot_end_utc)
+            # Join remains open until the official end time
+            allowed_end_utc = slot_end_utc
 
             # Log for debugging
             print(f"DEBUG JOIN: User {user_id} ({role}) joining at {now_utc}. Window: {allowed_start_utc} to {allowed_end_utc}")
@@ -510,10 +570,7 @@ class InterviewService:
                 raise ValueError(f"Wait Protocol Active: You can only join 15 minutes before the start time.")
             
             if now_utc > allowed_end_utc:
-                if now_utc > slot_end_utc:
-                    raise ValueError("Meeting Expired: The scheduled end time has passed. Joining is no longer permitted.")
-                else:
-                    raise ValueError("Late Protocol Active: The join window closed 5 minutes after the scheduled start.")
+                raise ValueError("Meeting Expired: The scheduled end time has passed. Joining is no longer permitted.")
 
         # Update Join Timestamps
         if role == "candidate":
@@ -544,5 +601,41 @@ class InterviewService:
         
         db.commit()
         return {"status": "success", "message": f"{target_label} notified of your arrival."}
+
+    @staticmethod
+    def check_and_update_expired_interviews(db: Session):
+        from src.core.models import Interview, InterviewSlot, JobApplication
+        from datetime import datetime
+        
+        # Only process interviews that are currently "scheduled"
+        scheduled_interviews = db.query(Interview).filter(Interview.status == "scheduled").all()
+        now_utc = datetime.utcnow()
+        
+        for interview in scheduled_interviews:
+            slot = db.query(InterviewSlot).filter(
+                InterviewSlot.interview_id == interview.id,
+                InterviewSlot.is_selected == True
+            ).first()
+            
+            if slot and now_utc > slot.end_time.replace(tzinfo=None):
+                # The scheduled slot has expired!
+                # 1. Recruiter not attended
+                if not interview.recruiter_joined_at:
+                    interview.status = "not_conducted"
+                    app = db.query(JobApplication).filter(JobApplication.id == interview.application_id).first()
+                    if app:
+                        app.status = "shortlisted"  # Return to shortlisted to reschedule
+                        app.feedback = "System Auto-Log: Recruiter did not attend (Not Conducted)."
+                # 2. Recruiter attended, candidate not attended
+                elif not interview.candidate_joined_at:
+                    interview.status = "no_show"
+                    app = db.query(JobApplication).filter(JobApplication.id == interview.application_id).first()
+                    if app:
+                        app.status = "rejected"  # Rejection
+                        app.feedback = "System Auto-Log: Candidate did not attend (No Show)."
+                # 3. Both attended, but no feedback logged yet.
+                # Keep it scheduled so recruiter can submit evaluation.
+                
+                db.commit()
 
 interview_service = InterviewService()

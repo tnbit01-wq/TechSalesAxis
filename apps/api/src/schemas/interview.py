@@ -8,6 +8,8 @@ class InterviewStatus(str, Enum):
     SCHEDULED = "scheduled"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
+    NOT_CONDUCTED = "not_conducted"
+    NO_SHOW = "no_show"
 
 class InterviewFormat(str, Enum):
     VIRTUAL = "virtual"

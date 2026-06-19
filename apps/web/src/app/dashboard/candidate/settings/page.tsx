@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
-import CandidateHeader from "@/components/CandidateHeader";
 import { 
   Save, 
   User, 
@@ -218,7 +217,6 @@ export default function CandidateSettingsPage() {
 
   return (
     <div className="h-full bg-slate-50/50">
-      <CandidateHeader profile={profile} />
       <div className="mx-auto flex h-[calc(100vh-5rem)] max-w-7xl flex-col px-4 py-6">
         {message && (
           <div className={`mb-6 p-4 rounded-2xl border shadow-sm transition-all animate-in fade-in slide-in-from-top-4 flex items-center gap-3 ${

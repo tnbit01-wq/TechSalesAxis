@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   X,
   Calendar,
@@ -39,12 +39,39 @@ export default function InterviewScheduler({
   initialRoundNumber,
 }: InterviewSchedulerProps) {
   const [loading, setLoading] = useState(false);
-  const [roundName, setRoundName] = useState("Technical Interview");
+  const [roundName, setRoundName] = useState(
+    initialRoundNumber ? `Interview Round ${initialRoundNumber}` : "Interview"
+  );
   const [roundNumber, setRoundNumber] = useState(initialRoundNumber || 1);
   const [format, setFormat] = useState<"virtual" | "onsite">("virtual");
   const [location, setLocation] = useState("");
-  const [interviewer, setInterviewer] = useState("");
   const [interviewers, setInterviewers] = useState<string[]>([]);
+  const [teamMembers, setTeamMembers] = useState<{ user_id: string; full_name: string; email: string }[]>([]);
+  const [extName, setExtName] = useState("");
+  const [extEmail, setExtEmail] = useState("");
+
+  useEffect(() => {
+    async function fetchTeam() {
+      try {
+        const token = awsAuth.getToken();
+        if (token) {
+          const teamData = await apiClient.get("/recruiter/team", token);
+          if (Array.isArray(teamData)) {
+            setTeamMembers(
+              teamData.map((m: any) => ({
+                user_id: m.user_id,
+                full_name: m.full_name || m.email?.split("@")[0] || "Team Member",
+                email: m.email || "",
+              }))
+            );
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load recruiter team members:", err);
+      }
+    }
+    fetchTeam();
+  }, []);
   const [selectedAppId, setSelectedAppId] = useState(
     applicationId || applications[0]?.id || "",
   );
@@ -68,10 +95,20 @@ export default function InterviewScheduler({
     setSlots(newSlots);
   };
 
-  const addInterviewer = () => {
-    if (interviewer.trim()) {
-      setInterviewers([...interviewers, interviewer.trim()]);
-      setInterviewer("");
+  const addExternalInterviewer = () => {
+    if (extName.trim() && extEmail.trim()) {
+      if (!extEmail.includes("@")) {
+        alert("Please enter a valid email address");
+        return;
+      }
+      const newItem = `${extName.trim()} <${extEmail.trim()}>`;
+      if (!interviewers.includes(newItem)) {
+        setInterviewers([...interviewers, newItem]);
+      }
+      setExtName("");
+      setExtEmail("");
+    } else {
+      alert("Please enter both Name and Email for the external interviewer.");
     }
   };
 
@@ -294,41 +331,84 @@ export default function InterviewScheduler({
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] block">
               Interviewer(s)
             </label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={interviewer}
-                onChange={(e) => setInterviewer(e.target.value)}
-                placeholder="Add interviewer name or email..."
-                onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addInterviewer())}
-                className="flex-1 p-4 bg-slate-50 border border-slate-200/60 rounded-2xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-[#FF8A00]/20 focus:border-[#FF8A00] focus:outline-none transition-all placeholder:text-slate-400"
-              />
-              <button
-                type="button"
-                onClick={addInterviewer}
-                className="px-5 bg-slate-900 text-white rounded-2xl font-bold text-xs hover:bg-slate-800 transition-all active:scale-95 flex items-center gap-1.5 shrink-0"
-              >
-                <Plus className="w-4 h-4" /> Add
-              </button>
+            {teamMembers.length > 0 && (
+              <div className="space-y-1.5">
+                <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block ml-1">
+                  Select from organization team
+                </label>
+                <select
+                  onChange={(e) => {
+                    const selectedValue = e.target.value;
+                    if (selectedValue && !interviewers.includes(selectedValue)) {
+                      setInterviewers([...interviewers, selectedValue]);
+                    }
+                    e.target.value = "";
+                  }}
+                  className="w-full p-4 bg-slate-50 border border-slate-200/60 rounded-2xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-[#FF8A00]/20 focus:border-[#FF8A00] focus:outline-none transition-all cursor-pointer"
+                  defaultValue=""
+                >
+                  <option value="" disabled>
+                    -- Select a team member --
+                  </option>
+                  {teamMembers.map((member) => (
+                    <option key={member.user_id} value={`${member.full_name} <${member.email}>`}>
+                      {member.full_name} ({member.email})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div className="space-y-1.5 pt-2">
+              <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block ml-1">
+                Or add external interviewer (not in organization)
+              </label>
+              <div className="flex flex-col md:flex-row gap-2">
+                <input
+                  type="text"
+                  value={extName}
+                  onChange={(e) => setExtName(e.target.value)}
+                  placeholder="Interviewer Full Name"
+                  className="flex-1 p-4 bg-slate-50 border border-slate-200/60 rounded-2xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-[#FF8A00]/20 focus:border-[#FF8A00] focus:outline-none transition-all placeholder:text-slate-400"
+                />
+                <input
+                  type="email"
+                  value={extEmail}
+                  onChange={(e) => setExtEmail(e.target.value)}
+                  placeholder="Interviewer Email"
+                  className="flex-1 p-4 bg-slate-50 border border-slate-200/60 rounded-2xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-[#FF8A00]/20 focus:border-[#FF8A00] focus:outline-none transition-all placeholder:text-slate-400"
+                />
+                <button
+                  type="button"
+                  onClick={addExternalInterviewer}
+                  className="px-5 py-4 bg-slate-900 text-white rounded-2xl font-bold text-xs hover:bg-slate-800 transition-all active:scale-95 flex items-center justify-center gap-1.5 shrink-0"
+                >
+                  <Plus className="w-4 h-4" /> Add External
+                </button>
+              </div>
             </div>
 
             {interviewers.length > 0 && (
               <div className="flex flex-wrap gap-2 pt-1">
-                {interviewers.map((name) => (
-                  <div
-                    key={name}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-50/50 border border-orange-100 rounded-full text-[9px] font-black text-[#FF8A00] uppercase tracking-wider"
-                  >
-                    <span>{name}</span>
-                    <button
-                      type="button"
-                      onClick={() => removeInterviewer(name)}
-                      className="hover:text-red-500 hover:bg-white p-0.5 rounded-full transition-all"
+                {interviewers.map((item) => {
+                  const match = item.match(/^(.*?)\s*<(.*?)>$/);
+                  const displayName = match ? `${match[1]} (${match[2]})` : item;
+                  return (
+                    <div
+                      key={item}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-50/50 border border-orange-100 rounded-full text-[9px] font-black text-[#FF8A00] uppercase tracking-wider"
                     >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                ))}
+                      <span>{displayName}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeInterviewer(item)}
+                        className="hover:text-red-500 hover:bg-white p-0.5 rounded-full transition-all"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
