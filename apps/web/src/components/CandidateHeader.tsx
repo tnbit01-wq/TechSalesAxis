@@ -189,9 +189,9 @@ export default function CandidateHeader({ profile: initialProfile }: { profile?:
           <div className="relative" ref={profileRef}>
             <button onClick={() => setIsProfileOpen(!isProfileOpen)} className="flex items-center hover:bg-slate-100/80 rounded-xl p-1 transition-all cursor-pointer">
               {profile?.profile_photo_url ? (
-                <img src={profile.profile_photo_url} alt="" className="h-8 w-8 rounded-lg object-cover ring-2 ring-slate-100" />
+                <img src={profile.profile_photo_url} alt="" className="h-8 w-8 rounded-full object-cover ring-2 ring-slate-100" />
               ) : (
-                <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-[#FF8A00] to-[#e67a00] flex items-center justify-center ring-2 ring-orange-100 text-white font-bold text-xs">
+                <div className="h-8 w-8 rounded-full bg-gradient-to-br from-[#FF8A00] to-[#e67a00] flex items-center justify-center ring-2 ring-orange-100 text-white font-bold text-xs">
                   {profile?.full_name?.charAt(0) || "C"}
                 </div>
               )}

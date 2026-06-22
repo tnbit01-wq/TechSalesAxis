@@ -347,7 +347,7 @@ export default function ChatCenter({ userId, role }: ChatCenterProps) {
                 <button key={thread.id} onClick={() => setActiveThreadId(thread.id)}
                   className={`w-full px-4 py-3.5 flex items-center gap-3 transition-all relative ${isActive ? "bg-[#FFF6ED]" : "hover:bg-slate-50/80"}`}>
                   {isActive && <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#FF8A00] rounded-r-full" />}
-                  <div className="h-10 w-10 rounded-xl overflow-hidden shrink-0 ring-1 ring-slate-100 relative">
+                  <div className="h-10 w-10 rounded-full overflow-hidden shrink-0 ring-1 ring-slate-100 relative">
                     {photo ? (
                       <img src={photo} alt="" className="h-full w-full object-cover" />
                     ) : (
