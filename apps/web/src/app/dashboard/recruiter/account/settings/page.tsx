@@ -1,44 +1,61 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import { 
   Save, 
-  User, 
   Shield, 
   Bell, 
   Mail,
   Globe, 
   Eye, 
   EyeOff,
-  Upload,
   Lock,
   Smartphone,
-  Building2,
   CheckCircle2,
-  AlertCircle,
-  ChevronRight
+  ShieldCheck,
+  ShieldAlert,
+  LogOut
 } from "lucide-react";
-import Image from "next/image";
-
-interface ProfileData {
-  full_name: string;
-  phone_number: string;
-  bio: string;
-  linkedin_url: string;
-  location: string;
-  identity_verified: boolean;
-}
+import ProfileCompletionCircle from "@/components/ProfileCompletionCircle";
 
 interface CompanyData {
-  id: string;
-  name: string;
-  website: string;
-  logo_url?: string;
-  brand_colors?: {
-    primary: string;
-    secondary: string;
+  id?: string;
+  name?: string;
+  website?: string;
+  location?: string;
+  description?: string;
+  domain?: string;
+  industry_category?: string;
+  sales_model?: string;
+  avg_deal_size_range?: string;
+  hiring_focus_areas?: string[];
+  logo_url?: string | null;
+  size_band?: string | null;
+  registration_number?: string | null;
+  target_market?: string | null;
+}
+
+interface RecruiterProfile {
+  full_name?: string;
+  job_title?: string;
+  linkedin_url?: string;
+  bio?: string;
+  phone_number?: string;
+  company_id?: string;
+  companies?: CompanyData;
+  identity_verified?: boolean;
+  assessment_status?: string;
+  completion_score?: number;
+  team_role?: string;
+  professional_persona?: {
+    profile_photo_url?: string;
+    focus_areas?: string[];
+    years_experience?: number;
+    preferred_hiring_style?: string;
+    languages?: string[];
   };
 }
 
@@ -46,56 +63,51 @@ interface SettingsData {
   email_notifications: boolean;
   web_notifications: boolean;
   mobile_notifications: boolean;
-  ghost_mode: boolean;
+  profile_visibility: string;
   language: string;
   timezone: string;
 }
 
 export default function RecruiterSettingsPage() {
-  const logoInputRef = useRef<HTMLInputElement>(null);
-  const [profile, setProfile] = useState<ProfileData | null>(null);
-  const [company, setCompany] = useState<CompanyData | null>(null);
+  const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [profile, setProfile] = useState<RecruiterProfile | null>(null);
   const [settings, setSettings] = useState<SettingsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showOldPassword, setShowOldPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
-  const [activeTab, setActiveTab] = useState<"profile" | "company" | "security" | "notifications">("profile");
+  const [activeTab, setActiveTab] = useState<"security" | "notifications">("security");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get("tab");
+    if (tab && ["security", "notifications"].includes(tab)) {
+      setActiveTab(tab as any);
+    }
+  }, []);
 
   useEffect(() => {
     async function fetchData() {
       try {
         const token = awsAuth.getToken();
-        if (!token) return;
+        if (!token) {
+          router.replace("/login");
+          return;
+        }
 
         const [profileData, settingsData] = await Promise.all([
           apiClient.get("/recruiter/profile", token),
           apiClient.get("/recruiter/settings", token)
         ]);
 
-        setProfile({
-          full_name: profileData.full_name || "",
-          phone_number: profileData.phone_number || "",
-          bio: profileData.bio || "",
-          linkedin_url: profileData.linkedin_url || "",
-          location: profileData.location || "",
-          identity_verified: profileData.identity_verified || false
-        });
-
-        if (profileData.companies) {
-          setCompany({
-            id: profileData.companies.id,
-            name: profileData.companies.name,
-            website: profileData.companies.website || "",
-            logo_url: profileData.companies.logo_url,
-            brand_colors: profileData.companies.brand_colors || { primary: "#4f46e5", secondary: "#6366f1" }
-          });
-        }
-
+        setProfile(profileData);
         setSettings(settingsData);
       } catch (err) {
         console.error("Error fetching sync data:", err);
@@ -104,33 +116,83 @@ export default function RecruiterSettingsPage() {
       }
     }
     fetchData();
-  }, []);
+  }, [router]);
 
-  const syncData = async (endpoint: string, payload: any, successMsg: string) => {
+  const updateProfile = (patch: Partial<RecruiterProfile>) => {
+    setProfile((current) => (current ? { ...current, ...patch } : current));
+  };
+
+  const updatePersona = (patch: Partial<NonNullable<RecruiterProfile["professional_persona"]>>) => {
+    setProfile((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        professional_persona: {
+          ...(current.professional_persona || {}),
+          ...patch,
+        },
+      };
+    });
+  };
+
+  const handleSettingsSave = async (newData: Partial<SettingsData>) => {
+    if (!settings) return;
     setSaving(true);
     setMessage(null);
     try {
       const token = awsAuth.getToken();
       if (token) {
-        await apiClient.patch(endpoint, payload, token);
-        setMessage({ type: "success", text: successMsg });
+        const updated = await apiClient.patch("/recruiter/settings", newData, token);
+        setSettings(updated);
+        setMessage({ type: "success", text: "Settings saved successfully." });
         setTimeout(() => setMessage(null), 3000);
       }
     } catch (err) {
       console.error(err);
-      setMessage({ type: "error", text: "Signal Interrupted. Retry." });
+      setMessage({ type: "error", text: "Failed to save settings." });
     } finally {
       setSaving(false);
     }
   };
 
-  const handleProfileSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!profile) return;
-    await syncData("/recruiter/profile", profile, "Profile Identity Updated");
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingPhoto(true);
+    setMessage(null);
+
+    try {
+      const token = awsAuth.getToken();
+      if (!token) throw new Error("No session found");
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const data = await apiClient.post("/storage/upload/profile-photo", formData, token);
+      const publicUrl = data.url || data.path;
+
+      updatePersona({ profile_photo_url: publicUrl });
+      const patchResult = await apiClient.patch("/recruiter/profile", {
+        professional_persona: {
+          ...(profile?.professional_persona || {}),
+          profile_photo_url: publicUrl,
+        }
+      }, token);
+      if (patchResult && patchResult.completion_score !== undefined) {
+        updateProfile({ completion_score: patchResult.completion_score });
+      }
+      setMessage({ type: "success", text: "Profile photo updated successfully." });
+    } catch (error: any) {
+      console.error("Upload error:", error);
+      setMessage({ type: "error", text: error.message || "Failed to upload photo" });
+    } finally {
+      setUploadingPhoto(false);
+    }
   };
 
-  const handleUpdatePassword = async () => {
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!oldPassword || !newPassword || newPassword.length < 8) {
       setMessage({ type: "error", text: "Password must be at least 8 characters" });
       return;
@@ -140,6 +202,7 @@ export default function RecruiterSettingsPage() {
       return;
     }
     setSaving(true);
+    setMessage(null);
     try {
       const token = awsAuth.getToken();
       if (token) {
@@ -154,7 +217,6 @@ export default function RecruiterSettingsPage() {
         setConfirmPassword("");
       }
     } catch (err: any) {
-      // Clean up the error message for the user
       const messageText = err.message || "";
       let userFriendlyMsg = "Verification failed. Check old password.";
       
@@ -168,34 +230,6 @@ export default function RecruiterSettingsPage() {
     } finally {
       setSaving(false);
     }
-  };
-
-  const handleDeleteAccount = async () => {
-    if (!confirm("Are you absolutely sure? This will permanently erase your recruiter profile, linked company data, and platform access. This cannot be undone.")) return;
-    
-    setSaving(true);
-    try {
-      const token = awsAuth.getToken();
-      if (token) {
-        await apiClient.delete("/auth/delete-account", token);
-        awsAuth.logout();
-        window.location.href = "/";
-      }
-    } catch (err) {
-      setMessage({ type: "error", text: "Failed to delete account" });
-      setSaving(false);
-    }
-  };
-
-  const handleCompanySave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!company) return;
-    await syncData("/recruiter/company", company, "Company Branding Synced");
-  };
-
-  const handleSettingsSave = async (newData: any) => {
-    setSettings(prev => (prev ? { ...prev, ...newData } : null));
-    await syncData("/recruiter/settings", newData, "Protocol Preferences Synced");
   };
 
   const handleIDUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -219,7 +253,6 @@ export default function RecruiterSettingsPage() {
       );
 
       const filePath = uploadRes.path;
-
       setMessage(null);
 
       const res = await apiClient.post(
@@ -229,7 +262,7 @@ export default function RecruiterSettingsPage() {
       );
 
       if (res.id_verified) {
-        setProfile(p => p ? { ...p, identity_verified: true } : null);
+        updateProfile({ identity_verified: true });
         setMessage({ type: "success", text: "Identity Verified. Professional Badge Active." });
       }
     } catch (err: any) {
@@ -240,218 +273,262 @@ export default function RecruiterSettingsPage() {
     }
   };
 
-  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const handleDeleteAccount = async () => {
+    if (!confirm("Are you absolutely sure? This will permanently erase your recruiter profile, linked company data, and platform access. This cannot be undone.")) return;
+    
     setSaving(true);
-    setMessage({ type: "success", text: "Uploading company logo..." });
-
     try {
       const token = awsAuth.getToken();
-      if (!token) throw new Error("Authentication failed");
-
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const uploadRes = await apiClient.post(
-        "/storage/upload/branding",
-        formData,
-        token
-      );
-
-      const logoUrl = uploadRes.url || uploadRes.path;
-
-      setCompany(c => c ? { ...c, logo_url: logoUrl } : null);
-      
-      // Save to backend
-      await syncData("/recruiter/profile", { companies: { logo_url: logoUrl } }, "Company Logo Updated");
-      
-      setMessage({ type: "success", text: "Company Logo Uploaded Successfully." });
-    } catch (err: any) {
-      const errorMsg = err.message || "Failed to upload logo.";
-      setMessage({ type: "error", text: `Upload Failed: ${errorMsg}` });
-    } finally {
+      if (token) {
+        await apiClient.delete("/auth/delete-account", token);
+        awsAuth.logout();
+        window.location.href = "/";
+      }
+    } catch (err) {
+      setMessage({ type: "error", text: "Failed to delete account" });
       setSaving(false);
     }
   };
 
+  const handleCompleteNow = () => {
+    router.push("/dashboard/recruiter/account/profile");
+  };
+
+  const handleLogout = () => {
+    awsAuth.logout();
+    router.replace("/login");
+  };
+
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
-        <div className="min-h-[60vh] flex flex-col items-center justify-center">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
-          <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Loading Settings...</p>
+      <div className="min-h-screen flex items-center justify-center bg-white font-sans">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-10 w-10 animate-spin rounded-full border-b-2 border-[#FF8A00]" />
+          <p className="text-xs font-bold uppercase tracking-[0.3em] text-slate-400">Loading settings...</p>
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="h-full bg-slate-50/50">
-      <div className="mx-auto flex h-[calc(100vh-5rem)] max-w-7xl flex-col px-4 py-6">
-        {message && (
-          <div className={`mb-6 p-4 rounded-2xl border shadow-sm transition-all animate-in fade-in slide-in-from-top-4 flex items-center gap-3 ${
-            message.type === "success"
-              ? "bg-emerald-50 border-emerald-100 text-emerald-800"
-              : "bg-rose-50 border-rose-100 text-rose-800"
-          }`}>
-            {message.type === "success" ? <CheckCircle2 className="h-5 w-5 flex-shrink-0" /> : <AlertCircle className="h-5 w-5 flex-shrink-0" />}
-            <span className="text-sm font-medium">{message.text}</span>
-          </div>
-        )}
+  const isVerified = profile?.identity_verified || false;
 
-        <div className="flex-1 min-h-0 overflow-y-auto pr-1">
-          {/* Main Layout: Sidebar + Content */}
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Sidebar Navigation */}
-          <div className="lg:col-span-1">
-            <div className="bg-white rounded-3xl border border-orange-100/80 shadow-[0_8px_24px_rgba(255,138,0,0.04)] p-4 sticky top-24">
-              <nav className="space-y-2">
-                {[
-                  { id: "profile", label: "Profile", icon: User },
-                  { id: "company", label: "Company", icon: Building2 },
-                  { id: "security", label: "Security", icon: Shield },
-                  { id: "notifications", label: "Notifications", icon: Bell }
-                ].map((tab) => {
-                  const Icon = tab.icon;
-                  const isActive = activeTab === tab.id;
-                  return (
-                    <button
-                      key={tab.id}
-                      onClick={() => setActiveTab(tab.id as any)}
-                      className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl transition-all font-medium text-sm ${
-                        isActive
-                          ? "bg-[#FF8A00] text-white shadow-[0_4px_12px_rgba(255,138,0,0.3)]"
-                          : "text-slate-700 hover:bg-slate-50"
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <Icon className="h-4 w-4" />
-                        {tab.label}
-                      </div>
-                      {isActive && <ChevronRight className="h-4 w-4" />}
-                    </button>
-                  );
-                })}
-              </nav>
+  return (
+    <div className="h-[calc(100vh-4rem)] flex flex-col bg-slate-50/40 overflow-hidden font-sans">
+      <div className="flex-1 max-w-6xl w-full mx-auto p-4 md:p-6 flex flex-col md:flex-row gap-6 min-h-0">
+        
+        {/* Left Side: Sidebar with Profile Completion Widget */}
+        <aside className="w-full md:w-80 shrink-0 flex flex-col gap-6">
+          <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-[0_8px_30px_rgba(0,0,0,0.02)] flex flex-col items-center text-center">
+            
+            <ProfileCompletionCircle
+              percentage={profile?.completion_score || 0}
+              photoUrl={profile?.professional_persona?.profile_photo_url}
+              name={profile?.full_name}
+              size={110}
+              uploading={uploadingPhoto}
+              onUploadClick={() => fileInputRef.current?.click()}
+              onCompleteNowClick={handleCompleteNow}
+            />
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handlePhotoUpload}
+              className="hidden"
+              accept="image/*"
+            />
+
+            <div className="mt-4 flex items-center justify-center gap-1.5 max-w-full">
+              <h2 className="text-sm font-bold text-slate-800 truncate">
+                {profile?.full_name || "Recruiter Settings"}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setActiveTab("security")}
+                className={`transition-all duration-200 hover:scale-110 active:scale-95 shrink-0 ${
+                  isVerified ? "text-emerald-500 hover:text-emerald-650" : "text-rose-500 hover:text-rose-650 animate-pulse"
+                }`}
+                title={isVerified ? "Verified Status Badge" : "Unverified. Click to verify."}
+              >
+                {isVerified ? (
+                  <ShieldCheck className="h-4.5 w-4.5" />
+                ) : (
+                  <ShieldAlert className="h-4.5 w-4.5" />
+                )}
+              </button>
+            </div>
+            <p className="text-xs text-slate-400 font-bold tracking-wider truncate max-w-full uppercase mt-1">
+              {profile?.job_title || "Talent Consultant"}
+            </p>
+
+            <div className="mt-6 w-full border-t border-slate-100 pt-4 space-y-2 text-left">
+              <div className="flex justify-between text-xs font-semibold">
+                <span className="text-slate-400">Team Role:</span>
+                <span className="text-slate-700 truncate max-w-[150px]">{profile?.team_role || "Recruiter"}</span>
+              </div>
+              <div className="flex justify-between text-xs font-semibold">
+                <span className="text-slate-400">Status:</span>
+                <span className="text-slate-700 capitalize">{profile?.assessment_status?.replace("_", " ") || "In progress"}</span>
+              </div>
+            </div>
+
+            {/* Navigation Tabs List (Vertical) */}
+            <nav className="mt-6 w-full flex-1 space-y-1">
+              {[
+                { id: "security", label: "Security & Trust", icon: Shield },
+                { id: "notifications", label: "Notifications & Privacy", icon: Bell },
+              ].map((tab) => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setActiveTab(tab.id as any)}
+                    className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-bold uppercase tracking-wider text-[9px] transition-all cursor-pointer select-none active:scale-95 ${
+                      isActive
+                        ? "bg-gradient-to-br from-[#FF8A00] to-[#FF6B00] text-white shadow-md shadow-orange-500/10"
+                        : "text-slate-600 hover:text-slate-700 hover:bg-slate-50 border border-transparent"
+                    }`}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </nav>
+
+            <div className="mt-6 flex w-full gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => router.push("/dashboard/recruiter")}
+                className="flex-1 rounded-xl border border-slate-200 bg-slate-50 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-700 transition hover:bg-white"
+              >
+                Dashboard
+              </button>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="rounded-xl bg-orange-50 border border-orange-100 hover:bg-[#FF8A00] hover:text-white text-[#FF8A00] p-2.5 transition active:scale-95 flex items-center justify-center"
+                title="Logout"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
             </div>
           </div>
+        </aside>
 
-          {/* Content Area */}
-          <div className="lg:col-span-3">
-            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {/* PROFILE SECTION */}
-            {activeTab === "profile" && (
-              <div className="bg-white rounded-3xl border border-orange-100/80 shadow-[0_8px_24px_rgba(255,138,0,0.06)] p-8 space-y-8">
-                <div>
-                  <h2 className="text-2xl font-bold text-slate-900 mb-2">Your Profile</h2>
-                  <p className="text-slate-500 text-sm">Update your personal information visible to candidates.</p>
+        {/* Right Side: Tabbed Settings Card */}
+        <div className="flex-1 bg-white rounded-3xl border border-slate-100 shadow-[0_8px_30px_rgba(0,0,0,0.02)] flex flex-col min-h-0">
+          
+          <div className="p-6 md:p-8 flex-1 flex flex-col min-h-0">
+
+            {/* Form Editor Body */}
+            <div className="flex-1 overflow-y-auto min-h-0 pr-1 space-y-6">
+              
+              {message && (
+                <div className={`rounded-xl border p-4 shadow-sm animate-in fade-in duration-200 ${message.type === "success" ? "border-emerald-100 bg-emerald-50 text-emerald-800" : "border-rose-100 bg-rose-50 text-rose-800"}`}>
+                  <div className="flex items-center gap-3">
+                    <CheckCircle2 className={`h-4 w-4 shrink-0 ${message.type === "success" ? "text-emerald-500" : "text-rose-500"}`} />
+                    <p className="text-xs font-bold">{message.text}</p>
+                  </div>
                 </div>
+              )}
 
-                <form onSubmit={handleProfileSave} className="space-y-6">
-                  <InputGroup label="Full Name" value={profile?.full_name} onChange={(val) => setProfile(p => p ? {...p, full_name: val} : null)} />
-                  <InputGroup label="Phone Number" value={profile?.phone_number} onChange={(val) => setProfile(p => p ? {...p, phone_number: val} : null)} />
-                  <InputGroup label="Professional Bio" isTextArea value={profile?.bio} onChange={(val) => setProfile(p => p ? {...p, bio: val} : null)} />
-                  <InputGroup label="LinkedIn URL" value={profile?.linkedin_url} onChange={(val) => setProfile(p => p ? {...p, linkedin_url: val} : null)} />
-                  <InputGroup label="Location" value={profile?.location} onChange={(val) => setProfile(p => p ? {...p, location: val} : null)} />
+              {/* SECURITY TAB */}
+              {activeTab === "security" && (
+                <div className="space-y-6 max-w-2xl">
                   
-                  <div className="pt-4 flex gap-3">
-                    <button type="submit" disabled={saving} className="bg-[#FF8A00] hover:bg-[#E67A00] text-white px-6 py-3 rounded-xl text-sm font-bold transition-all flex items-center gap-2 disabled:opacity-50">
-                      {saving ? "Saving..." : "Save Changes"}
-                      <Save size={16} />
-                    </button>
-                  </div>
-                </form>
-              </div>
-            )}
-
-            {/* COMPANY SECTION */}
-            {activeTab === "company" && (
-              <div className="bg-white rounded-3xl border border-orange-100/80 shadow-[0_8px_24px_rgba(255,138,0,0.06)] p-8 space-y-8">
-                <div>
-                  <h2 className="text-2xl font-bold text-slate-900 mb-2">Company Branding</h2>
-                  <p className="text-slate-500 text-sm">Manage your company profile and branding settings.</p>
-                </div>
-
-                <form onSubmit={handleCompanySave} className="space-y-6">
-                  <InputGroup label="Company Name" value={company?.name} onChange={(val) => setCompany(c => c ? {...c, name: val} : null)} />
-                  <InputGroup label="Website URL" value={company?.website} onChange={(val) => setCompany(c => c ? {...c, website: val} : null)} />
-
-                  <div className="pt-4 flex gap-3">
-                    <button type="submit" disabled={saving} className="bg-[#FF8A00] hover:bg-[#E67A00] text-white px-6 py-3 rounded-xl text-sm font-bold transition-all flex items-center gap-2 disabled:opacity-50">
-                      {saving ? "Updating..." : "Save Changes"}
-                      <Save size={16} />
-                    </button>
-                  </div>
-                </form>
-              </div>
-            )}
-
-            {/* SECURITY SECTION */}
-            {activeTab === "security" && (
-              <div className="space-y-6">
-                {/* Password Management */}
-                <div className="bg-white rounded-3xl border border-orange-100/80 shadow-[0_8px_24px_rgba(255,138,0,0.06)] p-8 space-y-6">
-                  <div>
-                    <h2 className="text-2xl font-bold text-slate-900 mb-2">Change Password</h2>
-                    <p className="text-slate-500 text-sm">Keep your account secure with a strong password.</p>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div className="relative">
-                      <InputGroup label="Current Password" value={oldPassword} onChange={setOldPassword} isPassword={!showOldPassword} />
-                      <button 
-                        type="button"
-                        onClick={() => setShowOldPassword(!showOldPassword)}
-                        className="absolute right-4 top-10 text-slate-400 hover:text-[#FF8A00] transition-colors"
-                      >
-                        {showOldPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                      </button>
+                  {/* Password Form */}
+                  <form onSubmit={handleUpdatePassword} className="space-y-5 bg-slate-50/40 rounded-2xl border border-slate-100 p-6">
+                    <div>
+                      <h4 className="text-xs font-black uppercase text-slate-800 tracking-wider mb-1">Update Security Password</h4>
+                      <p className="text-[10px] text-slate-400 font-medium">Secure your platform credentials with a strong password.</p>
                     </div>
                     
-                    <div className="relative">
-                      <InputGroup label="New Password" value={newPassword} onChange={setNewPassword} isPassword={!showNewPassword} />
-                      <button 
-                        type="button"
-                        onClick={() => setShowNewPassword(!showNewPassword)}
-                        className="absolute right-4 top-10 text-slate-400 hover:text-[#FF8A00] transition-colors"
-                      >
-                        {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                      </button>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="relative">
+                        <Field label="Current Password" icon={Lock}>
+                          <TextInput
+                            type={showOldPassword ? "text" : "password"}
+                            value={oldPassword}
+                            onChange={(e) => setOldPassword(e.target.value)}
+                            placeholder="••••••••"
+                          />
+                        </Field>
+                        <button 
+                          type="button"
+                          onClick={() => setShowOldPassword(!showOldPassword)}
+                          className="absolute right-3.5 top-8 text-slate-400 hover:text-[#FF8A00]"
+                        >
+                          {showOldPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+
+                      <div className="relative">
+                        <Field label="New Password" icon={Lock}>
+                          <TextInput
+                            type={showNewPassword ? "text" : "password"}
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            placeholder="••••••••"
+                          />
+                        </Field>
+                        <button 
+                          type="button"
+                          onClick={() => setShowNewPassword(!showNewPassword)}
+                          className="absolute right-3.5 top-8 text-slate-400 hover:text-[#FF8A00]"
+                        >
+                          {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <Field label="Confirm New Password" icon={Lock}>
+                          <TextInput
+                            type={showNewPassword ? "text" : "password"}
+                            value={confirmPassword}
+                            onChange={(e) => setConfirmPassword(e.target.value)}
+                            placeholder="••••••••"
+                          />
+                        </Field>
+                      </div>
                     </div>
 
-                    <InputGroup label="Confirm Password" value={confirmPassword} onChange={setConfirmPassword} isPassword={!showNewPassword} />
-                    
-                    <div className="flex items-center gap-3 pt-4">
-                      <button 
-                        onClick={handleUpdatePassword}
+                    <div className="flex items-center justify-between gap-3 pt-2">
+                      {newPassword && confirmPassword && newPassword !== confirmPassword ? (
+                        <span className="text-[10px] font-black uppercase text-rose-600 animate-pulse">Passwords do not match</span>
+                      ) : <div />}
+                      
+                      <button
+                        type="submit"
                         disabled={saving || !newPassword || !oldPassword || !confirmPassword || newPassword !== confirmPassword}
-                        className="bg-[#FF8A00] hover:bg-[#E67A00] text-white px-6 py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-50 disabled:bg-slate-300"
+                        className="flex items-center gap-2 rounded-xl bg-[#FF8A00] px-5 py-2.5 text-[9px] font-black uppercase tracking-widest text-white transition hover:bg-[#E67A00] shadow-md shadow-orange-600/10 active:scale-95 disabled:opacity-75"
                       >
-                        {saving ? "Updating..." : "Update Password"}
+                        {saving ? <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <Lock size={12} />}
+                        Update Password
                       </button>
-                      {newPassword && confirmPassword && newPassword !== confirmPassword && (
-                        <span className="text-xs font-bold text-rose-600 animate-pulse">Passwords do not match</span>
-                      )}
                     </div>
-                  </div>
-                </div>
+                  </form>
 
-                {/* Identity Verification */}
-                <div className="bg-white rounded-3xl border border-orange-100/80 shadow-[0_8px_24px_rgba(255,138,0,0.06)] p-8">
-                  <h2 className="text-2xl font-bold text-slate-900 mb-4">Verification</h2>
-                  <div className="bg-gradient-to-br from-[#FF8A00]/10 to-[#FFB366]/5 p-6 rounded-2xl border border-orange-100/80 flex flex-col md:flex-row items-center gap-6">
-                    <div className="h-16 w-16 rounded-xl bg-[#FF8A00]/20 flex items-center justify-center flex-shrink-0">
-                      <Shield className="text-[#FF8A00]" size={32} />
+                  {/* ID Verification Panel */}
+                  <div className="bg-slate-50/40 rounded-2xl border border-slate-100 p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+                    <div className="flex items-center gap-4">
+                      <div className="h-12 w-12 rounded-xl bg-[#FF8A00]/5 flex items-center justify-center shrink-0 border border-orange-100">
+                        <Shield className="text-[#FF8A00]" size={22} />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-black uppercase text-slate-800 tracking-wider mb-1">Verify Identity Credentials</h4>
+                        <p className="text-[10px] text-slate-400 font-medium">Upload corporate ID to activate recruiter verified badge status.</p>
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <h3 className="font-bold text-slate-900 mb-1">Verify Your Identity</h3>
-                      <p className="text-sm text-slate-500">Upload your government ID to get a verified badge and increase candidate trust.</p>
-                    </div>
-                    <label className={`px-6 py-3 rounded-xl text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${profile?.identity_verified ? "bg-emerald-50 text-emerald-600 border border-emerald-100 pointer-events-none" : "bg-[#FF8A00] text-white hover:bg-[#E67A00] border border-[#FF8A00]"}`}>
-                      {profile?.identity_verified ? "✓ Verified" : "Upload ID"}
-                      {!profile?.identity_verified && (
+                    
+                    <label className={`px-5 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer whitespace-nowrap shadow-sm border ${
+                      isVerified 
+                        ? "bg-emerald-50 text-emerald-600 border-emerald-150 pointer-events-none" 
+                        : "bg-white text-slate-700 hover:bg-slate-50 border-slate-200"
+                    }`}>
+                      {isVerified ? "✓ Verified Status" : "Upload ID Document"}
+                      {!isVerified && (
                         <input 
                           type="file" 
                           accept="image/*,.pdf" 
@@ -462,83 +539,176 @@ export default function RecruiterSettingsPage() {
                       )}
                     </label>
                   </div>
-                </div>
 
-                {/* Delete Account */}
-                <div className="bg-rose-50/50 rounded-3xl border border-rose-200 p-8">
-                  <h3 className="text-xl font-bold text-rose-600 mb-2">Danger Zone</h3>
-                  <p className="text-sm text-rose-500 mb-6">Permanently delete your account and all associated data. This cannot be undone.</p>
-                  <button 
-                    onClick={handleDeleteAccount}
-                    disabled={saving}
-                    className="bg-rose-600 hover:bg-rose-700 text-white px-6 py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
-                  >
-                    {saving ? "Deleting..." : "Delete Account"}
-                  </button>
+                  {/* Danger Zone */}
+                  <div className="bg-rose-50/20 rounded-2xl border border-rose-100/60 p-6">
+                    <h4 className="text-xs font-black uppercase text-rose-600 tracking-wider mb-1">Danger Zone</h4>
+                    <p className="text-[10px] text-rose-400 font-medium mb-4">Permanently delete your profile and all company access. This action cannot be reverted.</p>
+                    <button 
+                      onClick={handleDeleteAccount}
+                      disabled={saving}
+                      className="rounded-xl border border-rose-200 bg-white hover:bg-rose-500 hover:text-white px-5 py-2.5 text-[9px] font-black uppercase tracking-widest text-rose-600 transition"
+                    >
+                      Delete Account Permanent
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* NOTIFICATIONS SECTION */}
-            {activeTab === "notifications" && (
-              <div className="bg-white rounded-3xl border border-orange-100/80 shadow-[0_8px_24px_rgba(255,138,0,0.06)] p-8 space-y-8">
-                <div>
-                  <h2 className="text-2xl font-bold text-slate-900 mb-2">Notification Preferences</h2>
-                  <p className="text-slate-500 text-sm">Customize how you receive updates and alerts.</p>
-                </div>
+              {/* NOTIFICATIONS TAB */}
+              {activeTab === "notifications" && (
+                <div className="space-y-6 max-w-2xl">
+                  <div>
+                    <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest mb-1">Preferences & Notification Settings</h3>
+                    <p className="text-[10px] text-slate-400 font-medium">Customize how we contact you and who sees your platform presence.</p>
+                  </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 py-6 border-y border-slate-200">
-                  <ToggleCard title="Email Alerts" desc="New applications" icon={<Mail />} active={settings?.email_notifications || false} onToggle={(val) => handleSettingsSave({ email_notifications: val })} />
-                  <ToggleCard title="Browser Notifications" desc="Real-time updates" icon={<Globe />} active={settings?.web_notifications || false} onToggle={(val) => handleSettingsSave({ web_notifications: val })} />
-                  <ToggleCard title="Mobile Push" desc="Push alerts" icon={<Smartphone />} active={settings?.mobile_notifications || false} onToggle={(val) => handleSettingsSave({ mobile_notifications: val })} />
-                </div>
+                  {/* iOS Style Custom Toggle Switch cards */}
+                  <div className="space-y-3">
+                    <ToggleRow
+                      title="Email Alerts"
+                      desc="Direct alerts & summary reports sent to your email"
+                      icon={Mail}
+                      active={settings?.email_notifications || false}
+                      onToggle={(val) => handleSettingsSave({ email_notifications: val })}
+                    />
+                    <ToggleRow
+                      title="Web Push Alerts"
+                      desc="Real-time in-browser alert notifications"
+                      icon={Globe}
+                      active={settings?.web_notifications || false}
+                      onToggle={(val) => handleSettingsSave({ web_notifications: val })}
+                    />
+                    <ToggleRow
+                      title="Mobile Push Alerts"
+                      desc="Instant push alerts on your mobile device"
+                      icon={Smartphone}
+                      active={settings?.mobile_notifications || false}
+                      onToggle={(val) => handleSettingsSave({ mobile_notifications: val })}
+                    />
+                  </div>
 
-                <div>
-                  <label className="text-sm font-bold text-slate-900 mb-2 block">Timezone</label>
-                  <select value={settings?.timezone} onChange={(e) => handleSettingsSave({ timezone: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium text-slate-900 focus:outline-none focus:border-[#FF8A00] focus:ring-2 focus:ring-[#FF8A00]/20 transition-all">
-                    <option value="UTC">UTC</option>
-                    <option value="IST">IST (India)</option>
-                    <option value="PST">PST (Pacific)</option>
-                    <option value="EST">EST (Eastern)</option>
-                  </select>
+                  {/* Settings dropdown fields form */}
+                  <form onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!settings) return;
+                    handleSettingsSave({
+                      timezone: settings.timezone,
+                      language: settings.language,
+                      profile_visibility: settings.profile_visibility
+                    });
+                  }} className="space-y-5 bg-slate-50/40 rounded-2xl border border-slate-100 p-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      <Field label="System Timezone" icon={Globe}>
+                        <SelectInput
+                          value={settings?.timezone || "UTC"}
+                          onChange={(e) => setSettings(prev => prev ? { ...prev, timezone: e.target.value } : null)}
+                          options={["UTC", "IST", "PST", "EST", "GMT", "CET"]}
+                          labels={["UTC (Coordinated Universal)", "IST (Indian Standard Time)", "PST (Pacific Standard Time)", "EST (Eastern Standard Time)", "GMT (London Mean Time)", "CET (Central European Time)"]}
+                        />
+                      </Field>
+                      <Field label="Interface Language" icon={Globe}>
+                        <SelectInput
+                          value={settings?.language || "en"}
+                          onChange={(e) => setSettings(prev => prev ? { ...prev, language: e.target.value } : null)}
+                          options={["en", "es", "fr", "de", "zh", "ja"]}
+                          labels={["English (United States)", "Español (Spain)", "Français (France)", "Deutsch (Germany)", "Chinese (Traditional)", "Japanese (Japan)"]}
+                        />
+                      </Field>
+                      <Field label="Recruiter Profile Visibility" icon={Shield}>
+                        <SelectInput
+                          value={settings?.profile_visibility || "public"}
+                          onChange={(e) => setSettings(prev => prev ? { ...prev, profile_visibility: e.target.value } : null)}
+                          options={["public", "private"]}
+                          labels={["Public Search (Visible to Candidates)", "Private / Ghost Mode (Confidential Only)"]}
+                        />
+                      </Field>
+                    </div>
+
+                    {/* Submit Panel */}
+                    <div className="border-t border-slate-100 pt-4 flex justify-end gap-3">
+                      <button
+                        type="submit"
+                        disabled={saving}
+                        className="flex items-center gap-2 rounded-xl bg-[#FF8A00] px-5 py-2.5 text-[9px] font-black uppercase tracking-widest text-white transition hover:bg-[#E67A00] shadow-md shadow-orange-600/10 active:scale-95"
+                      >
+                        {saving ? <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <Save size={14} />}
+                        Save System Preferences
+                      </button>
+                    </div>
+                  </form>
                 </div>
-              </div>
-            )}
+              )}
+
             </div>
           </div>
         </div>
+
       </div>
     </div>
-  </div>
   );
 }
 
-function InputGroup({ label, value, onChange, isTextArea = false, isPassword = false }: { label: string, value?: string, onChange: (v: string) => void, isTextArea?: boolean, isPassword?: boolean }) {
+function Field({ label, icon: Icon, children }: { label: string; icon: React.ElementType; children: React.ReactNode }) {
   return (
-    <div className="space-y-2">
-      <label className="text-sm font-bold text-slate-900">{label}</label>
-      {isTextArea ? (
-        <textarea value={value || ""} onChange={(e) => onChange(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20 min-h-28 transition-all focus:bg-white" />
-      ) : (
-        <input type={isPassword ? "password" : "text"} value={value || ""} onChange={(e) => onChange(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all focus:bg-white" />
-      )}
+    <div className="flex flex-col group">
+      <label className="mb-2 ml-1 flex items-center text-[9px] font-black uppercase tracking-widest text-slate-455 group-focus-within:text-[#FF8A00] transition-colors">
+        <Icon className="mr-1.5 h-3.5 w-3.5 opacity-60" />
+        {label}
+      </label>
+      {children}
     </div>
   );
 }
 
-function ToggleCard({ title, desc, icon, active, onToggle }: { title: string, desc: string, icon: React.ReactNode, active: boolean, onToggle: (v: boolean) => void }) {
+function TextInput({ className = "", ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
-    <div onClick={() => onToggle(!active)} className={`p-6 rounded-2xl border-2 transition-all cursor-pointer hover:shadow-md ${active ? "bg-[#FF8A00]/5 border-[#FF8A00] shadow-md" : "bg-slate-50 border-slate-200"}`}>
-      <div className={`h-10 w-10 rounded-lg mb-4 flex items-center justify-center transition-all ${active ? "bg-[#FF8A00] text-white" : "bg-slate-200 text-slate-400"}`}>
-        {icon}
-      </div>
-      <h4 className={`font-bold text-sm mb-1 ${active ? "text-slate-900" : "text-slate-700"}`}>{title}</h4>
-      <p className="text-xs text-slate-500 leading-relaxed">{desc}</p>
-      <div className="mt-4 flex items-center gap-2">
-        <div className={`h-2 w-2 rounded-full ${active ? "bg-emerald-500" : "bg-slate-300"}`} />
-        <span className={`text-xs font-medium ${active ? "text-[#FF8A00] font-semibold" : "text-slate-500"}`}>{active ? "Enabled" : "Disabled"}</span>
-      </div>
-    </div>
+    <input
+      {...props}
+      className={`w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-xs font-semibold text-slate-750 outline-none transition-all focus:border-[#FF8A00] focus:bg-white focus:ring-2 focus:ring-[#FF8A00]/10 ${className}`}
+    />
   );
 }
 
+function SelectInput({
+  options,
+  labels,
+  className = "",
+  ...props
+}: React.SelectHTMLAttributes<HTMLSelectElement> & { options: string[]; labels: string[] }) {
+  return (
+    <select
+      {...props}
+      className={`w-full cursor-pointer rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-750 outline-none transition-all focus:border-[#FF8A00] focus:ring-2 focus:ring-[#FF8A00]/10 ${className}`}
+    >
+      {options.map((option, index) => (
+        <option key={option} value={option}>
+          {labels[index]}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function ToggleRow({ title, desc, icon: Icon, active, onToggle }: { title: string, desc: string, icon: any, active: boolean, onToggle: (v: boolean) => void }) {
+  return (
+    <div className="flex items-center justify-between p-4 rounded-2xl border border-slate-100 bg-slate-50/30 hover:bg-slate-50/50 transition-colors">
+      <div className="flex items-center gap-3.5">
+        <div className={`p-2.5 rounded-xl transition-colors ${active ? "bg-orange-50 text-[#FF8A00]" : "bg-slate-100 text-slate-400"}`}>
+          <Icon size={18} />
+        </div>
+        <div>
+          <h4 className="text-xs font-bold text-slate-800">{title}</h4>
+          <p className="text-[10px] text-slate-400 mt-0.5 font-medium">{desc}</p>
+        </div>
+      </div>
+      <button 
+        type="button"
+        onClick={() => onToggle(!active)}
+        className={`relative w-11 h-6 rounded-full transition-colors outline-none shrink-0 cursor-pointer ${active ? "bg-[#FF8A00]" : "bg-slate-200"}`}
+      >
+        <div className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform duration-200 shadow-sm ${active ? "translate-x-5" : ""}`} />
+      </button>
+    </div>
+  );
+}

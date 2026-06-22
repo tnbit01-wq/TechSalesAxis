@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import Image from "next/image";
+import ProfileCompletionCircle from "@/components/ProfileCompletionCircle";
 import {
-  ArrowLeft,
   Briefcase,
   Calendar,
   CheckCircle2,
@@ -15,7 +15,6 @@ import {
   GraduationCap,
   Linkedin,
   MapPin,
-  Phone,
   PlusCircle,
   Share2,
   ShieldCheck,
@@ -23,6 +22,11 @@ import {
   Trash2,
   Users,
   User,
+  ShieldAlert,
+  LogOut,
+  Tag,
+  Coins,
+  FileText,
 } from "lucide-react";
 
 interface EducationEntry {
@@ -74,9 +78,17 @@ interface ProfileData {
   birthdate?: string;
   referral?: string;
   location?: string;
+  identity_verified?: boolean;
   education_history?: EducationEntry[];
   experience_history?: ExperienceEntry[];
   career_gap_report?: CareerGapReport;
+  
+  // Missing DB fields
+  location_tier?: string;
+  key_responsibilities?: string;
+  major_achievements?: string;
+  career_interests?: string[] | string;
+  learning_interests?: string[] | string;
 }
 
 export default function CandidateProfilePage() {
@@ -87,7 +99,24 @@ export default function CandidateProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [activeTab, setActiveTab] = useState<"identity" | "career" | "experience" | "presence">("identity");
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  const handleCompleteNow = () => {
+    if (!profile?.full_name || !profile?.phone_number || !profile?.location) {
+      setActiveTab("identity");
+      setMessage({ type: "success", text: "Please complete your Identity details." });
+    } else if (!profile?.target_role || !profile?.expected_salary || !profile?.primary_industry_focus) {
+      setActiveTab("career");
+      setMessage({ type: "success", text: "Please complete your Career preferences." });
+    } else if (!profile?.experience_history || profile.experience_history.length === 0) {
+      setActiveTab("experience");
+      setMessage({ type: "success", text: "Please add your work experience." });
+    } else {
+      setActiveTab("presence");
+      setMessage({ type: "success", text: "Please complete your presence & interests details." });
+    }
+  };
 
   useEffect(() => {
     async function loadProfile() {
@@ -168,7 +197,7 @@ export default function CandidateProfilePage() {
 
       setProfile((prev) => (prev ? { ...prev, profile_photo_url: publicUrl } : null));
       await apiClient.patch("/candidate/profile", { profile_photo_url: publicUrl }, token);
-      setMessage({ type: "success", text: "Profile photo updated." });
+      setMessage({ type: "success", text: "Profile photo updated successfully." });
     } catch (error: any) {
       console.error("Upload error:", error);
       setMessage({ type: "error", text: error.message || "Failed to upload photo" });
@@ -207,239 +236,628 @@ export default function CandidateProfilePage() {
     }
   };
 
-  const experienceControl = profile?.assessment_status === "completed" ? (
-    <LockedValue value={profile?.experience?.toUpperCase() || "NOT SET"} />
-  ) : (
-    <SelectInput name="experience" value={profile?.experience || "fresher"} onChange={handleInputChange} options={["fresher", "mid", "senior", "leadership"]} labels={["Fresher", "Mid-Level", "Senior", "Leadership"]} />
-  );
+  const handleLogout = () => {
+    awsAuth.logout();
+    router.replace("/login");
+  };
 
-  const yearsControl = profile?.assessment_status === "completed" ? (
-    <LockedValue value={`${profile?.years_of_experience || 0} Years`} />
-  ) : (
-    <TextInput type="number" name="years_of_experience" value={profile?.years_of_experience || 0} onChange={handleInputChange} />
-  );
+  const getArrayAsString = (arr?: string[] | string) => {
+    if (!arr) return "";
+    if (typeof arr === "string") return arr;
+    return arr.join(", ");
+  };
+
+  const handleCommaSeparatedChange = (field: "career_interests" | "learning_interests", value: string) => {
+    const arr = value.split(",").map(val => val.trim()).filter(Boolean);
+    setProfile(prev => prev ? { ...prev, [field]: arr } : null);
+  };
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="flex flex-col items-center gap-4">
           <div className="h-10 w-10 animate-spin rounded-full border-b-2 border-[#FF8A00]" />
-          <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Loading Profile...</p>
+          <p className="text-xs font-bold uppercase tracking-[0.3em] text-slate-400">Loading Profile...</p>
         </div>
       </div>
     );
   }
 
+  const isVerified = profile?.identity_verified || false;
+
+  const experienceControl = profile?.assessment_status === "completed" ? (
+    <LockedValue value={profile?.experience?.toUpperCase() || "NOT SET"} />
+  ) : (
+    <SelectInput
+      name="experience"
+      value={profile?.experience || "fresher"}
+      onChange={handleInputChange}
+      options={["fresher", "mid", "senior", "leadership"]}
+      labels={["Fresher", "Mid-Level", "Senior", "Leadership"]}
+    />
+  );
+
+  const yearsControl = profile?.assessment_status === "completed" ? (
+    <LockedValue value={`${profile?.years_of_experience || 0} Years`} />
+  ) : (
+    <TextInput
+      type="number"
+      name="years_of_experience"
+      value={profile?.years_of_experience || 0}
+      onChange={handleInputChange}
+    />
+  );
+
   return (
-    <div className="h-full bg-slate-50/50">
-      <main className="h-[calc(100vh-5rem)] min-h-0 overflow-y-auto">
-        <div className="mx-auto flex min-h-full max-w-7xl flex-col gap-6 px-4 py-6 lg:px-6">
-          {message && (
-            <div className={`rounded-2xl border p-4 shadow-sm ${message.type === "success" ? "border-emerald-100 bg-emerald-50 text-emerald-800" : "border-rose-100 bg-rose-50 text-rose-800"}`}>
-              <div className="flex items-center gap-3">
-                <CheckCircle2 className={`h-5 w-5 ${message.type === "success" ? "text-emerald-500" : "text-rose-500"}`} />
-                <p className="text-sm font-bold">{message.text}</p>
+    <div className="h-[calc(100vh-4rem)] flex flex-col bg-slate-50/30 overflow-hidden font-sans">
+      <div className="flex-1 max-w-5xl w-full mx-auto p-4 md:p-6 flex flex-col md:flex-row gap-6 min-h-0">
+        
+        {/* Left Panel: Standalone Sidebar Card */}
+        <aside className="w-full md:w-80 shrink-0 bg-white border border-slate-100 rounded-3xl p-5 shadow-[0_8px_30px_rgba(0,0,0,0.02)] flex flex-col items-center select-none min-h-0 overflow-y-auto">
+            
+            <ProfileCompletionCircle
+              percentage={profile?.completion_score || 0}
+              photoUrl={profile?.profile_photo_url}
+              name={profile?.full_name}
+              size={90}
+              uploading={uploading}
+              onUploadClick={() => fileInputRef.current?.click()}
+              onCompleteNowClick={handleCompleteNow}
+            />
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handlePhotoUpload}
+              className="hidden"
+              accept="image/*"
+            />
+
+            <div className="mt-3.5 flex items-center justify-center gap-1.5 max-w-full">
+              <h2 className="text-sm font-black text-slate-800 truncate">
+                {profile?.full_name || "Candidate Profile"}
+              </h2>
+              <button
+                type="button"
+                onClick={() => router.push("/dashboard/candidate/settings?tab=security")}
+                className={`transition-all duration-200 hover:scale-110 active:scale-95 shrink-0 ${
+                  isVerified ? "text-emerald-500 hover:text-emerald-650" : "text-rose-500 hover:text-rose-650 animate-pulse"
+                }`}
+                title={isVerified ? "Verified Status Badge" : "Unverified. Click to verify."}
+              >
+                {isVerified ? (
+                  <ShieldCheck className="h-4 w-4" />
+                ) : (
+                  <ShieldAlert className="h-4 w-4" />
+                )}
+              </button>
+            </div>
+            <p className="text-[10px] text-slate-400 font-bold tracking-wide truncate max-w-full uppercase mt-0.5">
+              {profile?.current_role || "Job Seeker"}
+            </p>
+
+            <div className="mt-3 w-full border-t border-slate-100 pt-3 space-y-1.5 text-[10px]">
+              <div className="flex justify-between font-semibold">
+                <span className="text-slate-400 font-bold">Assessment:</span>
+                <span className="text-slate-700 capitalize">{profile?.assessment_status?.replace("_", " ") || "In progress"}</span>
+              </div>
+              <div className="flex justify-between font-semibold">
+                <span className="text-slate-400 font-bold">Experience:</span>
+                <span className="text-slate-700 font-bold">{profile?.years_of_experience || 0} years</span>
               </div>
             </div>
-          )}
 
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_minmax(0,1fr)] lg:min-h-0">
-            <aside className="space-y-6 lg:sticky lg:top-6 lg:self-start">
-              <div className="rounded-[28px] border border-orange-100/80 bg-white p-6 shadow-[0_8px_24px_rgba(255,138,0,0.06)]">
-                <div className="flex items-center gap-4">
-                  <div className="relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-[#FF8A00] to-[#FFB366] text-white shadow-lg shadow-orange-200">
-                    {profile?.profile_photo_url ? <Image src={profile.profile_photo_url} alt="Profile" fill sizes="64px" className="object-cover" /> : <User className="h-8 w-8" />}
-                    {uploading && <div className="absolute inset-0 flex items-center justify-center bg-white/70"><div className="h-5 w-5 animate-spin rounded-full border-2 border-[#FF8A00] border-t-transparent" /></div>}
+            {/* Navigation Tabs List (Vertical) */}
+            <nav className="mt-6 w-full flex-1 space-y-1">
+              {[
+                { id: "identity", label: "Identity", icon: User },
+                { id: "career", label: "Career Alignment", icon: Target },
+                { id: "experience", label: "Experience & Education", icon: Briefcase },
+                { id: "presence", label: "Presence & Interests", icon: Globe },
+              ].map((tab) => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setActiveTab(tab.id as any)}
+                    className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-bold uppercase tracking-wider text-[9px] transition-all cursor-pointer select-none active:scale-95 ${
+                      isActive
+                        ? "bg-gradient-to-br from-[#FF8A00] to-[#FF6B00] text-white shadow-md shadow-orange-500/10"
+                        : "text-slate-600 hover:text-slate-700 hover:bg-slate-50 border border-transparent"
+                    }`}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </nav>
+
+            {/* Footer Buttons */}
+            <div className="mt-6 pt-4 border-t border-slate-100/80 w-full flex gap-2">
+              <button
+                type="button"
+                onClick={() => router.push("/dashboard/candidate")}
+                className="flex-1 rounded-lg border border-slate-200 bg-slate-50 py-2 text-[9px] font-black uppercase tracking-wider text-slate-600 transition hover:bg-white active:scale-95"
+              >
+                Dashboard
+              </button>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="rounded-lg bg-orange-50 border border-orange-100 hover:bg-[#FF8A00] hover:text-white text-[#FF8A00] p-2 transition active:scale-95 flex items-center justify-center"
+                title="Logout"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </aside>
+
+          {/* Right Side: Standalone Tabbed Form Card */}
+          <form onSubmit={handleSubmit} className="flex-1 bg-white rounded-3xl border border-slate-100 shadow-[0_8px_30px_rgba(0,0,0,0.02)] flex flex-col min-h-0 overflow-hidden">
+            <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-6">
+              
+              {message && (
+                <div className={`rounded-xl border p-4 shadow-sm animate-in fade-in duration-200 ${message.type === "success" ? "border-emerald-100 bg-emerald-50 text-emerald-800" : "border-rose-100 bg-rose-50 text-rose-800"}`}>
+                  <div className="flex items-center gap-3">
+                    <CheckCircle2 className={`h-4 w-4 shrink-0 ${message.type === "success" ? "text-emerald-500" : "text-rose-500"}`} />
+                    <p className="text-xs font-bold">{message.text}</p>
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-400">Candidate Profile</p>
-                    <h1 className="mt-1 truncate text-2xl font-black text-slate-900">Profile</h1>
-                    <p className="text-sm text-slate-500">Edit your public presence and career story.</p>
+                </div>
+              )}
+
+              {/* IDENTITY TAB */}
+              {activeTab === "identity" && (
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest mb-1">Identity & Contact</h3>
+                    <p className="text-xs text-slate-400">Configure your key identifying attributes and information.</p>
                   </div>
-                </div>
-                <div className="mt-6 space-y-3">
-                  <StatCard label="Completion" value={`${profile?.completion_score || 0}%`} />
-                  <StatCard label="Assessment" value={profile?.assessment_status || "In progress"} />
-                  <StatCard label="Experience" value={`${profile?.years_of_experience || 0} years`} />
-                </div>
-                <div className="mt-6 flex items-center gap-3">
-                  <button type="button" onClick={() => router.push("/dashboard/candidate")} className="flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700 transition-all hover:bg-white"><ArrowLeft className="mr-2 inline-block h-4 w-4" />Dashboard</button>
-                  <button type="button" onClick={() => fileInputRef.current?.click()} className="rounded-2xl bg-[#FF8A00] px-4 py-3 text-sm font-bold text-white transition-all hover:bg-[#E67A00]">Upload photo</button>
-                </div>
-                <input type="file" ref={fileInputRef} onChange={handlePhotoUpload} className="hidden" accept="image/*" />
-              </div>
-
-              <div className="rounded-[28px] border border-orange-100/80 bg-white p-6 shadow-[0_8px_24px_rgba(255,138,0,0.06)]">
-                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-400">Quick Links</p>
-                <button type="button" onClick={handleRetakeAssessment} className="mt-4 w-full rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-left text-sm font-bold text-rose-600 transition-all hover:bg-rose-100">Reset evaluation</button>
-              </div>
-            </aside>
-
-            <div className="space-y-8 min-w-0 pb-8">
-              <form onSubmit={handleSubmit} className="space-y-8">
-                <Section title="Personal details" description="Your identity and contact information" icon={User}>
-                  <div className="flex flex-col gap-10 md:flex-row md:items-start">
-                    <button type="button" onClick={() => fileInputRef.current?.click()} className="relative flex h-32 w-32 items-center justify-center overflow-hidden rounded-3xl border-2 border-dashed border-slate-200 bg-slate-100 transition-all hover:border-[#FF8A00] hover:bg-white">
-                      {profile?.profile_photo_url ? <Image src={profile.profile_photo_url} alt="Profile" fill sizes="128px" className="object-cover" /> : <PlusCircle className="h-8 w-8 text-slate-300" />}
-                    </button>
-                    <div className="grid w-full grid-cols-1 gap-8 md:grid-cols-2">
-                      <Field label="Full Name" icon={User}><TextInput name="full_name" value={profile?.full_name || ""} onChange={handleInputChange} /></Field>
-                      <Field label="Phone Number" icon={Phone}><TextInput name="phone_number" value={profile?.phone_number || ""} onChange={handleInputChange} placeholder="+1 (555) 000-0000" /></Field>
-                      <Field label="Location" icon={MapPin}><TextInput name="location" value={profile?.location || ""} onChange={handleInputChange} placeholder="e.g. New York, USA" /></Field>
-                      <Field label="Birthdate" icon={Calendar}><TextInput type="date" name="birthdate" value={profile?.birthdate || ""} onChange={handleInputChange} /></Field>
-                      <Field label="Gender" icon={Users}><SelectInput name="gender" value={profile?.gender || ""} onChange={handleInputChange} options={["", "male", "female", "other", "prefer_not_to_say"]} labels={["Select Gender", "Male", "Female", "Other", "Prefer Not to Say"]} /></Field>
-                      <Field label="Employment Status" icon={Briefcase}><SelectInput name="current_employment_status" value={profile?.current_employment_status || ""} onChange={handleInputChange} options={["", "Employed", "Unemployed", "Student"]} labels={["Select Status", "Currently Employed", "Unemployed", "Student"]} /></Field>
-                      <Field label="Referral Source" icon={Share2}><TextInput name="referral" value={profile?.referral || ""} onChange={handleInputChange} placeholder="e.g. LinkedIn, Friend" /></Field>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <Field label="Full Name" icon={User}>
+                      <TextInput name="full_name" value={profile?.full_name || ""} onChange={handleInputChange} placeholder="Full Name" />
+                    </Field>
+                    <Field label="Phone Number" icon={Users}>
+                      <TextInput type="tel" name="phone_number" value={profile?.phone_number || ""} onChange={handleInputChange} placeholder="+1 (555) 000-0000" />
+                    </Field>
+                    <Field label="Location" icon={MapPin}>
+                      <TextInput name="location" value={profile?.location || ""} onChange={handleInputChange} placeholder="e.g. New York, USA" />
+                    </Field>
+                    <Field label="Birthdate" icon={Calendar}>
+                      <TextInput
+                        type="date"
+                        name="birthdate"
+                        value={profile?.birthdate ? profile.birthdate.split("T")[0] : ""}
+                        onChange={handleInputChange}
+                      />
+                    </Field>
+                    <Field label="Gender" icon={Users}>
+                      <SelectInput
+                        name="gender"
+                        value={profile?.gender || ""}
+                        onChange={handleInputChange}
+                        options={["", "male", "female", "other", "prefer_not_to_say"]}
+                        labels={["Select Gender", "Male", "Female", "Other", "Prefer Not to Say"]}
+                      />
+                    </Field>
+                    <Field label="Employment Status" icon={Briefcase}>
+                      <SelectInput
+                        name="current_employment_status"
+                        value={profile?.current_employment_status || ""}
+                        onChange={handleInputChange}
+                        options={["", "Employed", "Unemployed", "Student"]}
+                        labels={["Select Status", "Currently Employed", "Unemployed", "Student"]}
+                      />
+                    </Field>
+                    <Field label="Referral Source" icon={Share2}>
+                      <TextInput name="referral" value={profile?.referral || ""} onChange={handleInputChange} placeholder="e.g. LinkedIn, Friend" />
+                    </Field>
+                    <div className="md:col-span-2">
+                      <Field label="Professional Pitch / Biography" icon={FileText}>
+                        <textarea
+                          rows={4}
+                          name="bio"
+                          value={profile?.bio || ""}
+                          onChange={handleInputChange}
+                          placeholder="Briefly describe your professional journey..."
+                          className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-xs font-semibold text-slate-700 outline-none transition-all focus:border-[#FF8A00] focus:bg-white"
+                        />
+                      </Field>
                     </div>
                   </div>
-                  <div className="mt-8"><Field label="Professional Summary" icon={Globe} fullWidth><textarea name="bio" rows={4} value={profile?.bio || ""} onChange={handleInputChange} placeholder="Briefly describe your professional journey..." className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition-all focus:border-[#FF8A00] focus:ring-2 focus:ring-[#FF8A00]/20" /></Field></div>
-                </Section>
+                </div>
+              )}
 
-                <Section title="Career & Preferences" description="Your professional positioning and goals" icon={Briefcase}>
-                  <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
-                    <Field label="Target Role" icon={Target}><TextInput name="target_role" value={profile?.target_role || ""} onChange={handleInputChange} placeholder="e.g. Senior Product Manager" /></Field>
-                    <Field label="Long-term Goal" icon={Target}><textarea name="long_term_goal" rows={1} value={profile?.long_term_goal || ""} onChange={handleInputChange} placeholder="e.g. Lead a global team at a Fortune 500 company" className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition-all focus:border-[#FF8A00] focus:ring-2 focus:ring-[#FF8A00]/20" /></Field>
-                    <Field label="Current Role" icon={Briefcase}><TextInput name="current_role" value={profile?.current_role || ""} onChange={handleInputChange} placeholder="e.g. Senior Software Engineer" /></Field>
-                    <Field label="Experience level" icon={Target}>{experienceControl}</Field>
-                    <Field label="Job Preference" icon={Globe}><SelectInput name="job_type" value={profile?.job_type || "onsite"} onChange={handleInputChange} options={["onsite", "remote", "hybrid"]} labels={["On-Site", "Remote", "Hybrid"]} /></Field>
-                    <Field label="Expected Salary" icon={DollarSign}><TextInput type="number" name="expected_salary" value={profile?.expected_salary || ""} onChange={handleInputChange} placeholder="e.g. 100000" /></Field>
-                    <Field label="Primary Industry" icon={Globe}><TextInput name="primary_industry_focus" value={profile?.primary_industry_focus || ""} onChange={handleInputChange} placeholder="e.g. Fintech, E-commerce" /></Field>
-                    <Field label="Years of Experience" icon={Calendar}>{yearsControl}</Field>
+              {/* CAREER TAB */}
+              {activeTab === "career" && (
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest mb-1">Career & Alignment</h3>
+                    <p className="text-xs text-slate-400">Position your experience level, targets, and goals for recruiter discovery.</p>
                   </div>
-                </Section>
-
-                <Section title="Experience history" description="Your professional track record" icon={Briefcase}>
-                  <div className="space-y-6">
-                    {(profile?.experience_history || []).map((exp, index) => (
-                      <div key={index} className="group relative rounded-2xl border border-slate-200 bg-slate-50/50 p-6 transition-all hover:bg-white hover:shadow-lg hover:shadow-slate-200/50">
-                        <button type="button" onClick={() => removeHistoryItem("experience_history", index)} className="absolute right-4 top-4 text-slate-300 transition-colors hover:text-rose-500"><Trash2 className="h-5 w-5" /></button>
-                        <div className="mb-4 grid grid-cols-1 gap-6 md:grid-cols-2">
-                          <Field label="Role" icon={User}><TextInput value={exp.role || ""} onChange={(e) => handleArrayInputChange("experience_history", index, "role", e.target.value)} /></Field>
-                          <Field label="Company" icon={Globe}><TextInput value={exp.company || ""} onChange={(e) => handleArrayInputChange("experience_history", index, "company", e.target.value)} /></Field>
-                        </div>
-                        <div className="mb-4 grid grid-cols-1 gap-6 md:grid-cols-3">
-                          <Field label="Location" icon={MapPin}><TextInput value={exp.location || ""} onChange={(e) => handleArrayInputChange("experience_history", index, "location", e.target.value)} /></Field>
-                          <Field label="Start Month/Year" icon={Calendar}><TextInput value={exp.start_date || ""} onChange={(e) => handleArrayInputChange("experience_history", index, "start_date", e.target.value)} placeholder="MM/YYYY" /></Field>
-                          <Field label="End Month/Year" icon={Calendar}><TextInput value={exp.end_date || ""} onChange={(e) => handleArrayInputChange("experience_history", index, "end_date", e.target.value)} placeholder="MM/YYYY or Present" /></Field>
-                        </div>
-                        <div className="mt-4">
-                          <div className="mb-2 flex items-center justify-between">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Key achievements</label>
-                            <button type="button" onClick={() => handleArrayInputChange("experience_history", index, "descriptions", [...(exp.descriptions || []), ""])} className="flex items-center gap-1 text-[10px] font-black uppercase text-[#FF8A00] hover:text-[#E67A00]"><PlusCircle className="h-3 w-3" /> Add achievement</button>
-                          </div>
-                          <div className="space-y-3">
-                            {(exp.descriptions || []).map((desc, dIdx) => (
-                              <div key={dIdx} className="group/desc relative">
-                                <textarea value={desc} onChange={(e) => { const next = [...(exp.descriptions || [])]; next[dIdx] = e.target.value; handleArrayInputChange("experience_history", index, "descriptions", next); }} rows={2} className="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 outline-none transition-all focus:border-[#FF8A00] focus:ring-2 focus:ring-[#FF8A00]/20" placeholder="Describe your impact and results..." />
-                                <button type="button" onClick={() => { const next = [...(exp.descriptions || [])]; next.splice(dIdx, 1); handleArrayInputChange("experience_history", index, "descriptions", next); }} className="absolute right-2 top-2 opacity-0 transition-opacity hover:text-rose-500 group-hover/desc:opacity-100"><Trash2 className="h-3.5 w-3.5 text-slate-300" /></button>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                    <button type="button" onClick={() => addHistoryItem("experience_history")} className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-200 py-4 text-xs font-bold uppercase tracking-widest text-slate-400 transition-all hover:border-orange-300 hover:bg-orange-50 hover:text-[#FF8A00]"><PlusCircle className="h-4 w-4" /> Add work experience</button>
-                  </div>
-                </Section>
-
-                <Section title="Academic history" description="Degrees and educational background" icon={GraduationCap}>
-                  <div className="space-y-6">
-                    {(profile?.education_history || []).map((edu, index) => (
-                      <div key={index} className="group relative rounded-2xl border border-slate-200 bg-slate-50/50 p-6 transition-all hover:bg-white hover:shadow-lg hover:shadow-slate-200/50">
-                        <button type="button" onClick={() => removeHistoryItem("education_history", index)} className="absolute right-4 top-4 text-slate-300 transition-colors hover:text-rose-500"><Trash2 className="h-5 w-5" /></button>
-                        <div className="mb-4 grid grid-cols-1 gap-6 md:grid-cols-2">
-                          <Field label="Institution" icon={Globe}><TextInput value={edu.institution || ""} onChange={(e) => handleArrayInputChange("education_history", index, "institution", e.target.value)} placeholder="University Name" /></Field>
-                          <Field label="Degree" icon={GraduationCap}><TextInput value={edu.degree || ""} onChange={(e) => handleArrayInputChange("education_history", index, "degree", e.target.value)} placeholder="e.g. Bachelor of Science" /></Field>
-                        </div>
-                        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-                          <Field label="Field of Study" icon={Target}><TextInput value={edu.field || ""} onChange={(e) => handleArrayInputChange("education_history", index, "field", e.target.value)} placeholder="e.g. Computer Science" /></Field>
-                          <Field label="Start Year" icon={Calendar}><TextInput value={edu.start_date || ""} onChange={(e) => handleArrayInputChange("education_history", index, "start_date", e.target.value)} placeholder="YYYY" /></Field>
-                          <Field label="End Year" icon={Calendar}><TextInput value={edu.end_date || ""} onChange={(e) => handleArrayInputChange("education_history", index, "end_date", e.target.value)} placeholder="YYYY" /></Field>
-                        </div>
-                      </div>
-                    ))}
-                    <button type="button" onClick={() => addHistoryItem("education_history")} className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-200 py-4 text-xs font-bold uppercase tracking-widest text-slate-400 transition-all hover:border-orange-300 hover:bg-orange-50 hover:text-[#FF8A00]"><PlusCircle className="h-4 w-4" /> Add education</button>
-                  </div>
-                </Section>
-
-                <Section title="Digital presence" description="Links to your professional profiles" icon={Globe}>
-                  <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
-                    <Field label="LinkedIn Profile" icon={Linkedin}><div className="relative"><TextInput type="url" name="linkedin_url" value={profile?.linkedin_url || ""} onChange={handleInputChange} placeholder="https://linkedin.com/in/username" className="pl-10" /><Linkedin className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /></div></Field>
-                    <Field label="Portfolio / Website" icon={Globe}><div className="relative"><TextInput type="url" name="portfolio_url" value={profile?.portfolio_url || ""} onChange={handleInputChange} placeholder="https://yourportfolio.com" className="pl-10" /><Globe className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /></div></Field>
-                  </div>
-                </Section>
-
-                {profile?.career_gap_report && (profile.career_gap_report.has_gap_exceeding_6mo || profile.career_gap_report.has_gap_exceeding_12mo) && (
-                  <div className="rounded-[28px] border border-amber-200/60 bg-amber-50 p-8 shadow-sm">
-                    <h3 className="mb-4 flex items-center gap-3 text-xl font-black text-amber-900"><ShieldCheck className="h-6 w-6" /> AI AUDIT: WORK GAPS</h3>
-                    <p className="mb-6 text-sm font-medium leading-relaxed text-amber-800">{profile.career_gap_report.has_gap_exceeding_12mo ? "A gap of more than 12 months was detected in your experience history." : "A gap of more than 6 months was detected in your experience history."} Providing context help recruiters understand your journey better.</p>
-                    <div className="inline-block rounded-xl border border-amber-200 bg-white/60 p-4"><span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-amber-600">Total Gap Months</span><span className="text-lg font-black text-amber-900">{profile.career_gap_report.total_gap_months || 0} Months</span></div>
-                  </div>
-                )}
-
-                <div className="sticky bottom-0 z-20 -mx-4 border-t border-slate-200 bg-white/85 px-4 py-4 backdrop-blur-xl lg:mx-0 lg:rounded-3xl lg:border lg:px-6">
-                  <div className="flex items-center justify-between gap-4">
-                    <button type="button" onClick={() => router.push("/dashboard/candidate")} className="rounded-xl px-5 py-3 text-xs font-bold uppercase tracking-[0.15em] text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-800">Discard changes</button>
-                    <button type="submit" disabled={saving} className="flex items-center gap-2 rounded-xl bg-[#FF8A00] px-6 py-3 text-xs font-bold uppercase tracking-[0.15em] text-white transition-all hover:bg-[#E67A00] disabled:opacity-70">{saving ? <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <CheckCircle2 className="h-3.5 w-3.5" />} {saving ? "Saving..." : "Save"}</button>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <Field label="Current Role" icon={Briefcase}>
+                      <TextInput name="current_role" value={profile?.current_role || ""} onChange={handleInputChange} placeholder="e.g. Senior Software Engineer" />
+                    </Field>
+                    <Field label="Target Role" icon={Target}>
+                      <TextInput name="target_role" value={profile?.target_role || ""} onChange={handleInputChange} placeholder="e.g. Senior Product Manager" />
+                    </Field>
+                    <Field label="Experience level" icon={Target}>
+                      {experienceControl}
+                    </Field>
+                    <Field label="Years of Experience" icon={Calendar}>
+                      {yearsControl}
+                    </Field>
+                    <Field label="Job Preference" icon={Globe}>
+                      <SelectInput
+                        name="job_type"
+                        value={profile?.job_type || "onsite"}
+                        onChange={handleInputChange}
+                        options={["onsite", "remote", "hybrid"]}
+                        labels={["On-Site", "Remote", "Hybrid"]}
+                      />
+                    </Field>
+                    <Field label="Expected Salary ($)" icon={Coins}>
+                      <TextInput
+                        type="number"
+                        name="expected_salary"
+                        value={profile?.expected_salary || ""}
+                        onChange={handleInputChange}
+                        placeholder="e.g. 100000"
+                      />
+                    </Field>
+                    <Field label="Primary Industry Focus" icon={Tag}>
+                      <TextInput name="primary_industry_focus" value={profile?.primary_industry_focus || ""} onChange={handleInputChange} placeholder="e.g. Fintech, E-commerce" />
+                    </Field>
+                    <div className="md:col-span-2">
+                      <Field label="Long-term Career Goal" icon={Target}>
+                        <textarea
+                          rows={2}
+                          name="long_term_goal"
+                          value={profile?.long_term_goal || ""}
+                          onChange={handleInputChange}
+                          placeholder="e.g. Lead a global sales intelligence team at an enterprise level"
+                          className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-xs font-semibold text-slate-700 outline-none transition-all focus:border-[#FF8A00] focus:bg-white"
+                        />
+                      </Field>
+                    </div>
+                    <div className="md:col-span-2">
+                      <Field label="Key Responsibilities" icon={FileText}>
+                        <textarea
+                          rows={3}
+                          name="key_responsibilities"
+                          value={profile?.key_responsibilities || ""}
+                          onChange={handleInputChange}
+                          placeholder="Detail your primary professional responsibilities..."
+                          className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-xs font-semibold text-slate-700 outline-none transition-all focus:border-[#FF8A00] focus:bg-white"
+                        />
+                      </Field>
+                    </div>
+                    <div className="md:col-span-2">
+                      <Field label="Major Achievements" icon={CheckCircle2}>
+                        <textarea
+                          rows={3}
+                          name="major_achievements"
+                          value={profile?.major_achievements || ""}
+                          onChange={handleInputChange}
+                          placeholder="Highlight your top career accomplishments and milestones..."
+                          className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-xs font-semibold text-slate-700 outline-none transition-all focus:border-[#FF8A00] focus:bg-white"
+                        />
+                      </Field>
+                    </div>
                   </div>
                 </div>
-              </form>
+              )}
 
-              <div className="rounded-[28px] border border-rose-100 bg-white p-8 shadow-sm">
-                <h3 className="mb-4 flex items-center gap-3 text-xl font-black uppercase text-slate-900"><Trash2 className="h-6 w-6 text-rose-500" /> Evaluation Reset</h3>
-                <p className="mb-8 max-w-xl text-sm font-medium leading-relaxed text-slate-500">Want to start fresh? Resetting your evaluation will <span className="font-bold italic text-rose-600 underline">permanently delete</span> all your current scores and AI insights.</p>
-                <button onClick={handleRetakeAssessment} className="rounded-xl border-2 border-rose-100 bg-white px-8 py-3 text-[10px] font-black uppercase tracking-widest text-rose-500 transition-all duration-300 hover:border-rose-500 hover:bg-rose-500 hover:text-white">Reset My Evaluation</button>
-              </div>
+              {/* EXPERIENCE & EDUCATION TAB */}
+              {activeTab === "experience" && (
+                <div className="space-y-6">
+                  
+                  {/* AI Work Gap Report Alert */}
+                  {profile?.career_gap_report && (profile.career_gap_report.has_gap_exceeding_6mo || profile.career_gap_report.has_gap_exceeding_12mo) && (
+                    <div className="rounded-2xl border border-amber-100 bg-amber-50/60 p-4 flex gap-3 items-start animate-in fade-in duration-200">
+                      <ShieldAlert className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                      <div className="space-y-1">
+                        <h4 className="text-xs font-bold text-amber-900 uppercase tracking-wider">AI Work Gaps Audit</h4>
+                        <p className="text-xs text-amber-850">
+                          {profile.career_gap_report.has_gap_exceeding_12mo 
+                            ? "A gap of more than 12 months was detected in your career history." 
+                            : "A gap of more than 6 months was detected in your career history."} ({profile.career_gap_report.total_gap_months || 0} months total).
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Experience list */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest">Experience History</h3>
+                      <button
+                        type="button"
+                        onClick={() => addHistoryItem("experience_history")}
+                        className="flex items-center gap-1 text-[10px] font-black uppercase text-[#FF8A00] hover:text-[#E67A00]"
+                      >
+                        <PlusCircle className="h-3.5 w-3.5" /> Add Experience
+                      </button>
+                    </div>
+                    
+                    <div className="space-y-4">
+                      {(profile?.experience_history || []).map((exp, index) => (
+                        <div key={index} className="group relative rounded-2xl border border-slate-200 bg-slate-50/30 p-5 transition-all hover:bg-white hover:shadow-lg hover:shadow-slate-200/50">
+                          <button
+                            type="button"
+                            onClick={() => removeHistoryItem("experience_history", index)}
+                            className="absolute right-4 top-4 text-slate-350 hover:text-rose-500 transition-colors"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                            <Field label="Role Title" icon={User}>
+                              <TextInput value={exp.role || ""} onChange={(e) => handleArrayInputChange("experience_history", index, "role", e.target.value)} placeholder="e.g. Account Executive" />
+                            </Field>
+                            <Field label="Company" icon={Globe}>
+                              <TextInput value={exp.company || ""} onChange={(e) => handleArrayInputChange("experience_history", index, "company", e.target.value)} placeholder="e.g. Acme Corp" />
+                            </Field>
+                            <Field label="Location" icon={MapPin}>
+                              <TextInput value={exp.location || ""} onChange={(e) => handleArrayInputChange("experience_history", index, "location", e.target.value)} placeholder="City, State / Remote" />
+                            </Field>
+                            <div className="grid grid-cols-2 gap-3">
+                              <Field label="Start Month/Year" icon={Calendar}>
+                                <TextInput value={exp.start_date || ""} onChange={(e) => handleArrayInputChange("experience_history", index, "start_date", e.target.value)} placeholder="MM/YYYY" />
+                              </Field>
+                              <Field label="End Month/Year" icon={Calendar}>
+                                <TextInput value={exp.end_date || ""} onChange={(e) => handleArrayInputChange("experience_history", index, "end_date", e.target.value)} placeholder="MM/YYYY or Present" />
+                              </Field>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 border-t border-slate-100 pt-3">
+                            <div className="mb-2 flex items-center justify-between">
+                              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">Key Achievements</label>
+                              <button
+                                type="button"
+                                onClick={() => handleArrayInputChange("experience_history", index, "descriptions", [...(exp.descriptions || []), ""])}
+                                className="flex items-center gap-1 text-[9px] font-black uppercase text-[#FF8A00] hover:text-[#E67A00]"
+                              >
+                                <PlusCircle className="h-3 w-3" /> Add achievement
+                              </button>
+                            </div>
+                            <div className="space-y-2">
+                              {(exp.descriptions || []).map((desc, dIdx) => (
+                                <div key={dIdx} className="group/desc relative">
+                                  <textarea
+                                    value={desc}
+                                    onChange={(e) => {
+                                      const next = [...(exp.descriptions || [])];
+                                      next[dIdx] = e.target.value;
+                                      handleArrayInputChange("experience_history", index, "descriptions", next);
+                                    }}
+                                    rows={2}
+                                    className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 pr-8 text-xs font-semibold text-slate-600 outline-none focus:border-[#FF8A00] focus:ring-1 focus:ring-[#FF8A00]/25"
+                                    placeholder="Describe impact, quotas hit, or metrics improved..."
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const next = [...(exp.descriptions || [])];
+                                      next.splice(dIdx, 1);
+                                      handleArrayInputChange("experience_history", index, "descriptions", next);
+                                    }}
+                                    className="absolute right-2.5 top-2.5 opacity-0 group-hover/desc:opacity-100 hover:text-rose-500 transition-opacity text-slate-350"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Education list */}
+                  <div className="space-y-4 border-t border-slate-100 pt-6">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest">Academic History</h3>
+                      <button
+                        type="button"
+                        onClick={() => addHistoryItem("education_history")}
+                        className="flex items-center gap-1 text-[10px] font-black uppercase text-[#FF8A00] hover:text-[#E67A00]"
+                      >
+                        <PlusCircle className="h-3.5 w-3.5" /> Add Education
+                      </button>
+                    </div>
+
+                    <div className="space-y-4">
+                      {(profile?.education_history || []).map((edu, index) => (
+                        <div key={index} className="group relative rounded-2xl border border-slate-200 bg-slate-50/30 p-5 transition-all hover:bg-white hover:shadow-lg hover:shadow-slate-200/50">
+                          <button
+                            type="button"
+                            onClick={() => removeHistoryItem("education_history", index)}
+                            className="absolute right-4 top-4 text-slate-350 hover:text-rose-500 transition-colors"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <Field label="Institution Name" icon={Globe}>
+                              <TextInput value={edu.institution || ""} onChange={(e) => handleArrayInputChange("education_history", index, "institution", e.target.value)} placeholder="e.g. Harvard University" />
+                            </Field>
+                            <Field label="Degree" icon={GraduationCap}>
+                              <TextInput value={edu.degree || ""} onChange={(e) => handleArrayInputChange("education_history", index, "degree", e.target.value)} placeholder="e.g. Bachelor of Science" />
+                            </Field>
+                            <Field label="Field of Study" icon={Target}>
+                              <TextInput value={edu.field || ""} onChange={(e) => handleArrayInputChange("education_history", index, "field", e.target.value)} placeholder="e.g. Computer Science" />
+                            </Field>
+                            <div className="grid grid-cols-2 gap-3">
+                              <Field label="Start Year" icon={Calendar}>
+                                <TextInput value={edu.start_date || ""} onChange={(e) => handleArrayInputChange("education_history", index, "start_date", e.target.value)} placeholder="YYYY" />
+                              </Field>
+                              <Field label="End Year" icon={Calendar}>
+                                <TextInput value={edu.end_date || ""} onChange={(e) => handleArrayInputChange("education_history", index, "end_date", e.target.value)} placeholder="YYYY" />
+                              </Field>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* PRESENCE & INTERESTS TAB */}
+              {activeTab === "presence" && (
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest mb-1">Presence, Interests & Actions</h3>
+                    <p className="text-xs text-slate-400">Configure your digital representation and manage account status.</p>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <Field label="LinkedIn Profile URL" icon={Linkedin}>
+                      <TextInput
+                        type="url"
+                        name="linkedin_url"
+                        value={profile?.linkedin_url || ""}
+                        onChange={handleInputChange}
+                        placeholder="https://linkedin.com/in/username"
+                      />
+                    </Field>
+                    <Field label="Portfolio / Personal Website" icon={Globe}>
+                      <TextInput
+                        type="url"
+                        name="portfolio_url"
+                        value={profile?.portfolio_url || ""}
+                        onChange={handleInputChange}
+                        placeholder="https://yourportfolio.com"
+                      />
+                    </Field>
+                    <Field label="Location Tier / Availability Scope" icon={MapPin}>
+                      <SelectInput
+                        name="location_tier"
+                        value={profile?.location_tier || "Tier 1"}
+                        onChange={handleInputChange}
+                        options={["Tier 1", "Tier 2", "Tier 3", "Remote", "International"]}
+                        labels={["Tier 1 (Major Metros)", "Tier 2 (Secondary Cities)", "Tier 3 (Regional Hubs)", "Remote Only", "International Roles"]}
+                      />
+                    </Field>
+                    <div className="md:col-span-2">
+                      <Field label="Career Interests (comma separated)" icon={Tag}>
+                        <TextInput
+                          value={getArrayAsString(profile?.career_interests)}
+                          onChange={(e) => handleCommaSeparatedChange("career_interests", e.target.value)}
+                          placeholder="e.g. Enterprise Sales, Account Executive, Sales Strategy"
+                        />
+                      </Field>
+                    </div>
+                    <div className="md:col-span-2">
+                      <Field label="Learning Interests (comma separated)" icon={GraduationCap}>
+                        <TextInput
+                          value={getArrayAsString(profile?.learning_interests)}
+                          onChange={(e) => handleCommaSeparatedChange("learning_interests", e.target.value)}
+                          placeholder="e.g. Negotiation Strategy, Cloud Architecture, AI applications"
+                        />
+                      </Field>
+                    </div>
+                  </div>
+
+                  {/* Reset Assessment Action Panel */}
+                  <div className="border-t border-slate-100 pt-6 mt-6">
+                    <div className="rounded-2xl border border-rose-100 bg-rose-50/40 p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                      <div>
+                        <h4 className="text-xs font-black uppercase text-slate-900 tracking-wider mb-1">Reset Profile Evaluation</h4>
+                        <p className="text-xs text-slate-500">Resetting will permanently delete your assessment scores, insights, and benchmarks.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleRetakeAssessment}
+                        className="rounded-xl border border-rose-200 bg-white hover:bg-rose-500 hover:text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest text-rose-600 transition"
+                      >
+                        Reset Evaluation
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
             </div>
-          </div>
+
+            {/* Bottom Actions Sticky Panel */}
+            <div className="border-t border-slate-150 bg-white/95 px-6 py-4 flex items-center justify-between gap-4 rounded-b-3xl shrink-0">
+              <button
+                type="button"
+                onClick={() => router.push("/dashboard/candidate")}
+                className="rounded-xl px-5 py-2.5 text-[10px] font-black uppercase tracking-widest text-slate-500 transition hover:bg-slate-50"
+              >
+                Discard
+              </button>
+              <button
+                type="submit"
+                disabled={saving}
+                className="flex items-center gap-2 rounded-xl bg-[#FF8A00] px-5 py-2.5 text-[10px] font-black uppercase tracking-widest text-white transition hover:bg-[#E67A00] shadow-md shadow-orange-600/10 active:scale-95 disabled:opacity-70"
+              >
+                {saving ? (
+                  <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                ) : (
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                )}
+                {saving ? "Saving Changes" : "Save Profile"}
+              </button>
+            </div>
+          </form>
         </div>
-      </main>
-    </div>
-  );
+      </div>
+    );
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
+function Field({ label, icon: Icon, children }: { label: string; icon: React.ElementType; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl bg-slate-50 p-4">
-      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">{label}</p>
-      <p className="mt-2 text-sm font-bold text-slate-900">{value}</p>
+    <div className="flex flex-col group">
+      <label className="mb-2 ml-1 flex items-center text-[9px] font-black uppercase tracking-widest text-slate-400 group-focus-within:text-[#FF8A00] transition-colors">
+        <Icon className="mr-1.5 h-3.5 w-3.5 opacity-60" />
+        {label}
+      </label>
+      {children}
     </div>
   );
 }
 
 function TextInput({ className = "", ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} className={`w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition-all focus:border-[#FF8A00] focus:ring-2 focus:ring-[#FF8A00]/20 ${className}`} />;
+  return (
+    <input
+      {...props}
+      className={`w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-xs font-semibold text-slate-700 outline-none transition-all focus:border-[#FF8A00] focus:bg-white ${className}`}
+    />
+  );
 }
 
-function SelectInput({ options, labels, className = "", ...props }: React.SelectHTMLAttributes<HTMLSelectElement> & { options: string[]; labels: string[] }) {
+function SelectInput({
+  options,
+  labels,
+  className = "",
+  ...props
+}: React.SelectHTMLAttributes<HTMLSelectElement> & { options: string[]; labels: string[] }) {
   return (
-    <select {...props} className={`w-full cursor-pointer appearance-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 outline-none transition-all focus:border-[#FF8A00] focus:ring-2 focus:ring-[#FF8A00]/20 ${className}`}>
-      {options.map((option, index) => <option key={option} value={option}>{labels[index]}</option>)}
+    <select
+      {...props}
+      className={`w-full cursor-pointer rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 outline-none transition-all focus:border-[#FF8A00] ${className}`}
+    >
+      {options.map((option, index) => (
+        <option key={option} value={option}>
+          {labels[index]}
+        </option>
+      ))}
     </select>
   );
 }
 
 function LockedValue({ value }: { value: string }) {
-  return <div className="flex w-full cursor-not-allowed items-center justify-between rounded-xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm font-bold text-slate-700"><span>{value}</span><ShieldCheck className="h-4 w-4" /></div>;
-}
-
-function Section({ title, description, icon: Icon, children }: { title: string; description?: string; icon: React.ElementType; children: React.ReactNode; }) {
   return (
-    <div className="rounded-4xl border border-slate-200 bg-white p-10 shadow-sm transition-all hover:shadow-xl hover:shadow-slate-200/50">
-      <div className="mb-10">
-        <h2 className="mb-2 flex items-center gap-4 text-2xl font-black text-slate-900"><div className="rounded-2xl border border-primary-light/50 bg-primary-light p-3 text-primary shadow-sm"><Icon className="h-6 w-6" /></div>{title}</h2>
-        {description && <p className="ml-16 font-medium text-slate-500">{description}</p>}
-      </div>
-      {children}
+    <div className="flex w-full cursor-not-allowed items-center justify-between rounded-xl border border-slate-200 bg-slate-100 px-4 py-2.5 text-xs font-bold text-slate-750">
+      <span>{value}</span>
+      <ShieldCheck className="h-4 w-4 text-slate-450" />
     </div>
   );
-}
-
-function Field({ label, icon: Icon, children, fullWidth = false }: { label: string; icon: React.ElementType; children: React.ReactNode; fullWidth?: boolean; }) {
-  return (
-    <div className={fullWidth ? "md:col-span-2" : "group"}>
-      <label className="mb-3 ml-1 flex items-center text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 transition-colors group-focus-within:text-[#FF8A00]"><Icon className="mr-2 h-3.5 w-3.5 opacity-70" />{label}</label>
-      {children}
-    </div>
-  );
-}
+}
