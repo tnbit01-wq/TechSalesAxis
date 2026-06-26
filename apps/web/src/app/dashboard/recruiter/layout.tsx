@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import RecruiterHeader from "@/components/RecruiterHeader";
 import { SidebarProvider } from "@/context/SidebarContext";
 import RecruiterLayoutClient from "@/components/RecruiterLayoutClient";
+import SidePanel from "@/components/SidePanel";
 
 export default function RecruiterDashboardLayout({
   children,
@@ -65,6 +66,7 @@ export default function RecruiterDashboardLayout({
         <RecruiterLayoutClient>
           <RecruiterHeader />
           <main className="w-full flex-1 min-h-0 pt-16 overflow-y-auto overflow-x-hidden">{children}</main>
+          <SidePanel role="recruiter" />
         </RecruiterLayoutClient>
       </div>
     </SidebarProvider>

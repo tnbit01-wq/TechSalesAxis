@@ -6,6 +6,7 @@ import { Bell, Sparkles, Search, MessageSquare, Radio } from "lucide-react";
 import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
 import { useChatViewStore } from "@/hooks/useChatViewStore";
+import { useSidePanelStore } from "@/hooks/useSidePanelStore";
 
 interface Notification { id: string; title: string; message: string; is_read: boolean; created_at: string; }
 interface ProfileData { full_name?: string; current_role?: string; profile_photo_url?: string; }
@@ -27,6 +28,7 @@ export default function CandidateHeader({ profile: initialProfile }: { profile?:
   const router = useRouter();
   const pathname = usePathname();
   const { toggleChatMode } = useChatViewStore();
+  const { isOpen, panelType, openPanel } = useSidePanelStore();
   const [unreadCount, setUnreadCount] = useState(0);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [profile, setProfile] = useState<ProfileData | null>(initialProfile || null);
@@ -168,7 +170,7 @@ export default function CandidateHeader({ profile: initialProfile }: { profile?:
           <div className="h-6 w-px bg-slate-200 mx-1" />
 
           {/* Messages Link */}
-          <button onClick={() => router.push("/dashboard/candidate/messages")} className={`relative h-9 w-9 flex items-center justify-center rounded-lg hover:bg-slate-100/80 transition-all cursor-pointer ${pathname.includes("/messages") ? "text-[#FF8A00] bg-orange-50/50" : "text-slate-400"}`} title="Messages">
+          <button onClick={() => openPanel("messages")} className={`relative h-9 w-9 flex items-center justify-center rounded-lg hover:bg-slate-100/80 transition-all cursor-pointer ${(isOpen && panelType === "messages") ? "text-[#FF8A00] bg-orange-50/50" : "text-slate-400"}`} title="Messages">
             <MessageSquare className="h-[17px] w-[17px]" strokeWidth={1.8} />
           </button>
 
@@ -177,8 +179,8 @@ export default function CandidateHeader({ profile: initialProfile }: { profile?:
             <Radio className="h-[17px] w-[17px]" strokeWidth={1.8} />
           </button>
 
-          {/* Notifications Link (Immediate redirect to notification page) */}
-          <button onClick={() => router.push("/dashboard/candidate/notifications")} className={`relative h-9 w-9 flex items-center justify-center rounded-lg hover:bg-slate-100/80 transition-all cursor-pointer ${pathname.includes("/notifications") ? "text-[#FF8A00] bg-orange-50/50" : "text-slate-400"}`} title="Notifications">
+          {/* Notifications Link */}
+          <button onClick={() => openPanel("notifications")} className={`relative h-9 w-9 flex items-center justify-center rounded-lg hover:bg-slate-100/80 transition-all cursor-pointer ${(isOpen && panelType === "notifications") ? "text-[#FF8A00] bg-orange-50/50" : "text-slate-400"}`} title="Notifications">
             <Bell className="h-[17px] w-[17px]" strokeWidth={1.8} />
             {unreadCount > 0 && (
               <span className="absolute top-1.5 right-1.5 h-2 w-2 bg-[#FF8A00] rounded-full ring-2 ring-white" />

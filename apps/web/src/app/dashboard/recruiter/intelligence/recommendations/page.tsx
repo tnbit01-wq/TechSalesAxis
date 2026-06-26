@@ -23,7 +23,6 @@ import {
 } from "lucide-react";
 import { awsAuth } from "@/lib/awsAuth";
 import { apiClient } from "@/lib/apiClient";
-import RecruiterSidebar from "@/components/RecruiterSidebar";
 import LockedView from "@/components/dashboard/LockedView";
 import CandidateProfileModal from "@/components/CandidateProfileModal";
 import JobInviteModal from "@/components/JobInviteModal";

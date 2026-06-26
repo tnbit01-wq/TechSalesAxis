@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useChatViewStore } from '@/hooks/useChatViewStore';
 import {
-  Mic, Send, X, Plus, LayoutDashboard, MicOff, Brain,
+  Mic, Send, X, Plus, LayoutDashboard, MicOff,
   Briefcase, Users, Building2, BarChart3, ShieldCheck,
   Target, AlertCircle, User, ExternalLink, ArrowRight,
   Trash2, Clock, ChevronRight, Sparkles, FileText,
@@ -2022,7 +2022,7 @@ function MessageBubble({
             ? 'bg-orange-50 border border-orange-200/50' 
             : 'bg-orange-500/20 border border-orange-500/20'
         }`}>
-          <Brain className="w-3.5 h-3.5 text-[#FF8A00]" />
+          <Sparkles className="w-3.5 h-3.5 text-[#FF8A00]" />
         </div>
       )}
       <div className={`max-w-[85%] ${isUser ? 'order-first' : ''}`}>
@@ -2836,7 +2836,7 @@ export default function GlobalChatInterface({ isInline = false }: { isInline?: b
             <div className="px-5 py-5 border-b border-white/[0.05]">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 bg-[#FF8A00] rounded-xl flex items-center justify-center shadow-lg shadow-orange-950/30">
-                  <Brain className="w-5 h-5 text-white" />
+                  <Sparkles className="w-5 h-5 text-white" />
                 </div>
                 <div>
                   <p className="text-sm font-bold tracking-tight text-white">TechSalesAxis AI</p>
@@ -3081,9 +3081,6 @@ export default function GlobalChatInterface({ isInline = false }: { isInline?: b
               </div>
             ) : showStartup ? (
               <div className="h-full flex flex-col justify-center items-center max-w-md mx-auto text-center py-6">
-                <div className="w-11 h-11 bg-gradient-to-tr from-[#FF8A00] to-[#FF6B00] rounded-2xl flex items-center justify-center shadow-lg shadow-orange-500/20 mb-4 animate-pulse">
-                  <Brain className="w-5.5 h-5.5 text-white" />
-                </div>
                 <h2 className={`text-xl md:text-2xl font-serif font-semibold mb-2 leading-snug ${isInline ? 'text-slate-800' : 'text-white'}`}>
                   {welcomeText}
                 </h2>

@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import CandidateHeader from "@/components/CandidateHeader";
 import { SidebarProvider } from "@/context/SidebarContext";
 import CandidateLayoutClient from "@/components/CandidateLayoutClient";
+import SidePanel from "@/components/SidePanel";
 
 export default function CandidateDashboardLayout({
   children,
@@ -62,6 +63,7 @@ export default function CandidateDashboardLayout({
         <CandidateLayoutClient>
           <CandidateHeader />
           <main className="w-full pt-16 flex-1 min-h-0 overflow-y-auto overflow-x-hidden">{children}</main>
+          <SidePanel role="candidate" />
         </CandidateLayoutClient>
       </div>
     </SidebarProvider>

@@ -95,78 +95,141 @@ export default function RecruiterDashboard() {
   const totalApps = stats?.pending_applications_count ?? 0;
   const funnel = stats?.funnel_data || { applied: totalApps, shortlisted: 0, interviewed: 0, offered: 0, hired: 0 };
   const conversionRate = totalApps > 0 ? (((funnel.hired || stats?.total_hires_count || 0) / totalApps) * 100).toFixed(1) : "0.0";
-
   return (
-    <div className="w-full min-h-[calc(100vh-64px)] bg-[#F8F9FC] flex flex-col p-4 md:p-6 space-y-6 overflow-y-auto">
+    <div className="w-full min-h-[calc(100vh-64px)] bg-gradient-to-br from-slate-50 via-white to-orange-50/10 flex flex-col p-4 md:p-6 space-y-6 overflow-y-auto">
       {/* ── TOP SECTION ── */}
-      <div className="flex flex-col md:flex-row gap-6 items-stretch">
-        {/* Left: 60% Width - Embedded AI Assistant Chat */}
-        <div className="w-full md:w-[60%] h-[520px] flex flex-col shrink-0">
+      <div className="flex flex-col lg:flex-row gap-6 items-stretch">
+        {/* Left: 48% Width - Embedded AI Assistant Chat */}
+        <div className="w-full lg:w-[48%] h-[420px] flex flex-col shrink-0 rounded-2xl overflow-hidden border border-slate-200/80 shadow-md shadow-slate-100/50 bg-white">
           <GlobalChatInterface isInline={true} />
         </div>
 
-        {/* Right: 40% Width - Welcome Header & KPIs */}
-        <div className="w-full md:w-[40%] flex flex-col gap-6 justify-between">
+        {/* Right: 52% Width - Welcome Header & Hiring Pipeline Progress */}
+        <div className="w-full lg:w-[52%] h-[420px] flex flex-col gap-5 justify-between">
           {/* Welcome Card */}
-          <div className="relative overflow-hidden bg-gradient-to-r from-[#0F172A] to-[#1E293B] rounded-2xl p-5 shadow-sm text-left flex-shrink-0 flex-1 flex flex-col justify-between">
-            <div>
-              <p className="text-[10px] font-bold text-orange-400 uppercase tracking-widest mb-1">RECRUITER WORKSPACE</p>
-              <h1 className="text-xl md:text-2xl font-serif font-semibold text-white leading-tight">
-                Welcome back, {userName}
-              </h1>
-              <p className="text-xs text-slate-400 mt-1">
-                You have {totalApps} active applications pending review.
-              </p>
-            </div>
-            <div className="mt-4 flex gap-2">
-              <Link href="/dashboard/recruiter/hiring/jobs/new">
-                <button className="flex items-center gap-1.5 px-4 py-2 bg-[#FF8A00] hover:bg-[#E67A00] text-white rounded-xl text-xs font-bold transition-all active:scale-95 shadow-md shadow-orange-900/10">
-                  <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
-                  Create Job
-                </button>
-              </Link>
+          <div className="relative overflow-hidden bg-gradient-to-br from-[#0F172A] via-[#1E293B] to-[#0B0F19] rounded-2xl p-5 shadow-lg border border-slate-800 flex-shrink-0 flex-1 flex flex-col justify-between group transition-all duration-300 hover:shadow-xl hover:shadow-slate-900/10">
+            {/* Background glowing decorations */}
+            <div className="absolute top-0 right-0 w-36 h-36 bg-[#FF8A00]/8 rounded-full blur-3xl -mr-6 -mt-6 group-hover:bg-[#FF8A00]/12 transition-colors duration-500"></div>
+            <div className="absolute -bottom-8 -left-8 w-24 h-24 bg-blue-500/5 rounded-full blur-2xl"></div>
+            
+            <div className="relative z-10 flex h-full justify-between items-center gap-4">
+              <div className="flex-1 flex flex-col justify-between h-full text-left">
+                <div>
+                  <h1 className="text-xl md:text-2xl font-semibold text-white tracking-tight leading-tight">
+                    Welcome back, {userName}
+                  </h1>
+                  <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                    You have <span className="text-orange-400 font-bold">{totalApps}</span> active applications pending review.
+                  </p>
+                </div>
+                
+                <div className="mt-4 flex gap-2.5">
+                  <Link href="/dashboard/recruiter/hiring/jobs/new">
+                    <button className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-[#FF8A00] to-[#FF9F24] hover:from-[#E67A00] hover:to-[#FF8A00] text-white rounded-xl text-xs font-bold transition-all duration-205 active:scale-95 shadow-md shadow-orange-500/10 hover:shadow-lg hover:shadow-orange-500/20">
+                      <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
+                      Create Job Opening
+                    </button>
+                  </Link>
+                </div>
+              </div>
+
+              {/* Circular progress bars */}
+              <div className="flex gap-4 shrink-0 items-center justify-center bg-white/[0.03] border border-white/[0.05] rounded-xl p-3.5 backdrop-blur-md">
+                <CircularProgress value={profile.completion_score} label="Completion" color="stroke-[#FF8A00]" />
+                <CircularProgress value={companyScore} label="Company Score" color="stroke-blue-500" />
+              </div>
             </div>
           </div>
 
-          {/* Hiring Performance & Funnel Chart */}
-          <div className="bg-white rounded-2xl border border-slate-200/65 shadow-sm p-5 flex flex-col gap-4 flex-shrink-0 text-left">
+          {/* Redesigned Hiring Pipeline Tracker */}
+          <div className="bg-white rounded-2xl border border-slate-200/70 shadow-sm p-5 flex flex-col gap-4 flex-shrink-0 text-left h-[225px] justify-between">
             <div className="flex items-center justify-between">
-              <h2 className="text-[13px] font-bold text-[#0F172A] tracking-tight">Hiring Performance</h2>
-              <span className="text-[10px] font-semibold text-[#FF8A00] bg-orange-50 px-2 py-0.5 rounded-full">Live Stats</span>
+              <div className="flex items-center gap-2">
+                <div className="h-2 w-2 rounded-full bg-[#FF8A00] animate-ping" />
+                <h2 className="text-[11px] font-extrabold text-[#0F172A] uppercase tracking-wider">Hiring Pipeline Progress</h2>
+              </div>
+              <span className="text-[10px] font-bold text-[#FF8A00] bg-orange-50 border border-orange-100/50 px-2.5 py-0.5 rounded-full font-sans tracking-wide">
+                Live Funnel
+              </span>
             </div>
-            
-            {/* 4 KPIs in mini grid */}
-            <div className="grid grid-cols-2 gap-2.5">
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 flex flex-col">
-                <span className="text-[10px] text-slate-400 font-medium leading-none mb-1">New Applicants</span>
-                <span className="text-[17px] font-extrabold text-[#0F172A]">{totalApps}</span>
-              </div>
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 flex flex-col">
-                <span className="text-[10px] text-slate-400 font-medium leading-none mb-1">Active Postings</span>
-                <span className="text-[17px] font-extrabold text-[#0F172A]">{stats?.active_jobs_count ?? 0}</span>
-              </div>
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 flex flex-col">
-                <span className="text-[10px] text-slate-400 font-medium leading-none mb-1">Interviews</span>
-                <span className="text-[17px] font-extrabold text-[#0F172A]">{funnel.interviewed}</span>
-              </div>
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 flex flex-col">
-                <span className="text-[10px] text-slate-400 font-medium leading-none mb-1">Hired Candidates</span>
-                <span className="text-[17px] font-extrabold text-[#0F172A]">{stats?.total_hires_count ?? funnel.hired}</span>
+
+            {/* Stepper Pipeline */}
+            <div className="relative pt-1 pb-1">
+              <div className="absolute top-4 left-6 right-6 h-[2px] bg-slate-100 -z-0"></div>
+              <div className="relative z-10 flex justify-between items-start">
+                
+                {/* Stage 1: Received Resumes */}
+                <div className="flex-1 flex flex-col items-center">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center border text-xs font-bold bg-orange-50 border-orange-200 text-[#FF8A00] shadow-sm">
+                    <Users className="h-4 w-4" />
+                  </div>
+                  <span className="text-[9.5px] font-bold text-slate-800 mt-2">New Resumes</span>
+                  <span className="text-[8.5px] font-semibold text-slate-400 mt-0.5 bg-slate-50 px-1.5 py-0.5 rounded-md border border-slate-100">{totalApps} Received</span>
+                </div>
+
+                {/* Stage 2: Shortlisted */}
+                <div className="flex-1 flex flex-col items-center">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center border text-xs font-bold transition-all duration-300 ${
+                    funnel.shortlisted > 0 
+                      ? 'bg-blue-500 border-blue-500 text-white shadow-sm shadow-blue-500/20' 
+                      : 'bg-slate-50 border-slate-200 text-slate-400'
+                  }`}>
+                    <Target className="h-4 w-4" />
+                  </div>
+                  <span className="text-[9.5px] font-bold text-slate-800 mt-2">Selected</span>
+                  <span className="text-[8.5px] font-semibold text-slate-400 mt-0.5 bg-slate-50 px-1.5 py-0.5 rounded-md border border-slate-100">
+                    {funnel.shortlisted} Shortlisted
+                  </span>
+                </div>
+
+                {/* Stage 3: Interview */}
+                <div className="flex-1 flex flex-col items-center">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center border text-xs font-bold transition-all duration-300 ${
+                    funnel.interviewed > 0 
+                      ? 'bg-amber-500 border-amber-500 text-white shadow-sm shadow-amber-500/20' 
+                      : 'bg-slate-50 border-slate-200 text-slate-400'
+                  }`}>
+                    <MessageSquare className="h-4 w-4" />
+                  </div>
+                  <span className="text-[9.5px] font-bold text-slate-800 mt-2">Interviews</span>
+                  <span className="text-[8.5px] font-semibold text-slate-400 mt-0.5 bg-slate-50 px-1.5 py-0.5 rounded-md border border-slate-100">
+                    {funnel.interviewed} Scheduled
+                  </span>
+                </div>
+
+                {/* Stage 4: Hired */}
+                <div className="flex-1 flex flex-col items-center">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center border text-xs font-bold transition-all duration-300 ${
+                    (stats?.total_hires_count ?? funnel.hired) > 0 
+                      ? 'bg-emerald-500 border-emerald-500 text-white shadow-sm shadow-emerald-500/20' 
+                      : 'bg-slate-50 border-slate-200 text-slate-400'
+                  }`}>
+                    <Award className="h-4 w-4" />
+                  </div>
+                  <span className="text-[9.5px] font-bold text-slate-800 mt-2">Hired</span>
+                  <span className="text-[8.5px] font-semibold text-slate-400 mt-0.5 bg-slate-50 px-1.5 py-0.5 rounded-md border border-slate-100">
+                    {stats?.total_hires_count ?? funnel.hired} Completed
+                  </span>
+                </div>
+
               </div>
             </div>
 
-            {/* Funnel distribution chart */}
-            <div className="space-y-3 pt-3.5 border-t border-slate-100">
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-[11px] font-bold text-slate-500">Pipeline Funnel</span>
-                <span className="text-[10px] font-semibold text-[#FF8A00] bg-orange-50 px-2 py-0.5 rounded-full">{conversionRate}% Conversion</span>
+            {/* Funnel Metrics summary */}
+            <div className="grid grid-cols-3 gap-3 border-t border-slate-100 pt-3">
+              <div className="text-center bg-slate-50/50 rounded-xl py-1 border border-slate-100">
+                <span className="text-[9px] font-bold text-slate-450 uppercase tracking-wider block">Active Jobs</span>
+                <span className="text-[14px] font-extrabold text-[#0F172A]">{stats?.active_jobs_count ?? 0}</span>
               </div>
-              
-              <div className="space-y-2 text-xs">
-                <FunnelBar label="Applied" count={funnel.applied} pct={100} color="from-orange-500 to-amber-500" />
-                <FunnelBar label="Shortlisted" count={funnel.shortlisted} pct={funnel.applied > 0 ? Math.round((funnel.shortlisted / funnel.applied) * 100) : 0} color="from-orange-400 to-amber-400" />
-                <FunnelBar label="Interviewing" count={funnel.interviewed} pct={funnel.applied > 0 ? Math.round((funnel.interviewed / funnel.applied) * 100) : 0} color="from-amber-500 to-yellow-500" />
-                <FunnelBar label="Hired" count={funnel.hired} pct={funnel.applied > 0 ? Math.round((funnel.hired / funnel.applied) * 100) : 0} color="from-emerald-500 to-teal-500" />
+              <div className="text-center bg-slate-50/50 rounded-xl py-1 border border-slate-100">
+                <span className="text-[9px] font-bold text-slate-450 uppercase tracking-wider block">Offer Success</span>
+                <span className="text-[14px] font-extrabold text-[#0F172A]">{conversionRate}%</span>
+              </div>
+              <div className="text-center bg-[#FF8A00]/5 rounded-xl py-1 border border-[#FF8A00]/10">
+                <span className="text-[9px] font-bold text-orange-400 uppercase tracking-wider block">Shortlist Rate</span>
+                <span className="text-[14px] font-extrabold text-[#FF8A00]">
+                  {totalApps > 0 ? Math.round((funnel.shortlisted / totalApps) * 100) : 0}%
+                </span>
               </div>
             </div>
           </div>
@@ -176,28 +239,39 @@ export default function RecruiterDashboard() {
       {/* ── BOTTOM SECTION ── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pb-6">
         {/* Card 1: Active Job Postings */}
-        <div className="bg-white rounded-2xl border border-slate-200/65 shadow-sm flex flex-col h-[320px] min-h-0 overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3.5 border-b border-slate-100 flex-shrink-0 bg-slate-50/50">
-            <h2 className="text-[13px] font-bold text-[#0F172A] tracking-tight">Active Job Postings</h2>
-            <Link href="/dashboard/recruiter/hiring/jobs" className="text-[11px] font-semibold text-[#FF8A00] hover:text-[#E67A00] flex items-center gap-1">View all <ArrowRight className="h-3 w-3" /></Link>
+        <div className="bg-white rounded-2xl border border-slate-200/70 shadow-sm hover:shadow-md transition-shadow duration-300 flex flex-col h-[320px] min-h-0 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3.5 border-b border-slate-100/80 flex-shrink-0 bg-slate-50/50">
+            <div className="flex items-center gap-2">
+              <Briefcase className="h-4 w-4 text-[#FF8A00]" />
+              <h2 className="text-[12px] font-extrabold text-[#0F172A] uppercase tracking-wider">Active Job Postings</h2>
+            </div>
+            <Link href="/dashboard/recruiter/hiring/jobs" className="text-[11px] font-bold text-[#FF8A00] hover:text-[#E67A00] flex items-center gap-1 transition-colors">
+              View all <ArrowRight className="h-3 w-3" />
+            </Link>
           </div>
-          <div className="flex-1 overflow-y-auto p-1.5">
+          <div className="flex-1 overflow-y-auto p-2 space-y-1">
             {jobs.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center py-4">
-                <Briefcase className="h-5 w-5 text-slate-300 mb-1" strokeWidth={1.5} />
-                <p className="text-[12px] font-bold text-[#0F172A]">No active postings</p>
-                <Link href="/dashboard/recruiter/hiring/jobs/new" className="text-[10px] text-[#FF8A00] hover:underline mt-1">Create one</Link>
+              <div className="h-full flex flex-col items-center justify-center py-4 text-center">
+                <div className="h-10 w-10 rounded-full bg-slate-50 flex items-center justify-center mb-2 border border-slate-100">
+                  <Briefcase className="h-5 w-5 text-slate-300" strokeWidth={1.5} />
+                </div>
+                <p className="text-[11px] font-bold text-[#0F172A]">No active postings</p>
+                <Link href="/dashboard/recruiter/hiring/jobs/new" className="text-[10px] text-[#FF8A00] hover:underline mt-1 font-semibold">Create one</Link>
               </div>
             ) : jobs.map((job, i) => (
-              <div key={job.id} className={`flex items-center gap-3 px-3 py-2.5 hover:bg-[#FAFBFC] transition-all group rounded-xl ${i < jobs.length - 1 ? "border-b border-slate-100/60" : ""}`}>
+              <div key={job.id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-[#FAFBFC] border border-transparent hover:border-slate-100/80 transition-all duration-205 group rounded-xl">
                 <Link href={`/dashboard/recruiter/hiring/jobs/${job.id}/edit`} className="flex-1 min-w-0">
-                  <h3 className="text-[11.5px] font-semibold text-[#0F172A] truncate group-hover:text-[#FF8A00] transition-colors">{job.title}</h3>
-                  <p className="text-[9.5px] text-slate-400 mt-0.5">{job.location || "Remote"} · {job.job_type || "Full-time"}</p>
+                  <h3 className="text-[11.5px] font-bold text-[#0F172A] truncate group-hover:text-[#FF8A00] transition-colors">{job.title}</h3>
+                  <p className="text-[9.5px] text-slate-400 mt-0.5 flex items-center gap-1">
+                    <MapPin className="h-2.5 w-2.5 text-slate-350" /> {job.location || "Remote"} · {job.job_type || "Full-time"}
+                  </p>
                 </Link>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <div className="text-right"><p className="text-[13px] font-bold text-[#0F172A]">{jobAppCounts[job.id] ?? 0}</p></div>
+                <div className="flex items-center gap-2.5 flex-shrink-0">
+                  <div className="bg-slate-100 px-2 py-0.5 rounded-md text-right min-w-[32px] border border-slate-150">
+                    <p className="text-[11.5px] font-bold text-[#0F172A] leading-tight">{jobAppCounts[job.id] ?? 0}</p>
+                  </div>
                   <Link href={`/dashboard/recruiter/hiring/jobs/${job.id}/edit`}>
-                    <span className="px-2 py-1 bg-slate-100 hover:bg-slate-200/80 text-[#0F172A] text-[9.5px] font-semibold rounded-md transition-colors">Manage</span>
+                    <span className="px-2.5 py-1 bg-[#0F172A] hover:bg-slate-800 text-white text-[9.5px] font-bold rounded-md transition-colors shadow-xs active:scale-95">Manage</span>
                   </Link>
                 </div>
               </div>
@@ -206,32 +280,39 @@ export default function RecruiterDashboard() {
         </div>
 
         {/* Card 2: Recent Applications Queue */}
-        <div className="bg-white rounded-2xl border border-slate-200/65 shadow-sm flex flex-col h-[320px] min-h-0 overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3.5 border-b border-slate-100 flex-shrink-0 bg-slate-50/50">
-            <h2 className="text-[13px] font-bold text-[#0F172A] tracking-tight">Recent Applications</h2>
-            <Link href="/dashboard/recruiter/hiring/applications" className="text-[11px] font-semibold text-[#FF8A00] hover:text-[#E67A00] flex items-center gap-1 transition-colors">View all <ArrowRight className="h-3 w-3" /></Link>
+        <div className="bg-white rounded-2xl border border-slate-200/70 shadow-sm hover:shadow-md transition-shadow duration-300 flex flex-col h-[320px] min-h-0 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3.5 border-b border-slate-100/80 flex-shrink-0 bg-slate-50/50">
+            <div className="flex items-center gap-2">
+              <Users className="h-4 w-4 text-[#FF8A00]" />
+              <h2 className="text-[12px] font-extrabold text-[#0F172A] uppercase tracking-wider">Recent Applications</h2>
+            </div>
+            <Link href="/dashboard/recruiter/hiring/applications" className="text-[11px] font-bold text-[#FF8A00] hover:text-[#E67A00] flex items-center gap-1 transition-colors">
+              View all <ArrowRight className="h-3 w-3" />
+            </Link>
           </div>
-          <div className="flex-1 overflow-y-auto p-1.5 space-y-1">
+          <div className="flex-1 overflow-y-auto p-2 space-y-1">
             {applications.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center py-6 text-center">
-                <Users className="h-5 w-5 text-slate-350 mb-1" strokeWidth={1.5} />
-                <p className="text-[12px] font-bold text-[#0F172A]">No applications yet</p>
+                <div className="h-10 w-10 rounded-full bg-slate-50 flex items-center justify-center mb-2 border border-slate-100">
+                  <Users className="h-5 w-5 text-slate-350" strokeWidth={1.5} />
+                </div>
+                <p className="text-[11.5px] font-bold text-[#0F172A]">No applications yet</p>
                 <p className="text-[10px] text-slate-400 mt-0.5">Pending applications show up here.</p>
               </div>
             ) : applications.slice(0, 4).map((app, i) => (
-              <div key={app.id || i} className={`flex items-center gap-3 px-3 py-2.5 hover:bg-[#FAFBFC] transition-all group rounded-xl ${i < applications.length - 1 ? "border-b border-slate-100/60" : ""}`}>
-                <div className="h-7 w-7 rounded-lg bg-orange-50 text-[#FF8A00] flex items-center justify-center font-bold text-[11px] shrink-0">
+              <div key={app.id || i} className="flex items-center gap-3 px-3 py-2.5 hover:bg-[#FAFBFC] border border-transparent hover:border-slate-100/80 transition-all duration-205 group rounded-xl">
+                <div className="h-8 w-8 rounded-lg bg-orange-50 text-[#FF8A00] border border-orange-100/50 flex items-center justify-center font-bold text-[11px] shrink-0 shadow-xs">
                   {app.candidate_name ? app.candidate_name.charAt(0).toUpperCase() : "C"}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h4 className="text-[11.5px] font-semibold text-[#0F172A] truncate group-hover:text-[#FF8A00] transition-colors">{app.candidate_name || "Sales Candidate"}</h4>
+                  <h4 className="text-[11.5px] font-bold text-[#0F172A] truncate group-hover:text-[#FF8A00] transition-colors">{app.candidate_name || "Sales Candidate"}</h4>
                   <p className="text-[9.5px] text-slate-400 truncate mt-0.5">{app.job_title || "Sales Professional"}</p>
                 </div>
                 <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${
-                  app.status === 'shortlisted' ? 'text-emerald-600 bg-emerald-50 border-emerald-250/50' :
-                  app.status === 'interviewing' || app.status === 'interview_scheduled' ? 'text-amber-600 bg-amber-50 border-amber-255/50' :
-                  app.status === 'rejected' ? 'text-rose-650 bg-rose-50 border-rose-250/50' :
-                  'text-[#FF8A00] bg-orange-50 border-orange-250/50'
+                  app.status === 'shortlisted' ? 'text-emerald-700 bg-emerald-50/50 border-emerald-100' :
+                  app.status === 'interviewing' || app.status === 'interview_scheduled' ? 'text-amber-700 bg-amber-50/50 border-amber-100' :
+                  app.status === 'rejected' ? 'text-rose-705 bg-rose-50/50 border-rose-100' :
+                  'text-[#FF8A00] bg-orange-50/50 border-orange-100'
                 }`}>
                   {app.status ? app.status.charAt(0).toUpperCase() + app.status.slice(1) : 'Applied'}
                 </span>
@@ -240,32 +321,56 @@ export default function RecruiterDashboard() {
           </div>
         </div>
 
-        {/* Card 3: Employer Brand overview */}
-        <div className="bg-white rounded-2xl border border-slate-200/65 shadow-sm flex flex-col h-[320px] min-h-0 overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-100 flex-shrink-0 bg-slate-50/50">
-            <h2 className="text-[13px] font-bold text-[#0F172A] tracking-tight">Employer Brand</h2>
+        {/* Card 3: Company Presence Hub */}
+        <div className="bg-white rounded-2xl border border-slate-200/70 shadow-sm hover:shadow-md transition-shadow duration-300 flex flex-col h-[320px] min-h-0 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3.5 border-b border-slate-100/80 flex-shrink-0 bg-slate-50/50">
+            <div className="flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-[#FF8A00]" />
+              <h2 className="text-[12px] font-extrabold text-[#0F172A] uppercase tracking-wider">Company Presence Hub</h2>
+            </div>
+            <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-100 font-sans tracking-wide">
+              Active Brand
+            </span>
           </div>
-          <div className="flex-1 overflow-y-auto p-3.5 flex flex-col justify-between gap-3">
-            {/* Score progress */}
-            <div className="bg-[#0F172A] rounded-xl p-3.5 flex-shrink-0">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[8.5px] font-bold text-white/50 uppercase tracking-widest">Brand Strength</span>
-                <span className="text-[14px] font-bold text-white">{companyScore}/100</span>
+          <div className="flex-1 overflow-y-auto p-4 flex flex-col justify-between">
+            <div className="space-y-2.5 flex-grow flex flex-col justify-center">
+              <div className="flex items-center justify-between py-1.5 px-2 rounded-xl hover:bg-slate-50/50 transition-colors border border-slate-100 bg-slate-50/30">
+                <div className="flex items-center gap-2">
+                  <Eye className="h-4 w-4 text-blue-500" />
+                  <span className="text-[11.5px] font-bold text-[#0F172A]">Candidate Profile Views</span>
+                </div>
+                <span className="text-[13px] font-extrabold text-[#0F172A]">{stats?.total_views ?? 0}</span>
               </div>
-              <div className="h-1.5 w-full bg-white/[0.08] rounded-full overflow-hidden">
-                <div className="h-full bg-gradient-to-r from-[#FF8A00] to-[#FFB800] rounded-full" style={{ width: `${companyScore}%` }} />
+              
+              <div className="flex items-center justify-between py-1.5 px-2 rounded-xl hover:bg-slate-50/50 transition-colors border border-slate-100 bg-slate-50/30">
+                <div className="flex items-center gap-2">
+                  <Briefcase className="h-4 w-4 text-orange-500" />
+                  <span className="text-[11.5px] font-bold text-[#0F172A]">Active Job Openings</span>
+                </div>
+                <span className="text-[13px] font-extrabold text-[#0F172A]">{stats?.active_jobs_count ?? 0}</span>
+              </div>
+
+              <div className="flex items-center justify-between py-1.5 px-2 rounded-xl hover:bg-slate-50/50 transition-colors border border-slate-100 bg-slate-50/30">
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4 text-emerald-500" />
+                  <span className="text-[11.5px] font-bold text-[#0F172A]">Active Candidates</span>
+                </div>
+                <span className="text-[13px] font-extrabold text-[#0F172A]">{totalApps}</span>
               </div>
             </div>
 
-            <div className="flex-grow flex flex-col gap-1.5">
-              <BrandRow icon={Eye} label="Job Views" sub="All time views" value={`${stats?.total_views ?? 0}`} />
-              <BrandRow icon={TrendingUp} label="Conversion Rate" sub="Apps → Hires" value={`${conversionRate}%`} />
+            <div className="grid grid-cols-2 gap-2 pt-3 border-t border-slate-100 mt-2">
+              <Link href="/dashboard/recruiter/talent-pool" className="w-full">
+                <button className="w-full py-2 border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-[#0F172A] rounded-xl text-[10.5px] font-bold transition-all text-center">
+                  Talent Pool
+                </button>
+              </Link>
+              <Link href="/dashboard/recruiter/hiring/jobs/new" className="w-full">
+                <button className="w-full py-2 bg-[#0F172A] hover:bg-slate-800 text-white rounded-xl text-[10.5px] font-bold transition-all text-center">
+                  Post Job
+                </button>
+              </Link>
             </div>
-            {profile.completion_score < 100 && (
-              <div className="flex-shrink-0 pt-2 border-t border-slate-100/80">
-                <Link href="/onboarding/recruiter"><span className="text-[10px] font-bold text-[#FF8A00] hover:underline flex items-center gap-0.5">Complete assessment ({profile.completion_score}%) <ChevronRight className="h-2.5 w-2.5" /></span></Link>
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -328,6 +433,44 @@ function FunnelBar({ label, count, pct, color }: { label: string; count: number;
       <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
         <div className={`h-full bg-gradient-to-r ${color} rounded-full transition-all duration-500`} style={{ width: `${pct}%` }} />
       </div>
+    </div>
+  );
+}
+
+function CircularProgress({ value, label, size = 52, strokeWidth = 4, color = "stroke-[#FF8A00]" }: { value: number; label: string; size?: number; strokeWidth?: number; color?: string }) {
+  const radius = (size - strokeWidth) / 2;
+  const circumference = radius * 2 * Math.PI;
+  const offset = circumference - (Math.min(100, Math.max(0, value)) / 100) * circumference;
+
+  return (
+    <div className="flex flex-col items-center gap-1.5 shrink-0">
+      <div className="relative" style={{ width: size, height: size }}>
+        <svg className="w-full h-full transform -rotate-90">
+          <circle
+            className="stroke-white/[0.08]"
+            fill="transparent"
+            strokeWidth={strokeWidth}
+            r={radius}
+            cx={size / 2}
+            cy={size / 2}
+          />
+          <circle
+            className={`${color} transition-all duration-500 ease-out`}
+            fill="transparent"
+            strokeWidth={strokeWidth}
+            strokeDasharray={circumference}
+            strokeDashoffset={offset}
+            strokeLinecap="round"
+            r={radius}
+            cx={size / 2}
+            cy={size / 2}
+          />
+        </svg>
+        <div className="absolute inset-0 flex items-center justify-center text-white text-[10.5px] font-extrabold">
+          {value}%
+        </div>
+      </div>
+      <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider text-center">{label}</span>
     </div>
   );
 }
