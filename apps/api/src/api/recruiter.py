@@ -630,6 +630,10 @@ async def get_jobs(user: dict = Depends(get_current_user), db: Session = Depends
             "updated_at": getattr(job, "created_at", None),
             "is_ai_generated": bool((getattr(job, "metadata_", {}) or {}).get("is_ai_generated", False)),
             "matching_candidates_count": matching_count,
+            "number_of_positions": job.number_of_positions,
+            "applications_count": len(job.applications) if job.applications else 0,
+            "skills_required": job.skills_required or [],
+            "requirements": job.requirements or [],
         })
     return results
 
@@ -737,11 +741,12 @@ async def applications_pipeline(user: dict = Depends(get_current_user), db: Sess
                 "location": candidate.location if candidate else None,
                 "gender": candidate.gender if candidate else None,
                 "birthdate": candidate.birthdate if candidate else None,
-                "referral": None,
+                "referral": candidate.referral if candidate else None,
                 "bio": candidate.bio if candidate else None,
                 "profile_photo_url": (get_s3_url_with_fallback(candidate.profile_photo_url) or (f"https://api.dicebear.com/7.x/avataaars/svg?seed={(candidate.full_name or 'User').replace(' ', '%20')}" if candidate else None)) if candidate else None,
                 "email": user_row.email if user_row else None,
                 "resume_path": S3Service.get_signed_url(candidate.resume_path) if candidate and candidate.resume_path else None,
+                "is_shadow": candidate.is_shadow_profile if candidate else False,
             },
             "resume_data": {
                 "timeline": resume.timeline if resume else None,

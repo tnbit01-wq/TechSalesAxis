@@ -46,6 +46,11 @@ export default function NewJobPage() {
     is_ai_generated: false,
   });
 
+  const [responsibilities, setResponsibilities] = useState<string[]>([""]);
+  const [requirements, setRequirements] = useState<string[]>([""]);
+  const [educationPreference, setEducationPreference] = useState("No degree required");
+  const [customQualification, setCustomQualification] = useState("");
+
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [salaryLoading, setSalaryLoading] = useState(false);
@@ -140,8 +145,29 @@ export default function NewJobPage() {
         finalPositions = 1;
       }
 
+      // Prepare final description
+      const finalDescription = responsibilities
+        .map(r => r.trim())
+        .filter(Boolean)
+        .join("\n");
+
+      // Prepare final requirements and append education preference
+      let finalRequirements = requirements
+        .map(r => r.trim())
+        .filter(Boolean);
+
+      if (educationPreference === "Custom Qualification") {
+        if (customQualification.trim()) {
+          finalRequirements.push(customQualification.trim());
+        }
+      } else if (educationPreference && educationPreference !== "No degree required") {
+        finalRequirements.push(educationPreference);
+      }
+
       await apiClient.post("/recruiter/jobs", { 
         ...formData, 
+        description: finalDescription,
+        requirements: finalRequirements,
         skills_required: finalSkills,
         number_of_positions: finalPositions,
       }, token);
@@ -175,6 +201,31 @@ export default function NewJobPage() {
         ...aiResult,
         is_ai_generated: true,
       });
+
+      if (aiResult.description) {
+        const parsedResps = aiResult.description
+          .split("\n")
+          .map((line: string) => line.trim())
+          .filter((line: string) => line.length > 0)
+          .map((line: string) => line.replace(/^[•\-\*\s]+/, ""));
+        setResponsibilities(parsedResps.length > 0 ? parsedResps : [""]);
+      } else {
+        setResponsibilities([""]);
+      }
+
+      if (aiResult.requirements) {
+        const parsedReqs = Array.isArray(aiResult.requirements)
+          ? aiResult.requirements
+          : String(aiResult.requirements)
+              .split("\n")
+              .map((line: string) => line.trim())
+              .filter((line: string) => line.length > 0)
+              .map((line: string) => line.replace(/^[•\-\*\s]+/, ""));
+        setRequirements(parsedReqs.length > 0 ? parsedReqs : [""]);
+      } else {
+        setRequirements([""]);
+      }
+
       setShowAiAssistant(false); // Close on success
     } catch (err) {
       console.error("AI Generation failed:", err);
@@ -313,6 +364,31 @@ export default function NewJobPage() {
           number_of_positions: result.number_of_positions || formData.number_of_positions,
           is_ai_generated: true,
         });
+
+        if (result.description) {
+          const parsedResps = result.description
+            .split("\n")
+            .map((line: string) => line.trim())
+            .filter((line: string) => line.length > 0)
+            .map((line: string) => line.replace(/^[•\-\*\s]+/, ""));
+          setResponsibilities(parsedResps.length > 0 ? parsedResps : [""]);
+        } else {
+          setResponsibilities([""]);
+        }
+
+        if (result.requirements) {
+          const parsedReqs = Array.isArray(result.requirements)
+            ? result.requirements
+            : String(result.requirements)
+                .split("\n")
+                .map((line: string) => line.trim())
+                .filter((line: string) => line.length > 0)
+                .map((line: string) => line.replace(/^[•\-\*\s]+/, ""));
+          setRequirements(parsedReqs.length > 0 ? parsedReqs : [""]);
+        } else {
+          setRequirements([""]);
+        }
+
         if (result.number_of_positions) {
           setPositionsInput(String(result.number_of_positions));
         }
@@ -368,7 +444,7 @@ export default function NewJobPage() {
       `}</style>
 
       <main className="h-full w-full max-w-[1680px] mx-auto px-4 py-3 flex flex-col overflow-hidden">
-        <section className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.45fr)_330px] overflow-hidden">
+        <section className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[1fr_340px] overflow-hidden">
           {/* Left Column Card Wrapper */}
           <div className="flex flex-col min-h-0 bg-white rounded-[24px] border border-slate-100 shadow-[0_4px_20px_rgba(15,23,42,0.03)] overflow-hidden">
             {/* Interior Board Header */}
@@ -510,18 +586,18 @@ export default function NewJobPage() {
               )}
 
               <form onSubmit={handleCreateJob} className="space-y-4">
-              <Section title="Role Architecture" icon={Briefcase} tone="orange">
+              <Section title="Job Details" icon={Briefcase} tone="orange">
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                  <Field label="Job title" icon={Target}>
+                  <Field label="Job Title" icon={Target}>
                     <input
                       required
                       value={formData.title}
                       onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                       className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 outline-none transition focus:border-[#FF8A00]/50 focus:ring-4 focus:ring-[#FF8A00]/10"
-                      placeholder="Lead Software Architect"
+                      placeholder="Account Executive (SaaS)"
                     />
                   </Field>
-                  <Field label="Experience band" icon={Layers}>
+                  <Field label="Experience Level" icon={Layers}>
                     <select
                       value={formData.experience_band}
                       onChange={(e) => setFormData({ ...formData, experience_band: e.target.value })}
@@ -533,7 +609,7 @@ export default function NewJobPage() {
                       <option value="leadership">10+ (Leadership)</option>
                     </select>
                   </Field>
-                  <Field label="Work model" icon={Workflow}>
+                  <Field label="Work Mode" icon={Workflow}>
                     <select
                       value={formData.job_type}
                       onChange={(e) => setFormData({ ...formData, job_type: e.target.value })}
@@ -547,36 +623,114 @@ export default function NewJobPage() {
                 </div>
               </Section>
 
-              <Section title="Mission & Impact" icon={Zap} tone="amber">
-                <Field label="Role description" icon={Zap} fullWidth>
-                  <textarea
-                    required
-                    rows={4}
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-900 outline-none transition focus:border-[#FF8A00]/50 focus:ring-4 focus:ring-[#FF8A00]/10"
-                    placeholder="Describe the mission, responsibilities, and daily impact of the role..."
-                  />
+              <Section title="Job Description" icon={Zap} tone="amber">
+                <Field label="Job Responsibilities" icon={Zap} fullWidth>
+                  <div className="space-y-2.5">
+                    {responsibilities.map((resp, index) => (
+                      <div key={index} className="flex items-center gap-2 group">
+                        <span className="text-[10px] font-bold text-slate-400 select-none w-4">{index + 1}.</span>
+                        <input
+                          type="text"
+                          required={index === 0}
+                          value={resp}
+                          onChange={(e) => {
+                            const newResps = [...responsibilities];
+                            newResps[index] = e.target.value;
+                            setResponsibilities(newResps);
+                          }}
+                          className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 outline-none transition focus:border-[#FF8A00]/50 focus:ring-4 focus:ring-[#FF8A00]/10"
+                          placeholder="e.g. Drive SaaS product demonstrations and close enterprise-level sales"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newResps = responsibilities.filter((_, i) => i !== index);
+                            setResponsibilities(newResps.length > 0 ? newResps : [""]);
+                          }}
+                          className="rounded-xl p-1.5 hover:bg-red-50 text-slate-400 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setResponsibilities([...responsibilities, ""])}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-dashed border-[#FF8A00]/30 hover:border-[#FF8A00]/60 bg-orange-50/20 px-3 py-1.5 text-xs font-bold text-[#FF8A00] hover:text-[#C96B00] transition-all"
+                    >
+                      <Plus className="h-3.5 w-3.5" /> Add Responsibility
+                    </button>
+                  </div>
                 </Field>
               </Section>
 
               <Section title="Requirements & Skills" icon={Sparkles} tone="blue">
                 <div className="space-y-4">
-                  <Field label="Core requirements" icon={Target} fullWidth>
-                    <textarea
-                      rows={4}
-                      value={formData.requirements?.join("\n") || ""}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          requirements: e.target.value.split("\n").filter(Boolean),
-                        })
-                      }
-                      className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-900 outline-none transition focus:border-[#FF8A00]/50 focus:ring-4 focus:ring-[#FF8A00]/10"
-                      placeholder="One requirement per line"
-                    />
+                  <Field label="Core Requirements" icon={Target} fullWidth>
+                    <div className="space-y-2.5">
+                      {requirements.map((req, index) => (
+                        <div key={index} className="flex items-center gap-2 group">
+                          <span className="text-[10px] font-bold text-slate-400 select-none w-4">•</span>
+                          <input
+                            type="text"
+                            value={req}
+                            onChange={(e) => {
+                              const newReqs = [...requirements];
+                              newReqs[index] = e.target.value;
+                              setRequirements(newReqs);
+                            }}
+                            className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 outline-none transition focus:border-[#FF8A00]/50 focus:ring-4 focus:ring-[#FF8A00]/10"
+                            placeholder="e.g. Proven track record of meeting or exceeding tech sales quotas"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newReqs = requirements.filter((_, i) => i !== index);
+                              setRequirements(newReqs.length > 0 ? newReqs : [""]);
+                            }}
+                            className="rounded-xl p-1.5 hover:bg-red-50 text-slate-400 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => setRequirements([...requirements, ""])}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-dashed border-[#FF8A00]/30 hover:border-[#FF8A00]/60 bg-orange-50/20 px-3 py-1.5 text-xs font-bold text-[#FF8A00] hover:text-[#C96B00] transition-all"
+                      >
+                        <Plus className="h-3.5 w-3.5" /> Add Requirement
+                      </button>
+                    </div>
                   </Field>
-                  <Field label="Technical skills" icon={Zap} fullWidth>
+
+                  <Field label="Education Preference" icon={Layers} fullWidth>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <select
+                        value={educationPreference}
+                        onChange={(e) => setEducationPreference(e.target.value)}
+                        className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 outline-none transition focus:border-[#FF8A00]/50 focus:ring-4 focus:ring-[#FF8A00]/10"
+                      >
+                        <option value="No degree required">No degree required</option>
+                        <option value="Bachelor's degree preferred">Bachelor's degree preferred</option>
+                        <option value="Master's degree preferred">Master's degree preferred</option>
+                        <option value="Custom Qualification">Custom Qualification</option>
+                      </select>
+                      
+                      {educationPreference === "Custom Qualification" && (
+                        <input
+                          type="text"
+                          required
+                          value={customQualification}
+                          onChange={(e) => setCustomQualification(e.target.value)}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 outline-none transition focus:border-[#FF8A00]/50 focus:ring-4 focus:ring-[#FF8A00]/10"
+                          placeholder="e.g. MBA or equivalent experience"
+                        />
+                      )}
+                    </div>
+                  </Field>
+
+                  <Field label="Key Skills & Tools" icon={Zap} fullWidth>
                     <div className="space-y-3">
                       <input
                         value={skillsInput}
@@ -595,7 +749,7 @@ export default function NewJobPage() {
                           }
                         }}
                         className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 outline-none transition focus:border-[#FF8A00]/50 focus:ring-4 focus:ring-[#FF8A00]/10"
-                        placeholder="Type a skill, then press Enter"
+                        placeholder="e.g. Salesforce, MEDDPICC, HubSpot (press Enter to add)"
                       />
                       {formData.skills_required.length > 0 && (
                         <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-3">
@@ -630,7 +784,7 @@ export default function NewJobPage() {
                 </div>
               </Section>
 
-              <Section title="Market Details" icon={Globe} tone="green">
+              <Section title="Location & Salary" icon={Globe} tone="green">
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                   <Field label="Location" icon={MapPin}>
                     <input
@@ -640,7 +794,7 @@ export default function NewJobPage() {
                       placeholder="City, Country"
                     />
                   </Field>
-                  <Field label="Open positions" icon={Users}>
+                  <Field label="Open Positions" icon={Users}>
                     <input
                       type="text"
                       inputMode="numeric"
@@ -673,7 +827,7 @@ export default function NewJobPage() {
                       placeholder="1"
                     />
                   </Field>
-                  <Field label="Salary range" icon={DollarSign}>
+                  <Field label="Salary Range" icon={DollarSign}>
                     <div className="space-y-2">
                       <input
                         value={formData.salary_range}
@@ -708,12 +862,12 @@ export default function NewJobPage() {
         <aside className="job-form-scroll min-h-0 overflow-y-auto space-y-4 hidden lg:flex lg:flex-col">
           <div className="space-y-4">
               <div className="rounded-[24px] bg-[linear-gradient(135deg,#FFF7EE_0%,#FFFFFF_55%,#FFF1E3_100%)] p-4 ring-1 ring-orange-100/80">
-                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#C96B00]">Draft summary</p>
+                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#C96B00]">Listing Summary</p>
                 <h2 className="mt-1 text-lg font-black tracking-tight text-slate-900">
                   {formData.title || "Untitled role"}
                 </h2>
                 <p className="mt-1 text-sm text-slate-600">
-                  {formData.location || "Location not set"} · {formData.job_type || "work model"}
+                  {formData.location || "Location not set"} · {formData.job_type ? (formData.job_type === "onsite" ? "On-site" : formData.job_type.charAt(0).toUpperCase() + formData.job_type.slice(1)) : "Work Mode"}
                 </p>
 
                 <div className="mt-4 grid grid-cols-2 gap-2 text-xs font-bold">
